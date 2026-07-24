@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3 } from "@tabler/icons-react";
+import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3, IconLayoutGrid, IconStack2, IconLayoutBoardSplit } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import RepoGraphView, { LARGE_GRAPH_NODES } from "@/components/repo/RepoGraphView";
+import type { LayoutMode } from "@/lib/repo/layout";
 import RepoNodePanel from "@/components/repo/RepoNodePanel";
 import RepoOverviewPanel from "@/components/repo/RepoOverviewPanel";
 import { groupColors, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
@@ -14,6 +15,13 @@ import type { RepoGraph } from "@/lib/repo/types";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
 
 const REPO_PATH_KEY = "nunopi:repo-path";
+
+// 레이아웃 모드 토글 메타 — grid만 활성(layers/treemap은 자식3·4).
+const LAYOUT_META: { mode: LayoutMode; Icon: typeof IconLayoutGrid; labelKey: string; enabled: boolean }[] = [
+  { mode: "grid", Icon: IconLayoutGrid, labelKey: "repo.layoutGrid", enabled: true },
+  { mode: "layers", Icon: IconStack2, labelKey: "repo.layoutLayers", enabled: false },
+  { mode: "treemap", Icon: IconLayoutBoardSplit, labelKey: "repo.layoutTreemap", enabled: false },
+];
 const REPO_GRAPH_KEY = "nunopi:repo-graph"; // 최근 1개 경로의 그래프 결과 캐시
 
 // 캐시된 그래프 — 저장된 경로와 같을 때만 반환(다르면 재분석 필요).
@@ -46,6 +54,8 @@ export default function RepoView({ active = true, providerId, providerSettings }
   const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
   // 영향도(블래스트) 모드 — 켜면 선택 노드의 의존자를 거리별 색으로.
   const [blastMode, setBlastMode] = useState(false);
+  // 그래프 배치 모드(grid/layers/treemap).
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("grid");
   // "한눈에" 온보딩 패널 표시 + 쉬운 말 요약 캐시(패널 닫아도 유지).
   const [showOverview, setShowOverview] = useState(false);
   const [overviewSummary, setOverviewSummary] = useState<string | null>(null);
@@ -184,10 +194,34 @@ export default function RepoView({ active = true, providerId, providerSettings }
                 {t("repo.reparsed").replace("{n}", String(reparsedNote))}
               </span>
             )}
+            {/* 배치 모드 세그먼트 — grid 활성, layers/treemap은 자식3·4(disabled+곧). */}
+            <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-700">
+              {LAYOUT_META.map(({ mode, Icon, labelKey, enabled }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  disabled={!enabled}
+                  onClick={() => enabled && setLayoutMode(mode)}
+                  title={enabled ? t(labelKey) : `${t(labelKey)} · ${t("repo.layoutSoon")}`}
+                  aria-label={t(labelKey)}
+                  aria-pressed={layoutMode === mode}
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] font-medium transition ${
+                    layoutMode === mode
+                      ? "bg-[#3B34E2] text-white dark:bg-[#8b86f5] dark:text-zinc-900"
+                      : enabled
+                        ? "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        : "cursor-not-allowed text-zinc-300 dark:text-zinc-600"
+                  }`}
+                >
+                  <Icon size={14} stroke={2} aria-hidden />
+                  {t(labelKey)}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={() => setShowOverview((v) => !v)}
-              className={`ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition ${
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition ${
                 showOverview
                   ? "border-[#3B34E2] bg-[#3B34E2] text-white dark:border-[#8b86f5] dark:bg-[#8b86f5] dark:text-zinc-900"
                   : "border-zinc-200 text-zinc-600 hover:border-[#3B34E2] hover:text-[#3B34E2] dark:border-zinc-700 dark:text-zinc-300"
@@ -273,7 +307,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                   onClose={() => setShowOverview(false)}
                 />
               )}
-              <RepoGraphView graph={graph} onNodeClick={setSelectedId} hiddenGroups={hiddenGroups} focusId={selectedId} blastMap={blastMap} />
+              <RepoGraphView graph={graph} onNodeClick={setSelectedId} hiddenGroups={hiddenGroups} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
             </div>
             {selectedId && (
               <RepoNodePanel
