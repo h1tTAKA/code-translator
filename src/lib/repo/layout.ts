@@ -57,11 +57,116 @@ export function focusLayout(graph: RepoGraph, focusId: string): Map<string, Pos>
   return pos;
 }
 
+// 레이어(층) 배치 — 의존 방향 위→아래. 위=진입점(아무도 안 씀), 아래=피의존(공통 util).
+// edge s→t = s가 t를 import(s가 t에 기댐) → s가 t보다 위. 결정적.
+export const LAYER_GAP = 80; // 층 간 세로 간격(그래프 좌표)
+
+export function layeredLayout(graph: RepoGraph): { pos: Map<string, Pos> } {
+  const ids = graph.nodes.map((n) => n.id);
+  const groupOf = new Map(graph.nodes.map((n) => [n.id, n.group ?? "(root)"]));
+
+  // 인접(succ: s→[t...]) — 중복 엣지 제거.
+  const succ = new Map<string, string[]>();
+  for (const id of ids) succ.set(id, []);
+  const seen = new Set<string>();
+  for (const e of graph.edges) {
+    if (!succ.has(e.source) || !succ.has(e.target)) continue; // 노드셋 밖 방어
+    const key = `${e.source}|${e.target}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    succ.get(e.source)!.push(e.target);
+  }
+
+  // 1) DFS 3색(흰0/회1/검2)으로 back edge(사이클 유발) 표시 — 층 계산서만 무시(DAG화).
+  const color = new Map<string, number>(ids.map((id) => [id, 0]));
+  const back = new Set<string>();
+  for (const root of ids) {
+    if (color.get(root) !== 0) continue;
+    color.set(root, 1);
+    const stack: { node: string; i: number }[] = [{ node: root, i: 0 }];
+    while (stack.length) {
+      const top = stack[stack.length - 1];
+      const outs = succ.get(top.node)!;
+      if (top.i < outs.length) {
+        const v = outs[top.i++];
+        const cv = color.get(v);
+        if (cv === 1) back.add(`${top.node}|${v}`);       // 방문 중(회색)으로 되돌아감 = 사이클
+        else if (cv === 0) { color.set(v, 1); stack.push({ node: v, i: 0 }); }
+      } else {
+        color.set(top.node, 2);
+        stack.pop();
+      }
+    }
+  }
+
+  // 2) longest-path 층배정 — DAG(back 제외) 위상정렬(Kahn)로 층 누적.
+  const indeg = new Map<string, number>(ids.map((id) => [id, 0]));
+  for (const [s, outs] of succ) for (const t of outs) if (!back.has(`${s}|${t}`)) indeg.set(t, indeg.get(t)! + 1);
+  const layer = new Map<string, number>(ids.map((id) => [id, 0]));
+  const queue = ids.filter((id) => indeg.get(id) === 0).sort(); // 결정적
+  for (let qi = 0; qi < queue.length; qi++) {
+    const u = queue[qi];
+    for (const v of succ.get(u)!) {
+      if (back.has(`${u}|${v}`)) continue;
+      if (layer.get(u)! + 1 > layer.get(v)!) layer.set(v, layer.get(u)! + 1);
+      indeg.set(v, indeg.get(v)! - 1);
+      if (indeg.get(v) === 0) queue.push(v);
+    }
+  }
+
+  // 3) 층별 버킷 + 층 내 초기 정렬(group→id, 결정적).
+  const buckets = new Map<number, string[]>();
+  for (const id of ids) {
+    const l = layer.get(id)!;
+    (buckets.get(l) ?? buckets.set(l, []).get(l)!).push(id);
+  }
+  const layers = [...buckets.keys()].sort((a, b) => a - b);
+  for (const l of layers) buckets.get(l)!.sort((a, b) => {
+    const ga = groupOf.get(a)!, gb = groupOf.get(b)!;
+    return ga < gb ? -1 : ga > gb ? 1 : a < b ? -1 : a > b ? 1 : 0;
+  });
+
+  // x 좌표(층 내 인덱스 중앙정렬). barycenter가 순서를 바꾸면 다시 부여.
+  const xOf = new Map<string, number>();
+  const assignX = (bucket: string[]) => {
+    const m = bucket.length;
+    bucket.forEach((id, i) => xOf.set(id, (i - (m - 1) / 2) * COL_GAP));
+  };
+  for (const l of layers) assignX(buckets.get(l)!);
+
+  // 4) barycenter 교차 완화 — 위층 이웃(preds=importers) / 아래층 이웃(succs) 평균 x로 층 내 재정렬.
+  const preds = new Map<string, string[]>(ids.map((id) => [id, []]));
+  const succsF = new Map<string, string[]>(ids.map((id) => [id, []]));
+  for (const [s, outs] of succ) for (const t of outs) if (!back.has(`${s}|${t}`)) { succsF.get(s)!.push(t); preds.get(t)!.push(s); }
+  const bary = (id: string, ref: Map<string, string[]>): number => {
+    const ns = ref.get(id)!;
+    if (!ns.length) return xOf.get(id)!;              // 이웃 없으면 제자리(안 튐)
+    let sum = 0; for (const n of ns) sum += xOf.get(n)!;
+    return sum / ns.length;
+  };
+  const reorder = (bucket: string[], ref: Map<string, string[]>) => {
+    bucket.sort((a, b) => {
+      const ba = bary(a, ref), bb = bary(b, ref);
+      return ba !== bb ? ba - bb : a < b ? -1 : a > b ? 1 : 0; // 동률 tie-break=id(결정적)
+    });
+    assignX(bucket);
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 1; i < layers.length; i++) reorder(buckets.get(layers[i])!, preds);           // 아래로: 위층 기준
+    for (let i = layers.length - 2; i >= 0; i--) reorder(buckets.get(layers[i])!, succsF);      // 위로: 아래층 기준
+  }
+
+  const pos = new Map<string, Pos>();
+  for (const l of layers) for (const id of buckets.get(l)!) pos.set(id, { x: xOf.get(id)!, y: l * LAYER_GAP });
+  return { pos };
+}
+
 // 결정적 배치 — 같은 그래프+모드 → 같은 좌표(새로고침·재렌더에도 위치 유지).
-// grid=폴더 구역 배치. layers/treemap(자식3·4)은 우선 폴더 구역으로 폴백.
+// grid=폴더 구역 배치. layers=의존 층. treemap(자식4)은 우선 폴더 구역으로 폴백.
 export function computeLayout(graph: RepoGraph, mode: LayoutMode): Map<string, Pos> {
   switch (mode) {
-    case "layers":  // 자식3
+    case "layers":
+      return layeredLayout(graph).pos;
     case "treemap": // 자식4
     case "grid":
     default:
