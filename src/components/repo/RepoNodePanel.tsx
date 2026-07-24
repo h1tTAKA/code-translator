@@ -40,6 +40,9 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
   const asideRef = useRef<HTMLDivElement>(null);
   // 챗룸 게이트 — 기본 닫힘(기존 챗 있으면 열린 채로 시작).
   const [chatOpen, setChatOpen] = useState<boolean>((chat?.length ?? 0) > 0);
+  // 첫 메시지 전송 등으로 챗이 생기면 자동으로 열기(마운트 유지 중 prop 갱신 반영).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 챗 발생 시 게이트 오픈 동기화
+  useEffect(() => { if ((chat?.length ?? 0) > 0) setChatOpen(true); }, [chat]);
   useEffect(() => () => { abortRef.current?.abort(); chatAbortRef.current?.abort(); }, []);
   // Escape 키 받으려면 패널이 포커스 가능·포커스돼야 함(마운트 시 focus).
   useEffect(() => { asideRef.current?.focus(); }, []);

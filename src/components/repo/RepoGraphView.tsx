@@ -101,7 +101,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
   const isLarge = graph.nodes.length > LARGE_GRAPH_NODES;
 
   // 포커스 시 관련 노드를 focusLayout 좌표로, 해제 시 기본 좌표로 실좌표(fx/fy=x/y) 트윈 이동.
-  // 실좌표를 옮기므로 그리기·클릭영역이 같은 n.x 공유 → desync 없음. setState 없음(refresh만).
+  // 실좌표를 옮기므로 그리기·클릭영역이 같은 n.x 공유 → desync 없음. setState 없음.
   const rafRef = useRef<number | null>(null);
   const prevFocus = useRef<string | null>(null);
   useEffect(() => {
@@ -117,6 +117,9 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     const t0 = performance.now();
     const DUR = 460;
     const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2); // easeInOutQuad
+    // 엔진 재가열 — cooldownTicks 동안 렌더 루프가 돌아 매 프레임 mutated 좌표를 그려줌
+    // (force-graph엔 단발 redraw API가 없음. fx/fy 고정이라 물리 이동은 없고 우리 트윈만 보임).
+    fgRef.current?.d3ReheatSimulation?.();
 
     const tick = (now: number) => {
       const k = Math.min(1, (now - t0) / DUR);
@@ -127,12 +130,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
         n.x = n.fx = s.x + (tg.x - s.x) * e;
         n.y = n.fy = s.y + (tg.y - s.y) * e;
       }
-      fgRef.current?.refresh?.();
       if (k < 1) { rafRef.current = requestAnimationFrame(tick); }
       else {
         rafRef.current = null;
-        // 프레이밍: 포커스면 관련 노드만, 아니면 전체.
-        if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id));
+        // 프레이밍: 포커스면 관련(보이는)만, 아니면 전체.
+        if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
         else fgRef.current?.zoomToFit?.(500, 50);
       }
     };
@@ -195,12 +197,14 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             ctx.fillStyle = isFocus ? (isDark ? "#18181b" : "#ffffff") : dim ? DIM : fill;
             ctx.fillText(label, n.x, n.y + 0.5);
           }}
-          // 클릭 히트 영역 = 칩보다 넉넉히(패딩) — 글자만이라 작던 과녁 확대.
+          // 클릭 히트 영역 = 칩보다 넉넉히. 선택(★·700) 라벨과 폰트·너비 일치(과녁 어긋남 방지).
           nodePointerAreaPaint={(node, color, ctx) => {
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
-            ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
-            const w = ctx.measureText(short(n.name)).width + 24;
+            const isFocus = n.id === focusId;
+            const label = (isFocus ? "★ " : "") + short(n.name);
+            ctx.font = `${isFocus ? 700 : 600} ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
+            const w = ctx.measureText(label).width + 24;
             const h = LABEL_H + 12;
             ctx.fillStyle = color;
             ctx.fillRect(n.x - w / 2, n.y - h / 2, w, h);
@@ -232,8 +236,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const el = wrapRef.current; if (el) el.style.cursor = n ? "pointer" : "default";
             setHoverId(n ? (n as GNode).id : null);
           }}
-          cooldownTicks={0}                                  // 고정 좌표라 시뮬 불필요(안 흩어짐)
-          onEngineStop={() => fgRef.current?.zoomToFit(400, 40)} // 배치 후 화면 맞춤
+          cooldownTicks={60}                                 // 고정 좌표(안 흩어짐)지만 재가열 트윈 프레임 렌더용 짧게 유지
+          onEngineStop={() => {                              // 엔진 정지 시 화면 맞춤(포커스면 관련 보이는 것만)
+            if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
+            else fgRef.current?.zoomToFit?.(400, 40);
+          }}
         />
       )}
     </div>
