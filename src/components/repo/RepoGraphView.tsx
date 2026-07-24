@@ -105,6 +105,16 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
 
   const isLarge = graph.nodes.length > LARGE_GRAPH_NODES;
 
+  // 포커스 화면맞춤 — 관련이 선택 노드 1개뿐(고립 파일)이면 zoomToFit이 점 하나에 무한 확대됨(칩이 화면 덮음).
+  // 그 경우 고정 줌으로 노드 중앙 정렬만. 여럿이면 기존대로 관련·보이는 것만 맞춤.
+  const fitFocus = (ms: number) => {
+    const fg = fgRef.current;
+    if (!fg || !related) return;
+    const visN = graph.nodes.filter((n) => related.has(n.id) && !hiddenGroups?.has(n.group ?? "(root)"));
+    if (visN.length <= 1) { fg.centerAt?.(0, 0, ms); fg.zoom?.(2.5, ms); } // 포커스 노드는 focusLayout서 (0,0)
+    else fg.zoomToFit?.(ms, 60, (n: GNode) => related.has(n.id) && visible(n));
+  };
+
   // 포커스 시 관련 노드를 focusLayout 좌표로, 해제 시 기본 좌표로 실좌표(fx/fy=x/y) 트윈 이동.
   // 실좌표를 옮기므로 그리기·클릭영역이 같은 n.x 공유 → desync 없음. setState 없음.
   const rafRef = useRef<number | null>(null);
@@ -139,7 +149,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
       else {
         rafRef.current = null;
         // 프레이밍: 포커스면 관련(보이는)만, 아니면 전체.
-        if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
+        if (focusId && related) fitFocus(500);
         else fgRef.current?.zoomToFit?.(500, 70);
       }
     };
@@ -263,7 +273,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           }}
           cooldownTicks={60}                                 // 고정 좌표(안 흩어짐)지만 재가열 트윈 프레임 렌더용 짧게 유지
           onEngineStop={() => {                              // 엔진 정지 시 화면 맞춤(포커스면 관련 보이는 것만)
-            if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
+            if (focusId && related) fitFocus(500);
             else fgRef.current?.zoomToFit?.(400, 70);
           }}
         />
