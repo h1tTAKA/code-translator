@@ -16,7 +16,7 @@ type GLink = { source: GNode | string; target: GNode | string };
 const groupOf = (n: GNode) => n.group ?? "(root)";
 const linkEnd = (e: GNode | string) => (typeof e === "object" ? e.id : e); // 링크 끝(노드객체 또는 id)
 const DIM = "rgba(120,120,130,0.30)"; // focus/blast 밖 흐림
-const short = (s: string) => (s.length > 16 ? s.slice(0, 15) + "…" : s); // 라벨 길이 캡
+const short = (s: string) => (s.length > 22 ? s.slice(0, 21) + "…" : s); // 라벨 길이 캡
 
 // 블래스트 색 — 직접 의존자(거리1)=빨강, 전이(거리2+)=주황.
 const BLAST_DIRECT = "#ef4444";
@@ -111,17 +111,27 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
             const fill = nodeFill(n);
+            const dim = fill === DIM;
+            const r = 3.5;
             ctx.beginPath();
-            ctx.arc(n.x, n.y, 3.5, 0, 2 * Math.PI);
+            ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
             ctx.fillStyle = fill;
             ctx.fill();
-            if (globalScale >= LABEL_MIN_SCALE) {
+            // 흐림 노드는 라벨 숨김(점만) — 선택 시 관련 노드만 글자.
+            if (globalScale >= LABEL_MIN_SCALE && !dim) {
               const fontSize = 10 / globalScale; // 화면상 ~10px 유지
               ctx.font = `500 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
-              ctx.textAlign = "left";
-              ctx.textBaseline = "middle";
-              ctx.fillStyle = fill === DIM ? DIM : isDark ? "#d4d4d8" : "#3f3f46";
-              ctx.fillText(short(n.name), n.x + 5, n.y);
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              const label = short(n.name);
+              const ty = n.y + r + 2 / globalScale;         // 노드 바로 아래(중앙)
+              // 반투명 배경칩 — 선·이웃 라벨 위에서도 읽히게.
+              const tw = ctx.measureText(label).width;
+              const padX = 3 / globalScale, h = fontSize + 3 / globalScale;
+              ctx.fillStyle = isDark ? "rgba(17,18,25,0.72)" : "rgba(255,255,255,0.78)";
+              ctx.fillRect(n.x - tw / 2 - padX, ty - 1 / globalScale, tw + padX * 2, h);
+              ctx.fillStyle = isDark ? "#d4d4d8" : "#3f3f46";
+              ctx.fillText(label, n.x, ty);
             }
           }}
           // 클릭 히트 영역 — 점보다 넉넉하게.
