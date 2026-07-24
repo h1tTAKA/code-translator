@@ -6,3 +6,12 @@ export const REPO_NODE_FALLBACK = "#71717a";
 export function groupColors(groups: string[]): Map<string, string> {
   return new Map(groups.map((g, i) => [g, REPO_PALETTE[i % REPO_PALETTE.length]]));
 }
+
+// #rrggbb → rgba(r,g,b,a). 폴더 구역 tint/경계/라벨 알파 조절용.
+// 전제: REPO_PALETTE·REPO_NODE_FALLBACK 모두 6자리 hex(#rrggbb). 아니면 원본 반환(안전).
+export function hexToRgba(hex: string, a: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}

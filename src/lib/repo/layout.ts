@@ -5,12 +5,19 @@ export type LayoutMode = "grid" | "layers" | "treemap";
 export const LAYOUT_MODES: LayoutMode[] = ["grid", "layers", "treemap"];
 
 export interface Pos { x: number; y: number }
+// 폴더 구역(그리드맵) 사각형 — 경계·라벨 그리기용.
+export interface Region { group: string; label: string; x: number; y: number; w: number; h: number }
 
 // 노드 간격(그래프 좌표계 px) — 라벨 칩이 가로로 기니 가로 넉넉, 세로는 칩 높이만큼.
 export const COL_GAP = 150;
 export const ROW_GAP = 34;
 export const FOCUS_ROW = 40;  // 포커스 행 간격
 export const FOCUS_COL = 170; // 포커스 열 간격(라벨 폭 여유)
+// 폴더 구역 여백/간격
+export const REGION_PAD_X = COL_GAP * 0.5;   // 좌우 여백
+export const REGION_PAD_TOP = ROW_GAP * 2;   // 상단 라벨 밴드
+const REGION_PAD_BOT = ROW_GAP * 0.5;        // 하단 여백
+const REGION_GAP = COL_GAP * 0.8;            // 구역 사이 간격
 
 // 한 묶음을 x=0 중심의 격자 밴드로 배치. dir<0=위(importedBy), dir>0=아래(imports).
 // 여러 열로 wrap → 개수 많아도 세로로 안 늘어짐(가로 공간 활용). 반환: 밴드가 쓴 행 수.
@@ -51,25 +58,61 @@ export function focusLayout(graph: RepoGraph, focusId: string): Map<string, Pos>
 }
 
 // 결정적 배치 — 같은 그래프+모드 → 같은 좌표(새로고침·재렌더에도 위치 유지).
-// 자식1: grid만 구현. layers/treemap(자식3·4)은 우선 grid로 폴백.
+// grid=폴더 구역 배치. layers/treemap(자식3·4)은 우선 폴더 구역으로 폴백.
 export function computeLayout(graph: RepoGraph, mode: LayoutMode): Map<string, Pos> {
   switch (mode) {
     case "layers":  // 자식3
     case "treemap": // 자식4
     case "grid":
     default:
-      return gridLayout(graph);
+      return folderRegionLayout(graph).pos;
   }
 }
 
-// 경로 정렬 후 격자로 배치. 정렬이라 같은 폴더 파일이 인접(자식2서 폴더 구역화).
-function gridLayout(graph: RepoGraph): Map<string, Pos> {
-  const ids = graph.nodes.map((n) => n.id).sort();
-  // 화면비 보정 — 칸이 가로로 넓으니 열 수를 줄여 전체가 대략 정사각(fit 시 더 크게 보임).
-  const cols = Math.max(1, Math.round(Math.sqrt((ids.length * ROW_GAP) / COL_GAP)));
-  const pos = new Map<string, Pos>();
-  ids.forEach((id, i) => {
-    pos.set(id, { x: (i % cols) * COL_GAP, y: Math.floor(i / cols) * ROW_GAP });
+// 폴더 구역 배치 — 각 최상위 폴더가 자기 사각 구역(안에 파일 격자), 구역들을 shelf-pack 메타그리드로.
+// 결정적(그룹 정렬 '(root)' 먼저·id 정렬). 반환: 노드 좌표 + 구역 사각형 목록(경계/라벨 렌더용).
+export function folderRegionLayout(graph: RepoGraph): { pos: Map<string, Pos>; regions: Region[] } {
+  // 그룹별 노드 id 수집.
+  const byGroup = new Map<string, string[]>();
+  for (const n of graph.nodes) {
+    const g = n.group ?? "(root)";
+    const arr = byGroup.get(g);
+    if (arr) arr.push(n.id); else byGroup.set(g, [n.id]);
+  }
+  // 그룹 정렬: '(root)' 먼저, 나머지 알파벳.
+  const groups = [...byGroup.keys()].sort((a, b) =>
+    a === "(root)" ? -1 : b === "(root)" ? 1 : a < b ? -1 : a > b ? 1 : 0,
+  );
+
+  // 각 폴더의 내부 격자 크기(로컬) 선계산.
+  const plans = groups.map((g) => {
+    const ids = [...byGroup.get(g)!].sort();
+    const nCols = Math.max(1, Math.round(Math.sqrt((ids.length * ROW_GAP) / COL_GAP)));
+    const nRows = Math.ceil(ids.length / nCols);
+    const w = nCols * COL_GAP + 2 * REGION_PAD_X;
+    const h = nRows * ROW_GAP + REGION_PAD_TOP + REGION_PAD_BOT;
+    return { group: g, ids, nCols, w, h };
   });
-  return pos;
+
+  // 메타그리드 shelf-pack — 행 높이=행 내 최대 h, x는 w+GAP, 행 넘치면 y 내림.
+  const metaCols = Math.max(1, Math.round(Math.sqrt(plans.length)));
+  const pos = new Map<string, Pos>();
+  const regions: Region[] = [];
+  let cursorX = 0, rowY = 0, rowH = 0, colInRow = 0;
+  for (const p of plans) {
+    if (colInRow >= metaCols) { rowY += rowH + REGION_GAP; cursorX = 0; rowH = 0; colInRow = 0; }
+    const ox = cursorX, oy = rowY;
+    regions.push({ group: p.group, label: p.group, x: ox, y: oy, w: p.w, h: p.h });
+    p.ids.forEach((id, i) => {
+      const col = i % p.nCols, row = Math.floor(i / p.nCols);
+      pos.set(id, {
+        x: ox + REGION_PAD_X + col * COL_GAP + COL_GAP / 2, // 칩 중앙정렬 보정
+        y: oy + REGION_PAD_TOP + row * ROW_GAP + ROW_GAP / 2,
+      });
+    });
+    cursorX += p.w + REGION_GAP;
+    rowH = Math.max(rowH, p.h);
+    colInRow++;
+  }
+  return { pos, regions };
 }
