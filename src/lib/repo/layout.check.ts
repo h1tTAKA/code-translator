@@ -37,12 +37,15 @@ const fg: RepoGraph = {
 };
 const f1 = focusLayout(fg, "B");
 assert.deepStrictEqual([...f1.keys()].sort(), ["A", "B", "C", "D", "E"], "선택+이웃만(Z 제외)");
-assert.deepStrictEqual(f1.get("B"), { x: 0, y: 0 }, "선택 노드 맨 위");
+assert.deepStrictEqual(f1.get("B"), { x: 0, y: 0 }, "선택 노드 = 중앙(0,0)");
+// 흐름 밴드: importedBy(A,E)=위(y<0), imports(C,D)=아래(y>0).
+assert.ok(f1.get("A")!.y < 0 && f1.get("E")!.y < 0, "importedBy(A,E) 위쪽 y<0");
+assert.ok(f1.get("C")!.y > 0 && f1.get("D")!.y > 0, "imports(C,D) 아래쪽 y>0");
 // 결정적.
 const f2 = focusLayout(fg, "B");
 for (const [id, p] of f1) assert.deepStrictEqual(p, f2.get(id), `${id} 결정적`);
-// y 유니크(세로 열, 겹침 없음).
-const ys = new Set<number>();
-for (const { y } of f1.values()) { assert.ok(!ys.has(y), `y 유니크 ${y}`); ys.add(y); }
+// 좌표 유니크(겹침 없음).
+const seen2 = new Set<string>();
+for (const { x, y } of f1.values()) { const k = `${x},${y}`; assert.ok(!seen2.has(k), `유니크 ${k}`); seen2.add(k); }
 
 console.log("layout.check OK");
