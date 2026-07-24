@@ -114,21 +114,50 @@ export function layeredLayout(graph: RepoGraph): { pos: Map<string, Pos> } {
     }
   }
 
-  // 3) 층별 버킷 + 층 내 초기 정렬(group→id, 결정적). barycenter는 커밋2.
+  // 3) 층별 버킷 + 층 내 초기 정렬(group→id, 결정적).
   const buckets = new Map<number, string[]>();
   for (const id of ids) {
     const l = layer.get(id)!;
     (buckets.get(l) ?? buckets.set(l, []).get(l)!).push(id);
   }
-  const pos = new Map<string, Pos>();
-  for (const [l, bucket] of buckets) {
-    bucket.sort((a, b) => {
-      const ga = groupOf.get(a)!, gb = groupOf.get(b)!;
-      return ga < gb ? -1 : ga > gb ? 1 : a < b ? -1 : a > b ? 1 : 0;
-    });
+  const layers = [...buckets.keys()].sort((a, b) => a - b);
+  for (const l of layers) buckets.get(l)!.sort((a, b) => {
+    const ga = groupOf.get(a)!, gb = groupOf.get(b)!;
+    return ga < gb ? -1 : ga > gb ? 1 : a < b ? -1 : a > b ? 1 : 0;
+  });
+
+  // x 좌표(층 내 인덱스 중앙정렬). barycenter가 순서를 바꾸면 다시 부여.
+  const xOf = new Map<string, number>();
+  const assignX = (bucket: string[]) => {
     const m = bucket.length;
-    bucket.forEach((id, i) => pos.set(id, { x: (i - (m - 1) / 2) * COL_GAP, y: l * LAYER_GAP }));
+    bucket.forEach((id, i) => xOf.set(id, (i - (m - 1) / 2) * COL_GAP));
+  };
+  for (const l of layers) assignX(buckets.get(l)!);
+
+  // 4) barycenter 교차 완화 — 위층 이웃(preds=importers) / 아래층 이웃(succs) 평균 x로 층 내 재정렬.
+  const preds = new Map<string, string[]>(ids.map((id) => [id, []]));
+  const succsF = new Map<string, string[]>(ids.map((id) => [id, []]));
+  for (const [s, outs] of succ) for (const t of outs) if (!back.has(`${s}|${t}`)) { succsF.get(s)!.push(t); preds.get(t)!.push(s); }
+  const bary = (id: string, ref: Map<string, string[]>): number => {
+    const ns = ref.get(id)!;
+    if (!ns.length) return xOf.get(id)!;              // 이웃 없으면 제자리(안 튐)
+    let sum = 0; for (const n of ns) sum += xOf.get(n)!;
+    return sum / ns.length;
+  };
+  const reorder = (bucket: string[], ref: Map<string, string[]>) => {
+    bucket.sort((a, b) => {
+      const ba = bary(a, ref), bb = bary(b, ref);
+      return ba !== bb ? ba - bb : a < b ? -1 : a > b ? 1 : 0; // 동률 tie-break=id(결정적)
+    });
+    assignX(bucket);
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 1; i < layers.length; i++) reorder(buckets.get(layers[i])!, preds);           // 아래로: 위층 기준
+    for (let i = layers.length - 2; i >= 0; i--) reorder(buckets.get(layers[i])!, succsF);      // 위로: 아래층 기준
   }
+
+  const pos = new Map<string, Pos>();
+  for (const l of layers) for (const id of buckets.get(l)!) pos.set(id, { x: xOf.get(id)!, y: l * LAYER_GAP });
   return { pos };
 }
 
