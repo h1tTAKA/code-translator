@@ -16,11 +16,11 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 
 const REPO_PATH_KEY = "nunopi:repo-path";
 
-// 레이아웃 모드 토글 메타 — grid만 활성(layers/treemap은 자식3·4).
+// 레이아웃 모드 토글 메타 — grid(관계)·layers(흐름)·treemap(덩치) 전부 활성.
 const LAYOUT_META: { mode: LayoutMode; Icon: typeof IconLayoutGrid; labelKey: string; enabled: boolean }[] = [
   { mode: "grid", Icon: IconLayoutGrid, labelKey: "repo.layoutGrid", enabled: true },
   { mode: "layers", Icon: IconStack2, labelKey: "repo.layoutLayers", enabled: true },
-  { mode: "treemap", Icon: IconLayoutBoardSplit, labelKey: "repo.layoutTreemap", enabled: false },
+  { mode: "treemap", Icon: IconLayoutBoardSplit, labelKey: "repo.layoutTreemap", enabled: true },
 ];
 const REPO_GRAPH_KEY = "nunopi:repo-graph"; // 최근 1개 경로의 그래프 결과 캐시
 
@@ -194,7 +194,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                 {t("repo.reparsed").replace("{n}", String(reparsedNote))}
               </span>
             )}
-            {/* 배치 모드 세그먼트 — grid 활성, layers/treemap은 자식3·4(disabled+곧). */}
+            {/* 배치 모드 세그먼트 — grid(관계)·layers(흐름)·treemap(덩치) 전환. */}
             <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-700">
               {LAYOUT_META.map(({ mode, Icon, labelKey, enabled }) => (
                 <button
