@@ -39,6 +39,13 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
   const sourceRef = useRef<string | null>(null); // 파일 소스 1회 읽어 설명·챗 공유
   useEffect(() => () => { abortRef.current?.abort(); chatAbortRef.current?.abort(); }, []);
 
+  // 노드 열릴 때 설명 자동 생성(캐시 없을 때 1회). 패널은 key={nodeId}로 노드마다 remount → 1회 발동.
+  // 재클릭/재진입은 explanation 캐시(부모)로 무비용, 노드 전환은 언마운트 abort로 안전.
+  useEffect(() => {
+    if (!explanation && !generating && streaming == null) void generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 노드 마운트 1회 자동 생성만
+  }, [nodeId]);
+
   // 파일 소스 읽기(캐시). 실패 시 빈 문자열.
   async function getSource(signal: AbortSignal): Promise<string> {
     if (sourceRef.current != null) return sourceRef.current;
