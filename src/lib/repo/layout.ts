@@ -161,13 +161,70 @@ export function layeredLayout(graph: RepoGraph): { pos: Map<string, Pos> } {
   return { pos };
 }
 
+// 트리맵 배치 — 각 최상위 폴더가 사각 박스(면적 ∝ 파일 수), 박스가 캔버스를 타일링(패딩 없이 맞닿음).
+// 파일은 박스 안 격자 타일. "코드베이스 덩치·구성 한눈에". 결정적.
+// slice-and-dice: 폴더 목록을 무게 절반서 갈라 긴 변 따라 재귀 분할(축 교대). 폴더 ~십여개라 충분히 정사각.
+// ponytail: slice-and-dice — 한 폴더가 압도적이면 얇은 띠 가능. 필요 시 squarified로 교체(반환계약 동일 드롭인).
+export function treemapLayout(graph: RepoGraph, width = 1600, height = 900): { pos: Map<string, Pos>; regions: Region[] } {
+  const byGroup = new Map<string, string[]>();
+  for (const n of graph.nodes) {
+    const g = n.group ?? "(root)";
+    (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(n.id);
+  }
+  // 폴더: 파일 수 내림차순, 동률 이름 오름차순(결정적).
+  const folders = [...byGroup.entries()]
+    .map(([group, ids]) => ({ group, ids: [...ids].sort(), weight: ids.length }))
+    .sort((a, b) => b.weight - a.weight || (a.group < b.group ? -1 : a.group > b.group ? 1 : 0));
+
+  const regions: Region[] = [];
+  // 무게 비례로 rect를 타일링(재귀 slice-and-dice). horizontal=긴 변 가로면 좌우 분할.
+  const split = (items: typeof folders, x: number, y: number, w: number, h: number) => {
+    if (!items.length) return;
+    if (items.length === 1) {
+      const f = items[0];
+      regions.push({ group: f.group, label: f.group, x, y, w, h });
+      return;
+    }
+    const total = items.reduce((s, f) => s + f.weight, 0);
+    // 무게 누적 절반서 split(앞 그룹이 커도 최소 1개는 앞에).
+    let acc = 0, cut = 1;
+    for (let i = 0; i < items.length; i++) { acc += items[i].weight; if (acc >= total / 2) { cut = Math.max(1, i + 1); break; } }
+    const a = items.slice(0, cut), b = items.slice(cut);
+    const aw = a.reduce((s, f) => s + f.weight, 0) / total;
+    if (w >= h) { // 긴 변 가로 → 좌우로
+      split(a, x, y, w * aw, h);
+      split(b, x + w * aw, y, w * (1 - aw), h);
+    } else {      // 긴 변 세로 → 상하로
+      split(a, x, y, w, h * aw);
+      split(b, x, y + h * aw, w, h * (1 - aw));
+    }
+  };
+  split(folders, 0, 0, width, height);
+
+  // 파일 = 박스 안 격자 타일(중앙정렬).
+  const regionOf = new Map(regions.map((r) => [r.group, r]));
+  const pos = new Map<string, Pos>();
+  for (const f of folders) {
+    const r = regionOf.get(f.group)!;
+    const cols = Math.max(1, Math.round(Math.sqrt((f.ids.length * r.w) / r.h)));
+    const rows = Math.ceil(f.ids.length / cols);
+    const cw = r.w / cols, ch = r.h / rows;
+    f.ids.forEach((id, i) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      pos.set(id, { x: r.x + (col + 0.5) * cw, y: r.y + (row + 0.5) * ch });
+    });
+  }
+  return { pos, regions };
+}
+
 // 결정적 배치 — 같은 그래프+모드 → 같은 좌표(새로고침·재렌더에도 위치 유지).
-// grid=폴더 구역 배치. layers=의존 층. treemap(자식4)은 우선 폴더 구역으로 폴백.
+// grid=폴더 구역 배치. layers=의존 층. treemap=면적 트리맵(RepoGraphView가 size 넘겨 호출).
 export function computeLayout(graph: RepoGraph, mode: LayoutMode): Map<string, Pos> {
   switch (mode) {
     case "layers":
       return layeredLayout(graph).pos;
-    case "treemap": // 자식4
+    case "treemap":
+      return treemapLayout(graph).pos;
     case "grid":
     default:
       return folderRegionLayout(graph).pos;
