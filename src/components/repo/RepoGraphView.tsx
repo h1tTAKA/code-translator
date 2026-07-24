@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { groupColors, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
-import { computeLayout, type LayoutMode } from "@/lib/repo/layout";
+import { computeLayout, focusLayout, type LayoutMode, type Pos } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
 // react-force-graph-2d는 canvas·window를 쓰는 브라우저 전용 → SSR 끔(서버서 안 그림).
@@ -55,13 +55,14 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     return () => ro.disconnect();
   }, []);
 
-  const { data, colorOf } = useMemo(() => {
+  const { data, colorOf, basePos } = useMemo(() => {
     const groups = Array.from(new Set(graph.nodes.map((n) => n.group ?? "(root)")));
     const gc = groupColors(groups);
     const colorOf = (g?: string) => gc.get(g ?? "(root)") ?? REPO_NODE_FALLBACK;
-    const pos = computeLayout(graph, mode); // 결정적 좌표
+    const pos = computeLayout(graph, mode); // 결정적 기본 좌표(grid 등)
     return {
       colorOf,
+      basePos: pos,
       data: {
         nodes: graph.nodes.map((n) => {
           const p = pos.get(n.id) ?? { x: 0, y: 0 };
@@ -99,6 +100,48 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
 
   const isLarge = graph.nodes.length > LARGE_GRAPH_NODES;
 
+  // 포커스 시 관련 노드를 focusLayout 좌표로, 해제 시 기본 좌표로 실좌표(fx/fy=x/y) 트윈 이동.
+  // 실좌표를 옮기므로 그리기·클릭영역이 같은 n.x 공유 → desync 없음. setState 없음(refresh만).
+  const rafRef = useRef<number | null>(null);
+  const prevFocus = useRef<string | null>(null);
+  useEffect(() => {
+    const nodes = data.nodes as GNode[];
+    const wasFocused = prevFocus.current !== null;
+    prevFocus.current = focusId ?? null;
+    if (!focusId && !wasFocused) return; // 초기·무포커스 유지 — onEngineStop이 화면 맞춤
+    if (!nodes.length) return;
+
+    const fpos = focusId ? focusLayout(graph, focusId) : null;
+    const target = (id: string, cur: Pos): Pos => (fpos?.get(id)) ?? basePos.get(id) ?? cur; // 비관련=기본 좌표
+    const starts = new Map(nodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]));
+    const t0 = performance.now();
+    const DUR = 460;
+    const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2); // easeInOutQuad
+
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - t0) / DUR);
+      const e = ease(k);
+      for (const n of nodes) {
+        const s = starts.get(n.id); if (!s) continue;
+        const tg = target(n.id, s);
+        n.x = n.fx = s.x + (tg.x - s.x) * e;
+        n.y = n.fy = s.y + (tg.y - s.y) * e;
+      }
+      fgRef.current?.refresh?.();
+      if (k < 1) { rafRef.current = requestAnimationFrame(tick); }
+      else {
+        rafRef.current = null;
+        // 프레이밍: 포커스면 관련 노드만, 아니면 전체.
+        if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id));
+        else fgRef.current?.zoomToFit?.(500, 50);
+      }
+    };
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focusId/data 변화에만 트윈(related/basePos/graph는 그로부터 파생)
+  }, [focusId, data]);
+
   return (
     <div ref={wrapRef} className="h-full w-full">
       {size.w > 0 && (
@@ -107,7 +150,12 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           width={size.w}
           height={size.h}
           graphData={data}
-          nodeVisibility={(n) => visible(n as GNode)}
+          nodeVisibility={(n) => {
+            const gn = n as GNode;
+            if (!visible(gn)) return false;
+            if (focusId && related && !related.has(gn.id)) return false; // 포커스: 비관련 숨김
+            return true;
+          }}
           // 노드 = 파일명 라벨 칩(항상, 테두리로 클릭 대상 명확). 동그란 점 없음.
           nodeCanvasObject={(node, ctx) => {
             const n = node as GNode;
@@ -151,7 +199,13 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           nodeRelSize={4}
           linkVisibility={(l) => {
             const s = (l as GLink).source, t = (l as GLink).target;
-            return (typeof s === "object" ? visible(s) : true) && (typeof t === "object" ? visible(t) : true);
+            const sv = typeof s === "object" ? visible(s) : true;
+            const tv = typeof t === "object" ? visible(t) : true;
+            if (!sv || !tv) return false;
+            if (focusId && related) { // 포커스: 양 끝 다 관련일 때만
+              return related.has(linkEnd(s)) && related.has(linkEnd(t));
+            }
+            return true;
           }}
           linkColor={(l) => {
             const s = linkEnd((l as GLink).source), t = linkEnd((l as GLink).target);
