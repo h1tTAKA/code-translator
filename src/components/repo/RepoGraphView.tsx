@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { groupColors, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
-import { computeLayout, type LayoutMode } from "@/lib/repo/layout";
+import { computeLayout, focusLayout, type LayoutMode, type Pos } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
 // react-force-graph-2d는 canvas·window를 쓰는 브라우저 전용 → SSR 끔(서버서 안 그림).
@@ -55,13 +55,14 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     return () => ro.disconnect();
   }, []);
 
-  const { data, colorOf } = useMemo(() => {
+  const { data, colorOf, basePos } = useMemo(() => {
     const groups = Array.from(new Set(graph.nodes.map((n) => n.group ?? "(root)")));
     const gc = groupColors(groups);
     const colorOf = (g?: string) => gc.get(g ?? "(root)") ?? REPO_NODE_FALLBACK;
-    const pos = computeLayout(graph, mode); // 결정적 좌표
+    const pos = computeLayout(graph, mode); // 결정적 기본 좌표(grid 등)
     return {
       colorOf,
+      basePos: pos,
       data: {
         nodes: graph.nodes.map((n) => {
           const p = pos.get(n.id) ?? { x: 0, y: 0 };
@@ -99,6 +100,50 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
 
   const isLarge = graph.nodes.length > LARGE_GRAPH_NODES;
 
+  // 포커스 시 관련 노드를 focusLayout 좌표로, 해제 시 기본 좌표로 실좌표(fx/fy=x/y) 트윈 이동.
+  // 실좌표를 옮기므로 그리기·클릭영역이 같은 n.x 공유 → desync 없음. setState 없음.
+  const rafRef = useRef<number | null>(null);
+  const prevFocus = useRef<string | null>(null);
+  useEffect(() => {
+    const nodes = data.nodes as GNode[];
+    const wasFocused = prevFocus.current !== null;
+    prevFocus.current = focusId ?? null;
+    if (!focusId && !wasFocused) return; // 초기·무포커스 유지 — onEngineStop이 화면 맞춤
+    if (!nodes.length) return;
+
+    const fpos = focusId ? focusLayout(graph, focusId) : null;
+    const target = (id: string, cur: Pos): Pos => (fpos?.get(id)) ?? basePos.get(id) ?? cur; // 비관련=기본 좌표
+    const starts = new Map(nodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]));
+    const t0 = performance.now();
+    const DUR = 460;
+    const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2); // easeInOutQuad
+    // 엔진 재가열 — cooldownTicks 동안 렌더 루프가 돌아 매 프레임 mutated 좌표를 그려줌
+    // (force-graph엔 단발 redraw API가 없음. fx/fy 고정이라 물리 이동은 없고 우리 트윈만 보임).
+    fgRef.current?.d3ReheatSimulation?.();
+
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - t0) / DUR);
+      const e = ease(k);
+      for (const n of nodes) {
+        const s = starts.get(n.id); if (!s) continue;
+        const tg = target(n.id, s);
+        n.x = n.fx = s.x + (tg.x - s.x) * e;
+        n.y = n.fy = s.y + (tg.y - s.y) * e;
+      }
+      if (k < 1) { rafRef.current = requestAnimationFrame(tick); }
+      else {
+        rafRef.current = null;
+        // 프레이밍: 포커스면 관련(보이는)만, 아니면 전체.
+        if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
+        else fgRef.current?.zoomToFit?.(500, 50);
+      }
+    };
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focusId/data 변화에만 트윈(related/basePos/graph는 그로부터 파생)
+  }, [focusId, data]);
+
   return (
     <div ref={wrapRef} className="h-full w-full">
       {size.w > 0 && (
@@ -107,7 +152,12 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           width={size.w}
           height={size.h}
           graphData={data}
-          nodeVisibility={(n) => visible(n as GNode)}
+          nodeVisibility={(n) => {
+            const gn = n as GNode;
+            if (!visible(gn)) return false;
+            if (focusId && related && !related.has(gn.id)) return false; // 포커스: 비관련 숨김
+            return true;
+          }}
           // 노드 = 파일명 라벨 칩(항상, 테두리로 클릭 대상 명확). 동그란 점 없음.
           nodeCanvasObject={(node, ctx) => {
             const n = node as GNode;
@@ -115,34 +165,46 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const fill = nodeFill(n);
             const dim = fill === DIM;
             const hovered = n.id === hoverId;
-            const label = short(n.name);
-            ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
+            const isFocus = n.id === focusId;                 // 선택 노드 = 특별 강조(★+액센트+글로우)
+            const accent = isDark ? "#8b86f5" : "#3B34E2";
+            const label = (isFocus ? "★ " : "") + short(n.name);
+            ctx.font = `${isFocus ? 700 : 600} ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             const tw = ctx.measureText(label).width;
-            const w = tw + 14, x0 = n.x - w / 2, y0 = n.y - LABEL_H / 2;
-            // 배경칩 + 테두리 — 버튼처럼 보이게. 호버 시 진하게+폴더색 테두리.
+            const w = tw + (isFocus ? 18 : 14), x0 = n.x - w / 2, y0 = n.y - LABEL_H / 2;
+            // 배경칩 + 테두리. 선택=액센트 칩+글로우, 호버=진하게+폴더색 테두리.
+            if (isFocus) { ctx.shadowColor = accent; ctx.shadowBlur = 9; }
             ctx.beginPath();
             if (typeof ctx.roundRect === "function") ctx.roundRect(x0, y0, w, LABEL_H, 2.5);
             else ctx.rect(x0, y0, w, LABEL_H); // 구형 캔버스 폴백
-            ctx.fillStyle = isDark
-              ? (dim ? "rgba(24,24,27,0.4)" : hovered ? "rgba(39,39,46,0.96)" : "rgba(24,24,27,0.82)")
-              : (dim ? "rgba(255,255,255,0.4)" : hovered ? "rgba(244,244,245,0.98)" : "rgba(255,255,255,0.88)");
+            ctx.fillStyle = isFocus
+              ? accent
+              : isDark
+                ? (dim ? "rgba(24,24,27,0.4)" : hovered ? "rgba(39,39,46,0.96)" : "rgba(24,24,27,0.82)")
+                : (dim ? "rgba(255,255,255,0.4)" : hovered ? "rgba(244,244,245,0.98)" : "rgba(255,255,255,0.88)");
             ctx.fill();
-            if (!dim) {
+            ctx.shadowBlur = 0; // 글로우 리셋(텍스트·다음 노드로 안 번지게)
+            if (isFocus) {
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = accent;
+              ctx.stroke();
+            } else if (!dim) {
               ctx.lineWidth = hovered ? 1 : 0.5;
               ctx.strokeStyle = hovered ? fill : isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)";
               ctx.stroke();
             }
-            ctx.fillStyle = dim ? DIM : fill;
+            ctx.fillStyle = isFocus ? (isDark ? "#18181b" : "#ffffff") : dim ? DIM : fill;
             ctx.fillText(label, n.x, n.y + 0.5);
           }}
-          // 클릭 히트 영역 = 칩보다 넉넉히(패딩) — 글자만이라 작던 과녁 확대.
+          // 클릭 히트 영역 = 칩보다 넉넉히. 선택(★·700) 라벨과 폰트·너비 일치(과녁 어긋남 방지).
           nodePointerAreaPaint={(node, color, ctx) => {
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
-            ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
-            const w = ctx.measureText(short(n.name)).width + 24;
+            const isFocus = n.id === focusId;
+            const label = (isFocus ? "★ " : "") + short(n.name);
+            ctx.font = `${isFocus ? 700 : 600} ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
+            const w = ctx.measureText(label).width + 24;
             const h = LABEL_H + 12;
             ctx.fillStyle = color;
             ctx.fillRect(n.x - w / 2, n.y - h / 2, w, h);
@@ -151,7 +213,13 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           nodeRelSize={4}
           linkVisibility={(l) => {
             const s = (l as GLink).source, t = (l as GLink).target;
-            return (typeof s === "object" ? visible(s) : true) && (typeof t === "object" ? visible(t) : true);
+            const sv = typeof s === "object" ? visible(s) : true;
+            const tv = typeof t === "object" ? visible(t) : true;
+            if (!sv || !tv) return false;
+            if (focusId && related) { // 포커스: 양 끝 다 관련일 때만
+              return related.has(linkEnd(s)) && related.has(linkEnd(t));
+            }
+            return true;
           }}
           linkColor={(l) => {
             const s = linkEnd((l as GLink).source), t = linkEnd((l as GLink).target);
@@ -168,8 +236,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const el = wrapRef.current; if (el) el.style.cursor = n ? "pointer" : "default";
             setHoverId(n ? (n as GNode).id : null);
           }}
-          cooldownTicks={0}                                  // 고정 좌표라 시뮬 불필요(안 흩어짐)
-          onEngineStop={() => fgRef.current?.zoomToFit(400, 40)} // 배치 후 화면 맞춤
+          cooldownTicks={60}                                 // 고정 좌표(안 흩어짐)지만 재가열 트윈 프레임 렌더용 짧게 유지
+          onEngineStop={() => {                              // 엔진 정지 시 화면 맞춤(포커스면 관련 보이는 것만)
+            if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
+            else fgRef.current?.zoomToFit?.(400, 40);
+          }}
         />
       )}
     </div>
