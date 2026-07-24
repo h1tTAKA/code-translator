@@ -205,11 +205,12 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const isFocus = n.id === focusId;                 // 선택 노드 = 특별 강조(★+액센트+글로우)
             // 트리맵 개요(비포커스) = 파일을 폴더색 사각타일로("덩치" 시각). 호버 시만 파일명.
             if (mode === "treemap" && !focusId) {
-              const s = 5; // 타일 반경(그래프 좌표)
+              const s = hovered ? 9 : 7; // 타일 반경(그래프 좌표) — 호버 시 커져 클릭 유도
               ctx.fillStyle = fill;
               ctx.globalAlpha = hovered ? 1 : 0.85;
               ctx.fillRect(n.x - s, n.y - s, s * 2, s * 2);
               ctx.globalAlpha = 1;
+              if (hovered) { ctx.lineWidth = 1.5; ctx.strokeStyle = isDark ? "#fff" : "#18181b"; ctx.strokeRect(n.x - s, n.y - s, s * 2, s * 2); }
               if (hovered) {
                 ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
                 ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -257,6 +258,12 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
             const isFocus = n.id === focusId;
+            if (mode === "treemap" && !focusId) { // 타일 개요=넉넉한 사각 과녁(작은 타일 클릭 쉽게)
+              const hs = 12;
+              ctx.fillStyle = color;
+              ctx.fillRect(n.x - hs, n.y - hs, hs * 2, hs * 2);
+              return;
+            }
             const label = (isFocus ? "★ " : "") + short(n.name);
             ctx.font = `${isFocus ? 700 : 600} ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
             const w = ctx.measureText(label).width + 24;
