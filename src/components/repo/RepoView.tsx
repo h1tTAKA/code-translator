@@ -274,10 +274,15 @@ export default function RepoView({ active = true, providerId, providerSettings }
             </button>
           </header>
           <div className="flex min-h-0 flex-1">
-            <div className="relative min-h-0 min-w-0 flex-1">
+            <div className="relative isolate min-h-0 min-w-0 flex-1">
+              {/* 포커스 암전 — 캔버스 뒤(-z-10) 검정 백드롭(페이드). 관련 노드·칩은 위에 떠 선명. */}
+              <div
+                aria-hidden
+                className={`pointer-events-none absolute inset-0 -z-10 bg-black transition-opacity duration-500 ${selectedId && !showOverview ? "opacity-100" : "opacity-0"}`}
+              />
               {/* 그룹(폴더) 필터 칩 — 클릭 토글로 숨김/표시. */}
               {groupList.length > 1 && (
-                <div className="nunopi-scroll absolute left-2 top-2 z-10 flex max-h-[40%] max-w-[16rem] flex-col gap-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white/85 p-1.5 backdrop-blur dark:border-zinc-800 dark:bg-[#111219]/85">
+                <div className="nunopi-scroll absolute left-2 top-2 z-20 flex max-h-[40%] max-w-[16rem] flex-col gap-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white/85 p-1.5 backdrop-blur dark:border-zinc-800 dark:bg-[#111219]/85">
                   {groupList.map(({ group, count, color }) => {
                     const off = hiddenGroups.has(group);
                     return (
