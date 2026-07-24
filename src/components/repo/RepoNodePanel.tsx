@@ -37,7 +37,12 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
   const abortRef = useRef<AbortController | null>(null);
   const chatAbortRef = useRef<AbortController | null>(null);
   const sourceRef = useRef<string | null>(null); // 파일 소스 1회 읽어 설명·챗 공유
+  const asideRef = useRef<HTMLDivElement>(null);
+  // 챗룸 게이트 — 기본 닫힘(기존 챗 있으면 열린 채로 시작).
+  const [chatOpen, setChatOpen] = useState<boolean>((chat?.length ?? 0) > 0);
   useEffect(() => () => { abortRef.current?.abort(); chatAbortRef.current?.abort(); }, []);
+  // Escape 키 받으려면 패널이 포커스 가능·포커스돼야 함(마운트 시 focus).
+  useEffect(() => { asideRef.current?.focus(); }, []);
 
   // 노드 열릴 때 설명 자동 생성(캐시 없을 때 1회). 패널은 key={nodeId}로 노드마다 remount → 1회 발동.
   // 재클릭/재진입은 explanation 캐시(부모)로 무비용, 노드 전환은 언마운트 abort로 안전.
@@ -167,8 +172,15 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
 
   if (!node) return null;
 
+  const segs = node.file.split("/"); // 폴더 브레드크럼용
+
   return (
-    <aside className="flex w-[22rem] shrink-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#111219]">
+    <aside
+      ref={asideRef}
+      tabIndex={-1}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}
+      className="flex w-[22rem] shrink-0 flex-col border-l border-zinc-200 bg-white outline-none dark:border-zinc-800 dark:bg-[#111219]"
+    >
       <header className="flex items-start gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <IconFile size={16} stroke={2} className="mt-0.5 shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
         <div className="min-w-0 flex-1">
@@ -182,6 +194,13 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
 
       <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-4">
+          {/* 폴더 위치 브레드크럼 — 상위 폴더(흐림) / 파일명(굵게). */}
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] leading-tight">
+            {segs.slice(0, -1).map((s, i) => (
+              <span key={i} className="text-zinc-400 dark:text-zinc-500">{s}<span className="px-0.5 text-zinc-300 dark:text-zinc-600">/</span></span>
+            ))}
+            <span className="font-semibold text-zinc-700 dark:text-zinc-200">{segs[segs.length - 1]}</span>
+          </div>
           {node.group && (
             <div className="flex items-center gap-2 text-[12px]">
               <span className="text-zinc-400 dark:text-zinc-500">{t("repo.node.group")}</span>
@@ -233,6 +252,17 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
             <h3 className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
               <IconMessageCircle size={12} stroke={2.5} aria-hidden /> {t("repo.node.chatTitle")}
             </h3>
+            {!chatOpen ? (
+              <button
+                type="button"
+                onClick={() => setChatOpen(true)}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-[12px] font-semibold text-zinc-600 transition hover:border-[#3B34E2] hover:text-[#3B34E2] dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-[#8b86f5] dark:hover:text-[#8b86f5]"
+              >
+                <IconMessageCircle size={13} stroke={2} aria-hidden />
+                {t("repo.node.openChat")}{chat?.length ? ` (${chat.length})` : ""}
+              </button>
+            ) : (
+              <>
             {(chat?.length || chatStreaming != null) && (
               <div className="flex flex-col gap-2">
                 {(chat ?? []).map((m, i) => m.role === "user" ? (
@@ -261,6 +291,8 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
                 <IconArrowUp size={15} stroke={2.5} aria-hidden />
               </button>
             </div>
+              </>
+            )}
           </section>
         </div>
       </div>
