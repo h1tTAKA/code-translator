@@ -123,7 +123,8 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const w = tw + 14, x0 = n.x - w / 2, y0 = n.y - LABEL_H / 2;
             // 배경칩 + 테두리 — 버튼처럼 보이게. 호버 시 진하게+폴더색 테두리.
             ctx.beginPath();
-            ctx.roundRect(x0, y0, w, LABEL_H, 2.5);
+            if (typeof ctx.roundRect === "function") ctx.roundRect(x0, y0, w, LABEL_H, 2.5);
+            else ctx.rect(x0, y0, w, LABEL_H); // 구형 캔버스 폴백
             ctx.fillStyle = isDark
               ? (dim ? "rgba(24,24,27,0.4)" : hovered ? "rgba(39,39,46,0.96)" : "rgba(24,24,27,0.82)")
               : (dim ? "rgba(255,255,255,0.4)" : hovered ? "rgba(244,244,245,0.98)" : "rgba(255,255,255,0.88)");
