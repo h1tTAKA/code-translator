@@ -1,6 +1,6 @@
 // layout.ts self-check — 앱 미import. 실행: node --experimental-strip-types src/lib/repo/layout.check.ts
 import assert from "node:assert";
-import { computeLayout, focusLayout, folderRegionLayout, layeredLayout } from "./layout.ts";
+import { computeLayout, focusLayout, folderRegionLayout, layeredLayout, treemapLayout } from "./layout.ts";
 import type { RepoGraph, RepoEdge } from "./types.ts";
 
 const g: RepoGraph = {
@@ -113,5 +113,36 @@ const lseen = new Set<string>();
 for (const { x, y } of L1.values()) { const k = `${x},${y}`; assert.ok(!lseen.has(k), `유니크 ${k}`); lseen.add(k); }
 // computeLayout layers 라우팅.
 assert.strictEqual(computeLayout(lg, "layers").size, 5, "layers 라우팅");
+
+// treemapLayout — 앞 folderRegionLayout 픽스처(rg) 재사용(app 2·lib 3·(root) 1).
+const W = 1600, H = 900;
+const t1 = treemapLayout(rg, W, H);
+const t2 = treemapLayout(rg, W, H);
+// 결정적.
+for (const [id, p] of t1.pos) assert.deepStrictEqual(p, t2.pos.get(id), `treemap ${id} pos 결정적`);
+assert.deepStrictEqual(t1.regions, t2.regions, "treemap regions 결정적");
+assert.strictEqual(t1.pos.size, 6, "treemap 전 노드");
+assert.strictEqual(t1.regions.length, 3, "treemap 구역 3개");
+// 면적 ∝ 파일 수: lib(3) 박스 면적 > app(2) > (root)(1).
+const areaOf = new Map(t1.regions.map((r) => [r.group, r.w * r.h]));
+assert.ok(areaOf.get("lib")! > areaOf.get("app")!, "lib(3) > app(2) 면적");
+assert.ok(areaOf.get("app")! > areaOf.get("(root)")!, "app(2) > (root)(1) 면적");
+// 타일링: 구역 면적 합 ≈ W*H(패딩 없이 꽉 채움).
+const sumArea = t1.regions.reduce((s, r) => s + r.w * r.h, 0);
+assert.ok(Math.abs(sumArea - W * H) < 1, `타일링 면적합 ${sumArea}≈${W * H}`);
+// 각 노드 자기 구역 안.
+const tRegionOf = new Map(t1.regions.map((r) => [r.group, r]));
+for (const n of rg.nodes) {
+  const p = t1.pos.get(n.id)!, r = tRegionOf.get(n.group ?? "(root)")!;
+  assert.ok(p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h, `treemap ${n.id} 구역 안`);
+}
+// 구역 비겹침(AABB, 맞닿음은 허용 — 엄격 겹침만).
+for (let i = 0; i < t1.regions.length; i++) for (let j = i + 1; j < t1.regions.length; j++) {
+  const a = t1.regions[i], b = t1.regions[j];
+  const overlap = a.x < b.x + b.w - 0.01 && b.x < a.x + a.w - 0.01 && a.y < b.y + b.h - 0.01 && b.y < a.y + a.h - 0.01;
+  assert.ok(!overlap, `treemap ${a.group}·${b.group} 비겹침`);
+}
+// computeLayout treemap 라우팅.
+assert.strictEqual(computeLayout(rg, "treemap").size, 6, "treemap 라우팅");
 
 console.log("layout.check OK");

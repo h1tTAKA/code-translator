@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { groupColors, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
-import { computeLayout, focusLayout, folderRegionLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
+import { computeLayout, focusLayout, folderRegionLayout, treemapLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
 // react-force-graph-2d는 canvas·window를 쓰는 브라우저 전용 → SSR 끔(서버서 안 그림).
@@ -59,10 +59,12 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     const groups = Array.from(new Set(graph.nodes.map((n) => n.group ?? "(root)")));
     const gc = groupColors(groups);
     const colorOf = (g?: string) => gc.get(g ?? "(root)") ?? REPO_NODE_FALLBACK;
-    // grid=폴더 구역(좌표+구역 사각형 한 번에). 그 외 모드는 좌표만(구역 박스 없음).
+    // grid/treemap=좌표+구역 사각형 함께. treemap은 캔버스 크기 넘겨 면적 타일링(size 0이면 기본). 그 외는 좌표만.
     const layout = mode === "grid"
       ? folderRegionLayout(graph)
-      : { pos: computeLayout(graph, mode), regions: [] as Region[] };
+      : mode === "treemap"
+        ? treemapLayout(graph, size.w || 1600, size.h || 900)
+        : { pos: computeLayout(graph, mode), regions: [] as Region[] };
     const pos = layout.pos; // 결정적 기본 좌표
     return {
       colorOf,
@@ -76,7 +78,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
         links: graph.edges.map((e) => ({ source: e.source, target: e.target })),
       },
     };
-  }, [graph, mode]);
+  }, [graph, mode, size]); // size: treemap 리사이즈 재타일
 
   // focus 대상 = 선택 노드 + 직접 이웃. 없으면 null(전체 진하게).
   const related = useMemo(() => {
@@ -121,9 +123,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
   const prevFocus = useRef<string | null>(null);
   useEffect(() => {
     const nodes = data.nodes as GNode[];
-    const wasFocused = prevFocus.current !== null;
-    prevFocus.current = focusId ?? null;
-    if (!focusId && !wasFocused) return; // 초기·무포커스 유지 — onEngineStop이 화면 맞춤
+    // focusId 실제 변화에만 트윈 — data-only 변화(모드 전환·리사이즈 재타일)로는 재시작 안 함(트윈 글리치 방지).
+    const prev = prevFocus.current;
+    const curr = focusId ?? null;
+    prevFocus.current = curr;
+    if (prev === curr) return;
     if (!nodes.length) return;
 
     const fpos = focusId ? focusLayout(graph, focusId) : null;
@@ -176,7 +180,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           // 폴더 구역 박스+라벨 — 노드 아래 레이어(onRenderFramePre). grid·비포커스일 때만.
           // 미리 계산한 regions 사용(매 프레임 좌표 스캔 X). 숨긴 폴더는 박스도 숨김.
           onRenderFramePre={(ctx, globalScale) => {
-            if (mode !== "grid" || focusId) return;
+            if ((mode !== "grid" && mode !== "treemap") || focusId || !regions.length) return; // grid·treemap 박스
             const labelFont = ROW_GAP * 0.7; // 상단 라벨 밴드(ROW_GAP*2) 안에 들어가는 폴더명 크기
             for (const r of regions) {
               if (hiddenGroups?.has(r.group)) continue; // 필터로 숨긴 폴더 → 박스도 숨김
@@ -201,6 +205,25 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const dim = fill === DIM;
             const hovered = n.id === hoverId;
             const isFocus = n.id === focusId;                 // 선택 노드 = 특별 강조(★+액센트+글로우)
+            // 트리맵 개요(비포커스) = 파일을 폴더색 사각타일로("덩치" 시각). 호버 시만 파일명.
+            if (mode === "treemap" && !focusId) {
+              const s = hovered ? 9 : 7; // 타일 반경(그래프 좌표) — 호버 시 커져 클릭 유도
+              ctx.fillStyle = fill;
+              ctx.globalAlpha = hovered ? 1 : 0.85;
+              ctx.fillRect(n.x - s, n.y - s, s * 2, s * 2);
+              ctx.globalAlpha = 1;
+              if (hovered) { ctx.lineWidth = 1.5; ctx.strokeStyle = isDark ? "#fff" : "#18181b"; ctx.strokeRect(n.x - s, n.y - s, s * 2, s * 2); }
+              if (hovered) {
+                ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                const label = short(n.name), tw = ctx.measureText(label).width, w = tw + 8;
+                ctx.fillStyle = isDark ? "rgba(24,24,27,0.95)" : "rgba(255,255,255,0.95)";
+                ctx.fillRect(n.x - w / 2, n.y - s - LABEL_H - 1, w, LABEL_H);
+                ctx.fillStyle = fill;
+                ctx.fillText(label, n.x, n.y - s - LABEL_H / 2 - 1);
+              }
+              return;
+            }
             const accent = isDark ? "#8b86f5" : "#3B34E2";
             const label = (isFocus ? "★ " : "") + short(n.name);
             ctx.font = `${isFocus ? 700 : 600} ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
@@ -237,6 +260,12 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
             const isFocus = n.id === focusId;
+            if (mode === "treemap" && !focusId) { // 타일 개요=넉넉한 사각 과녁(작은 타일 클릭 쉽게)
+              const hs = 12;
+              ctx.fillStyle = color;
+              ctx.fillRect(n.x - hs, n.y - hs, hs * 2, hs * 2);
+              return;
+            }
             const label = (isFocus ? "★ " : "") + short(n.name);
             ctx.font = `${isFocus ? 700 : 600} ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
             const w = ctx.measureText(label).width + 24;
@@ -251,6 +280,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             const sv = typeof s === "object" ? visible(s) : true;
             const tv = typeof t === "object" ? visible(t) : true;
             if (!sv || !tv) return false;
+            if (mode === "treemap" && !focusId) return false; // 트리맵 개요=선 숨김(덩치 뷰), 포커스 시 복원
             if (focusId && related) { // 포커스: 양 끝 다 관련일 때만
               return related.has(linkEnd(s)) && related.has(linkEnd(t));
             }
