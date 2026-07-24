@@ -1,6 +1,6 @@
 // layout.ts self-check — 앱 미import. 실행: node --experimental-strip-types src/lib/repo/layout.check.ts
 import assert from "node:assert";
-import { computeLayout, focusLayout, folderRegionLayout } from "./layout.ts";
+import { computeLayout, focusLayout, folderRegionLayout, layeredLayout } from "./layout.ts";
 import type { RepoGraph, RepoEdge } from "./types.ts";
 
 const g: RepoGraph = {
@@ -89,5 +89,29 @@ for (let i = 0; i < r1.regions.length; i++) for (let j = i + 1; j < r1.regions.l
 const gl = computeLayout(rg, "grid");
 assert.strictEqual(gl.size, 6, "grid 전 노드");
 for (const [id, p] of gl) assert.deepStrictEqual(p, r1.pos.get(id), `${id} grid=region 라우팅`);
+
+// layeredLayout — 사이클 포함 그래프(A→B→C→A + D→A, E 고립).
+const led = (s: string, t: string): RepoEdge => ({ source: s, target: t, relation: "imports" });
+const lg: RepoGraph = {
+  root: "/x",
+  nodes: ["A", "B", "C", "D", "E"].map((id) => ({ id, label: id, file: id, kind: "file" })),
+  edges: [led("A", "B"), led("B", "C"), led("C", "A"), led("D", "A")], // C→A = 사이클
+  stats: { files: 5, edges: 4, scanned: 5, capped: false },
+};
+const L1 = layeredLayout(lg).pos;         // 무한루프 없이 반환돼야(사이클 끊기)
+assert.strictEqual(L1.size, 5, "전 노드 배치");
+// 결정적.
+const L2 = layeredLayout(lg).pos;
+for (const [id, p] of L1) assert.deepStrictEqual(p, L2.get(id), `${id} 결정적`);
+// 비 back-edge 층 단조: source 층 < target 층. (C→A는 back이라 제외.)
+const yOf = (id: string) => L1.get(id)!.y;
+assert.ok(yOf("A") < yOf("B"), "A→B: A 위");
+assert.ok(yOf("B") < yOf("C"), "B→C: B 위");
+assert.ok(yOf("D") < yOf("A"), "D→A: D 위(진입점)");
+// 좌표 유니크.
+const lseen = new Set<string>();
+for (const { x, y } of L1.values()) { const k = `${x},${y}`; assert.ok(!lseen.has(k), `유니크 ${k}`); lseen.add(k); }
+// computeLayout layers 라우팅.
+assert.strictEqual(computeLayout(lg, "layers").size, 5, "layers 라우팅");
 
 console.log("layout.check OK");
