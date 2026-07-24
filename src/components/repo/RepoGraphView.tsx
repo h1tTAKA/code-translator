@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { groupColors, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
-import { computeLayout, focusLayout, type LayoutMode, type Pos } from "@/lib/repo/layout";
+import { groupColors, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
+import { computeLayout, focusLayout, folderRegionLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
 // react-force-graph-2d는 canvas·window를 쓰는 브라우저 전용 → SSR 끔(서버서 안 그림).
@@ -55,14 +55,19 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     return () => ro.disconnect();
   }, []);
 
-  const { data, colorOf, basePos } = useMemo(() => {
+  const { data, colorOf, basePos, regions } = useMemo(() => {
     const groups = Array.from(new Set(graph.nodes.map((n) => n.group ?? "(root)")));
     const gc = groupColors(groups);
     const colorOf = (g?: string) => gc.get(g ?? "(root)") ?? REPO_NODE_FALLBACK;
-    const pos = computeLayout(graph, mode); // 결정적 기본 좌표(grid 등)
+    // grid=폴더 구역(좌표+구역 사각형 한 번에). 그 외 모드는 좌표만(구역 박스 없음).
+    const layout = mode === "grid"
+      ? folderRegionLayout(graph)
+      : { pos: computeLayout(graph, mode), regions: [] as Region[] };
+    const pos = layout.pos; // 결정적 기본 좌표
     return {
       colorOf,
       basePos: pos,
+      regions: layout.regions,
       data: {
         nodes: graph.nodes.map((n) => {
           const p = pos.get(n.id) ?? { x: 0, y: 0 };
@@ -135,7 +140,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
         rafRef.current = null;
         // 프레이밍: 포커스면 관련(보이는)만, 아니면 전체.
         if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
-        else fgRef.current?.zoomToFit?.(500, 50);
+        else fgRef.current?.zoomToFit?.(500, 70);
       }
     };
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -157,6 +162,26 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             if (!visible(gn)) return false;
             if (focusId && related && !related.has(gn.id)) return false; // 포커스: 비관련 숨김
             return true;
+          }}
+          // 폴더 구역 박스+라벨 — 노드 아래 레이어(onRenderFramePre). grid·비포커스일 때만.
+          // 미리 계산한 regions 사용(매 프레임 좌표 스캔 X). 숨긴 폴더는 박스도 숨김.
+          onRenderFramePre={(ctx, globalScale) => {
+            if (mode !== "grid" || focusId) return;
+            const labelFont = ROW_GAP * 0.7; // 상단 라벨 밴드(ROW_GAP*2) 안에 들어가는 폴더명 크기
+            for (const r of regions) {
+              if (hiddenGroups?.has(r.group)) continue; // 필터로 숨긴 폴더 → 박스도 숨김
+              const c = colorOf(r.group);
+              ctx.fillStyle = hexToRgba(c, 0.05);   // 아주 옅은 채움(노드·라벨 안 가림)
+              ctx.fillRect(r.x, r.y, r.w, r.h);
+              ctx.lineWidth = 1 / globalScale;      // 줌 무관 헤어라인 경계
+              ctx.strokeStyle = hexToRgba(c, 0.22);
+              ctx.strokeRect(r.x, r.y, r.w, r.h);
+              ctx.font = `700 ${labelFont}px ui-sans-serif, system-ui, sans-serif`;
+              ctx.textAlign = "left";
+              ctx.textBaseline = "top";
+              ctx.fillStyle = hexToRgba(c, 0.7);
+              ctx.fillText(r.label, r.x + 8, r.y + 6);
+            }
           }}
           // 노드 = 파일명 라벨 칩(항상, 테두리로 클릭 대상 명확). 동그란 점 없음.
           nodeCanvasObject={(node, ctx) => {
@@ -239,7 +264,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           cooldownTicks={60}                                 // 고정 좌표(안 흩어짐)지만 재가열 트윈 프레임 렌더용 짧게 유지
           onEngineStop={() => {                              // 엔진 정지 시 화면 맞춤(포커스면 관련 보이는 것만)
             if (focusId && related) fgRef.current?.zoomToFit?.(500, 60, (n: GNode) => related.has(n.id) && visible(n));
-            else fgRef.current?.zoomToFit?.(400, 40);
+            else fgRef.current?.zoomToFit?.(400, 70);
           }}
         />
       )}
