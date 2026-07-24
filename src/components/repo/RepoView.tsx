@@ -19,7 +19,7 @@ const REPO_PATH_KEY = "nunopi:repo-path";
 // 레이아웃 모드 토글 메타 — grid만 활성(layers/treemap은 자식3·4).
 const LAYOUT_META: { mode: LayoutMode; Icon: typeof IconLayoutGrid; labelKey: string; enabled: boolean }[] = [
   { mode: "grid", Icon: IconLayoutGrid, labelKey: "repo.layoutGrid", enabled: true },
-  { mode: "layers", Icon: IconStack2, labelKey: "repo.layoutLayers", enabled: false },
+  { mode: "layers", Icon: IconStack2, labelKey: "repo.layoutLayers", enabled: true },
   { mode: "treemap", Icon: IconLayoutBoardSplit, labelKey: "repo.layoutTreemap", enabled: false },
 ];
 const REPO_GRAPH_KEY = "nunopi:repo-graph"; // 최근 1개 경로의 그래프 결과 캐시
