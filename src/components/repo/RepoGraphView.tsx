@@ -123,9 +123,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
   const prevFocus = useRef<string | null>(null);
   useEffect(() => {
     const nodes = data.nodes as GNode[];
-    const wasFocused = prevFocus.current !== null;
-    prevFocus.current = focusId ?? null;
-    if (!focusId && !wasFocused) return; // 초기·무포커스 유지 — onEngineStop이 화면 맞춤
+    // focusId 실제 변화에만 트윈 — data-only 변화(모드 전환·리사이즈 재타일)로는 재시작 안 함(트윈 글리치 방지).
+    const prev = prevFocus.current;
+    const curr = focusId ?? null;
+    prevFocus.current = curr;
+    if (prev === curr) return;
     if (!nodes.length) return;
 
     const fpos = focusId ? focusLayout(graph, focusId) : null;
