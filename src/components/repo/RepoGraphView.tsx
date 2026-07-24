@@ -21,7 +21,8 @@ const short = (s: string) => (s.length > 22 ? s.slice(0, 21) + "…" : s); // �
 // 블래스트 색 — 직접 의존자(거리1)=빨강, 전이(거리2+)=주황.
 const BLAST_DIRECT = "#ef4444";
 const BLAST_TRANSITIVE = "#f59e0b";
-const LABEL_MIN_SCALE = 1.0; // 이 줌 이상서 파일명 라벨 표시(줌아웃 시 점만 — 텍스트 수프 방지)
+const LABEL_FONT = 7;   // 라벨 글자 크기(그래프 좌표 고정 — 줌에 비례, 격자 간격 안에서 안 겹침)
+const LABEL_H = LABEL_FONT + 4; // 칩 높이(그래프 좌표)
 
 // 이 노드 수 넘으면 "대형" — 매 프레임 비용 절감(RepoView 배지도 공유).
 export const LARGE_GRAPH_NODES = 600;
@@ -106,42 +107,37 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           height={size.h}
           graphData={data}
           nodeVisibility={(n) => visible(n as GNode)}
-          // 노드 = 폴더색 점 + (줌인 시)파일명 라벨. 동그란 점 대신 직접 그림.
-          nodeCanvasObject={(node, ctx, globalScale) => {
+          // 노드 = 파일명 라벨 칩(항상). 동그란 점 없음 — 라벨이 곧 노드.
+          nodeCanvasObject={(node, ctx) => {
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
             const fill = nodeFill(n);
             const dim = fill === DIM;
-            const r = 3.5;
+            const label = short(n.name);
+            ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const tw = ctx.measureText(label).width;
+            const padX = 3;
+            const w = tw + padX * 2;
+            const x0 = n.x - w / 2, y0 = n.y - LABEL_H / 2;
+            // 배경칩 — 선 위에서도 읽히게. 흐림 노드는 더 투명.
             ctx.beginPath();
-            ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
-            ctx.fillStyle = fill;
+            ctx.roundRect(x0, y0, w, LABEL_H, 2);
+            ctx.fillStyle = isDark ? (dim ? "rgba(24,24,27,0.4)" : "rgba(24,24,27,0.82)") : (dim ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.88)");
             ctx.fill();
-            // 흐림 노드는 라벨 숨김(점만) — 선택 시 관련 노드만 글자.
-            if (globalScale >= LABEL_MIN_SCALE && !dim) {
-              const fontSize = 10 / globalScale; // 화면상 ~10px 유지
-              ctx.font = `500 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
-              ctx.textAlign = "center";
-              ctx.textBaseline = "top";
-              const label = short(n.name);
-              const ty = n.y + r + 2 / globalScale;         // 노드 바로 아래(중앙)
-              // 반투명 배경칩 — 선·이웃 라벨 위에서도 읽히게.
-              const tw = ctx.measureText(label).width;
-              const padX = 3 / globalScale, h = fontSize + 3 / globalScale;
-              ctx.fillStyle = isDark ? "rgba(17,18,25,0.72)" : "rgba(255,255,255,0.78)";
-              ctx.fillRect(n.x - tw / 2 - padX, ty - 1 / globalScale, tw + padX * 2, h);
-              ctx.fillStyle = isDark ? "#d4d4d8" : "#3f3f46";
-              ctx.fillText(label, n.x, ty);
-            }
+            // 텍스트 = 폴더색(그룹 구분 겸). 흐림이면 회색.
+            ctx.fillStyle = dim ? DIM : fill;
+            ctx.fillText(label, n.x, n.y + 0.5);
           }}
-          // 클릭 히트 영역 — 점보다 넉넉하게.
+          // 클릭 히트 영역 = 라벨 칩 사각형.
           nodePointerAreaPaint={(node, color, ctx) => {
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
+            ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
+            const w = ctx.measureText(short(n.name)).width + 6;
             ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, 6, 0, 2 * Math.PI);
-            ctx.fill();
+            ctx.fillRect(n.x - w / 2, n.y - LABEL_H / 2, w, LABEL_H);
           }}
           nodeLabel={(n) => (n as GNode).id}
           nodeRelSize={4}
