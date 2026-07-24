@@ -42,6 +42,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [hoverId, setHoverId] = useState<string | null>(null); // 호버 칩 강조(클릭 가능 신호)
   const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 
   useEffect(() => {
@@ -107,37 +108,43 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           height={size.h}
           graphData={data}
           nodeVisibility={(n) => visible(n as GNode)}
-          // 노드 = 파일명 라벨 칩(항상). 동그란 점 없음 — 라벨이 곧 노드.
+          // 노드 = 파일명 라벨 칩(항상, 테두리로 클릭 대상 명확). 동그란 점 없음.
           nodeCanvasObject={(node, ctx) => {
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
             const fill = nodeFill(n);
             const dim = fill === DIM;
+            const hovered = n.id === hoverId;
             const label = short(n.name);
             ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             const tw = ctx.measureText(label).width;
-            const padX = 3;
-            const w = tw + padX * 2;
-            const x0 = n.x - w / 2, y0 = n.y - LABEL_H / 2;
-            // 배경칩 — 선 위에서도 읽히게. 흐림 노드는 더 투명.
+            const w = tw + 14, x0 = n.x - w / 2, y0 = n.y - LABEL_H / 2;
+            // 배경칩 + 테두리 — 버튼처럼 보이게. 호버 시 진하게+폴더색 테두리.
             ctx.beginPath();
-            ctx.roundRect(x0, y0, w, LABEL_H, 2);
-            ctx.fillStyle = isDark ? (dim ? "rgba(24,24,27,0.4)" : "rgba(24,24,27,0.82)") : (dim ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.88)");
+            ctx.roundRect(x0, y0, w, LABEL_H, 2.5);
+            ctx.fillStyle = isDark
+              ? (dim ? "rgba(24,24,27,0.4)" : hovered ? "rgba(39,39,46,0.96)" : "rgba(24,24,27,0.82)")
+              : (dim ? "rgba(255,255,255,0.4)" : hovered ? "rgba(244,244,245,0.98)" : "rgba(255,255,255,0.88)");
             ctx.fill();
-            // 텍스트 = 폴더색(그룹 구분 겸). 흐림이면 회색.
+            if (!dim) {
+              ctx.lineWidth = hovered ? 1 : 0.5;
+              ctx.strokeStyle = hovered ? fill : isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)";
+              ctx.stroke();
+            }
             ctx.fillStyle = dim ? DIM : fill;
             ctx.fillText(label, n.x, n.y + 0.5);
           }}
-          // 클릭 히트 영역 = 라벨 칩 사각형.
+          // 클릭 히트 영역 = 칩보다 넉넉히(패딩) — 글자만이라 작던 과녁 확대.
           nodePointerAreaPaint={(node, color, ctx) => {
             const n = node as GNode;
             if (n.x == null || n.y == null) return;
             ctx.font = `600 ${LABEL_FONT}px ui-sans-serif, system-ui, sans-serif`;
-            const w = ctx.measureText(short(n.name)).width + 6;
+            const w = ctx.measureText(short(n.name)).width + 24;
+            const h = LABEL_H + 12;
             ctx.fillStyle = color;
-            ctx.fillRect(n.x - w / 2, n.y - LABEL_H / 2, w, LABEL_H);
+            ctx.fillRect(n.x - w / 2, n.y - h / 2, w, h);
           }}
           nodeLabel={(n) => (n as GNode).id}
           nodeRelSize={4}
@@ -156,7 +163,10 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           linkDirectionalArrowLength={isLarge ? 0 : 2}
           linkDirectionalArrowRelPos={1}
           onNodeClick={(n) => onNodeClick?.((n as GNode).id)}
-          onNodeHover={(n) => { const el = wrapRef.current; if (el) el.style.cursor = n ? "pointer" : "default"; }}
+          onNodeHover={(n) => {
+            const el = wrapRef.current; if (el) el.style.cursor = n ? "pointer" : "default";
+            setHoverId(n ? (n as GNode).id : null);
+          }}
           cooldownTicks={0}                                  // 고정 좌표라 시뮬 불필요(안 흩어짐)
           onEngineStop={() => fgRef.current?.zoomToFit(400, 40)} // 배치 후 화면 맞춤
         />
