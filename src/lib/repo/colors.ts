@@ -7,6 +7,11 @@ export function groupColors(groups: string[]): Map<string, string> {
   return new Map(groups.map((g, i) => [g, REPO_PALETTE[i % REPO_PALETTE.length]]));
 }
 
+// 커뮤니티 id → 색(팔레트 순환). id는 크기순 0,1,2...라 큰 커뮤니티가 안정된 색.
+export function communityColor(id: number): string {
+  return REPO_PALETTE[id % REPO_PALETTE.length];
+}
+
 // #rrggbb → rgba(r,g,b,a). 폴더 구역 tint/경계/라벨 알파 조절용.
 // 전제: REPO_PALETTE·REPO_NODE_FALLBACK 모두 6자리 hex(#rrggbb). 아니면 원본 반환(안전).
 export function hexToRgba(hex: string, a: number): string {

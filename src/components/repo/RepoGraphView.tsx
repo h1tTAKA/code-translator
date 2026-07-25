@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { groupColors, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
+import { groupColors, communityColor, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
 import { computeLayout, focusLayout, folderRegionLayout, treemapLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
@@ -10,7 +10,7 @@ import type { RepoGraph } from "@/lib/repo/types";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
 // 런타임에 force-graph가 x/y를 채움. fx/fy=고정 좌표(물리 끔).
-type GNode = { id: string; name: string; group?: string; x?: number; y?: number; fx?: number; fy?: number };
+type GNode = { id: string; name: string; group?: string; community?: number; x?: number; y?: number; fx?: number; fy?: number };
 type GLink = { source: GNode | string; target: GNode | string };
 
 const groupOf = (n: GNode) => n.group ?? "(root)";
@@ -73,7 +73,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
       data: {
         nodes: graph.nodes.map((n) => {
           const p = pos.get(n.id) ?? { x: 0, y: 0 };
-          return { id: n.id, name: n.label, group: n.group, x: p.x, y: p.y, fx: p.x, fy: p.y }; // fx/fy=고정
+          return { id: n.id, name: n.label, group: n.group, community: n.community, x: p.x, y: p.y, fx: p.x, fy: p.y }; // fx/fy=고정
         }),
         links: graph.edges.map((e) => ({ source: e.source, target: e.target })),
       },
@@ -93,16 +93,18 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
 
   const visible = (n: GNode) => !hiddenGroups?.has(groupOf(n));
 
-  // 노드 색 — 영향도 > focus > 폴더색 순.
+  // 노드 자기 색 — 커뮤니티 있으면 커뮤니티색, 없으면 폴더색.
+  const ownColor = (gn: GNode): string => (gn.community != null ? communityColor(gn.community) : colorOf(gn.group));
+  // 노드 색 — 영향도 > focus > 자기색(커뮤니티/폴더) 순.
   const nodeFill = (gn: GNode): string => {
     if (blastMap) {
       const d = blastMap.get(gn.id);
       if (d === undefined) return DIM;
-      if (d === 0) return colorOf(gn.group);
+      if (d === 0) return ownColor(gn);
       return d === 1 ? BLAST_DIRECT : BLAST_TRANSITIVE;
     }
     if (related && !related.has(gn.id)) return DIM;
-    return colorOf(gn.group);
+    return ownColor(gn);
   };
 
   const isLarge = graph.nodes.length > LARGE_GRAPH_NODES;
