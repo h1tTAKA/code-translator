@@ -10,6 +10,14 @@ export interface RepoNode {
   file: string;      // 상대경로(파일)
   kind: RepoNodeKind;
   group?: string;    // 군집(자식3은 최상위 폴더 기준 임시)
+  community?: number; // 커뮤니티 id(Louvain, 자식6) — 실제 연결 촘촘한 논리 덩어리
+}
+
+// 커뮤니티(자식6) — Louvain 검출한 논리 덩어리.
+export interface Community {
+  id: number;      // 0..k-1 (크기 내림차순 정규화)
+  label: string;   // 자동 라벨(멤버 최다 폴더)
+  count: number;   // 멤버 수
 }
 
 export interface RepoEdge {
@@ -29,4 +37,5 @@ export interface RepoGraph {
     capped: boolean;         // 상한에 걸려 잘렸는지
     reparsed?: number;       // 이번 빌드서 실제 재파싱한 파일 수(증분 — 나머지는 캐시 재사용)
   };
+  communities?: Community[]; // 커뮤니티 목록(자식6)
 }
