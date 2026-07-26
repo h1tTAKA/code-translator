@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { groupColors, communityColor, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
-import { computeLayout, focusLayout, folderRegionLayout, treemapLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
+import { computeLayout, focusLayout, folderRegionLayout, communityRegionLayout, treemapLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
 // react-force-graph-2d는 canvas·window를 쓰는 브라우저 전용 → SSR 끔(서버서 안 그림).
@@ -64,9 +64,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, picked
     // grid/treemap=좌표+구역 사각형 함께. treemap은 캔버스 크기 넘겨 면적 타일링(size 0이면 기본). 그 외는 좌표만.
     const layout = mode === "grid"
       ? folderRegionLayout(graph)
-      : mode === "treemap"
-        ? treemapLayout(graph, size.w || 1600, size.h || 900)
-        : { pos: computeLayout(graph, mode), regions: [] as Region[] };
+      : mode === "community"
+        ? communityRegionLayout(graph)
+        : mode === "treemap"
+          ? treemapLayout(graph, size.w || 1600, size.h || 900)
+          : { pos: computeLayout(graph, mode), regions: [] as Region[] };
     const pos = layout.pos; // 결정적 기본 좌표
     return {
       colorOf,
@@ -190,11 +192,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, picked
           // 폴더 구역 박스+라벨 — 노드 아래 레이어(onRenderFramePre). grid·비포커스일 때만.
           // 미리 계산한 regions 사용(매 프레임 좌표 스캔 X). 숨긴 폴더는 박스도 숨김.
           onRenderFramePre={(ctx, globalScale) => {
-            if ((mode !== "grid" && mode !== "treemap") || focusId || !regions.length) return; // grid·treemap 박스
+            if ((mode !== "grid" && mode !== "treemap" && mode !== "community") || focusId || !regions.length) return; // grid·treemap·community 박스
             const labelFont = ROW_GAP * 0.7; // 상단 라벨 밴드(ROW_GAP*2) 안에 들어가는 폴더명 크기
             for (const r of regions) {
-              if (hiddenGroups?.has(r.group)) continue; // 필터로 숨긴 폴더 → 박스도 숨김
-              const c = colorOf(r.group);
+              if (r.community == null && hiddenGroups?.has(r.group)) continue; // 폴더 필터로 숨긴 구역 → 박스도 숨김(커뮤니티 구역은 폴더 필터 무관)
+              const c = r.community != null ? communityColor(r.community) : colorOf(r.group);
               ctx.fillStyle = hexToRgba(c, 0.05);   // 아주 옅은 채움(노드·라벨 안 가림)
               ctx.fillRect(r.x, r.y, r.w, r.h);
               ctx.lineWidth = 1 / globalScale;      // 줌 무관 헤어라인 경계

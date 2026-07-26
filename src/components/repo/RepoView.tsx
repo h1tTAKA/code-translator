@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3, IconLayoutGrid, IconStack2, IconLayoutBoardSplit, IconSparkles } from "@tabler/icons-react";
+import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3, IconLayoutGrid, IconStack2, IconLayoutBoardSplit, IconAffiliate, IconSparkles } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import RepoGraphView, { LARGE_GRAPH_NODES } from "@/components/repo/RepoGraphView";
 import type { LayoutMode } from "@/lib/repo/layout";
@@ -21,6 +21,7 @@ const LAYOUT_META: { mode: LayoutMode; Icon: typeof IconLayoutGrid; labelKey: st
   { mode: "grid", Icon: IconLayoutGrid, labelKey: "repo.layoutGrid", enabled: true },
   { mode: "layers", Icon: IconStack2, labelKey: "repo.layoutLayers", enabled: true },
   { mode: "treemap", Icon: IconLayoutBoardSplit, labelKey: "repo.layoutTreemap", enabled: true },
+  { mode: "community", Icon: IconAffiliate, labelKey: "repo.layoutCommunity", enabled: true },
 ];
 const REPO_GRAPH_KEY = "nunopi:repo-graph"; // 최근 1개 경로의 그래프 결과 캐시
 

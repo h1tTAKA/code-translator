@@ -1,6 +1,6 @@
 // layout.ts self-check — 앱 미import. 실행: node --experimental-strip-types src/lib/repo/layout.check.ts
 import assert from "node:assert";
-import { computeLayout, focusLayout, folderRegionLayout, layeredLayout, treemapLayout } from "./layout.ts";
+import { computeLayout, focusLayout, folderRegionLayout, communityRegionLayout, layeredLayout, treemapLayout } from "./layout.ts";
 import type { RepoGraph, RepoEdge } from "./types.ts";
 
 const g: RepoGraph = {
@@ -144,5 +144,39 @@ for (let i = 0; i < t1.regions.length; i++) for (let j = i + 1; j < t1.regions.l
 }
 // computeLayout treemap 라우팅.
 assert.strictEqual(computeLayout(rg, "treemap").size, 6, "treemap 라우팅");
+
+// communityRegionLayout — 커뮤니티별 구역(폴더 무시). 노드에 community + graph.communities 라벨.
+const cg: RepoGraph = {
+  root: "/x",
+  nodes: [
+    { id: "app/a.ts", label: "a.ts", file: "app/a.ts", kind: "file", group: "app", community: 0 },
+    { id: "lib/b.ts", label: "b.ts", file: "lib/b.ts", kind: "file", group: "lib", community: 0 },
+    { id: "app/c.ts", label: "c.ts", file: "app/c.ts", kind: "file", group: "app", community: 1 },
+    { id: "x.ts", label: "x.ts", file: "x.ts", kind: "file" }, // community 없음 → (none)
+  ],
+  edges: [],
+  stats: { files: 4, edges: 0, scanned: 4, capped: false },
+  communities: [
+    { id: 0, label: "인증 & 세션", count: 2 },
+    { id: 1, label: "대시보드", count: 1 },
+  ],
+};
+const c1 = communityRegionLayout(cg);
+const c2 = communityRegionLayout(cg);
+for (const [id, p] of c1.pos) assert.deepStrictEqual(p, c2.pos.get(id), `community ${id} 결정적`);
+assert.strictEqual(c1.pos.size, 4, "community 전 노드 배치");
+assert.strictEqual(c1.regions.length, 3, "구역 3개(커뮤니티 0·1 + (none))");
+// 라벨 = graph.communities label(AI 이름 포함).
+const cRegionByComm = new Map(c1.regions.filter((r) => r.community != null).map((r) => [r.community, r]));
+assert.strictEqual(cRegionByComm.get(0)!.label, "인증 & 세션", "커뮤니티0 라벨");
+assert.strictEqual(cRegionByComm.get(1)!.label, "대시보드", "커뮤니티1 라벨");
+// 폴더 무시: 다른 폴더(app·lib)라도 같은 커뮤니티면 한 구역 안.
+const r0 = cRegionByComm.get(0)!;
+for (const id of ["app/a.ts", "lib/b.ts"]) {
+  const p = c1.pos.get(id)!;
+  assert.ok(p.x >= r0.x && p.x <= r0.x + r0.w && p.y >= r0.y && p.y <= r0.y + r0.h, `${id} 커뮤니티0 구역 안`);
+}
+// computeLayout community 라우팅.
+assert.strictEqual(computeLayout(cg, "community").size, 4, "community 라우팅");
 
 console.log("layout.check OK");
