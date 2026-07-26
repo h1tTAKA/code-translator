@@ -54,8 +54,6 @@ export default function RepoView({ active = true, providerId, providerSettings }
   const [explains, setExplains] = useState<Record<string, string>>({});
   // 노드별 챗 스레드 캐시(전환·닫기 후 복귀 시 유지).
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
-  // 숨긴 그룹(폴더) — 필터 칩 토글.
-  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
   // 강조 선택 커뮤니티 — 좌 리스트 클릭. 비어있으면 전체 정상, 있으면 선택한 것만 강조.
   const [pickedCommunities, setPickedCommunities] = useState<Set<number>>(new Set());
   // LLM 기능 라벨 — 생성하면 graph.communities[].label에 써넣고 캐시 저장(새로고침 유지).
@@ -101,7 +99,6 @@ export default function RepoView({ active = true, providerId, providerSettings }
     setSelectedId(null);
     setExplains({});
     setChats({});
-    setHiddenGroups(new Set());
     setPickedCommunities(new Set());
     setNameErr(false);
     setBlastMode(false);
@@ -397,7 +394,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                   onClose={() => setShowOverview(false)}
                 />
               )}
-              <RepoGraphView graph={graph} onNodeClick={setSelectedId} hiddenGroups={hiddenGroups} pickedCommunities={pickedCommunities} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
+              <RepoGraphView graph={graph} onNodeClick={setSelectedId} pickedCommunities={pickedCommunities} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
             </div>
             {selectedId && (
               <RepoNodePanel
