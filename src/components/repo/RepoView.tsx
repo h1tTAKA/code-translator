@@ -55,8 +55,8 @@ export default function RepoView({ active = true, providerId, providerSettings }
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   // 숨긴 그룹(폴더) — 필터 칩 토글.
   const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
-  // 숨긴 커뮤니티 — 좌 커뮤니티 리스트 토글.
-  const [hiddenCommunities, setHiddenCommunities] = useState<Set<number>>(new Set());
+  // 강조 선택 커뮤니티 — 좌 리스트 클릭. 비어있으면 전체 정상, 있으면 선택한 것만 강조.
+  const [pickedCommunities, setPickedCommunities] = useState<Set<number>>(new Set());
   // LLM 기능 라벨 — 커뮤니티 id → AI 이름(온디맨드·캐시).
   const [communityNames, setCommunityNames] = useState<Record<number, string>>({});
   const [naming, setNaming] = useState(false);
@@ -102,7 +102,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
     setExplains({});
     setChats({});
     setHiddenGroups(new Set());
-    setHiddenCommunities(new Set());
+    setPickedCommunities(new Set());
     setCommunityNames({});
     setNameErr(false);
     setBlastMode(false);
@@ -160,7 +160,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
     () => (graph?.communities ?? []).map((c) => ({ ...c, color: communityColor(c.id) })),
     [graph],
   );
-  const toggleCommunity = (id: number) => setHiddenCommunities((prev) => {
+  const toggleCommunity = (id: number) => setPickedCommunities((prev) => {
     const n = new Set(prev);
     if (n.has(id)) n.delete(id); else n.add(id);
     return n;
@@ -351,13 +351,14 @@ export default function RepoView({ active = true, providerId, providerSettings }
                     </button>
                   </div>
                   {communityList.map(({ id, label, count, color }) => {
-                    const off = hiddenCommunities.has(id);
+                    const picking = pickedCommunities.size > 0;
+                    const on = pickedCommunities.has(id);
                     return (
                       <button
                         key={id}
                         type="button"
                         onClick={() => toggleCommunity(id)}
-                        className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${off ? "opacity-40" : ""}`}
+                        className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${on ? "bg-zinc-100 dark:bg-zinc-800" : picking ? "opacity-40" : ""}`}
                       >
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
                         <span className="truncate text-zinc-700 dark:text-zinc-200">{communityNames[id] ?? label}</span>
@@ -379,7 +380,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                   onClose={() => setShowOverview(false)}
                 />
               )}
-              <RepoGraphView graph={graph} onNodeClick={setSelectedId} hiddenGroups={hiddenGroups} hiddenCommunities={hiddenCommunities} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
+              <RepoGraphView graph={graph} onNodeClick={setSelectedId} hiddenGroups={hiddenGroups} pickedCommunities={pickedCommunities} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
             </div>
             {selectedId && (
               <RepoNodePanel

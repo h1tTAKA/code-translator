@@ -29,11 +29,12 @@ export const LARGE_GRAPH_NODES = 600;
 
 // 레포 그래프 — 파일 노드 + import 엣지. 고정 좌표(computeLayout)로 배치, 물리 끔(안 흩어짐).
 // 색=폴더. hiddenGroups=필터, focusId=선택 강조, blastMap=영향도, mode=배치 방식.
-export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, hiddenCommunities, focusId, blastMap, mode = "grid" }: {
+export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, pickedCommunities, focusId, blastMap, mode = "grid" }: {
   graph: RepoGraph;
   onNodeClick?: (id: string) => void;
   hiddenGroups?: Set<string>;
-  hiddenCommunities?: Set<number>;
+  // 강조 선택 커뮤니티 — 비어있으면 전체 정상, 있으면 선택된 것만 밝고 나머진 dim.
+  pickedCommunities?: Set<number>;
   focusId?: string | null;
   blastMap?: Map<string, number> | null;
   mode?: LayoutMode;
@@ -92,7 +93,12 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, hidden
     return set;
   }, [focusId, graph]);
 
-  const visible = (n: GNode) => !hiddenGroups?.has(groupOf(n)) && !(n.community != null && hiddenCommunities?.has(n.community));
+  const nodeComm = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n.community])), [graph]);
+  const visible = (n: GNode) => !hiddenGroups?.has(groupOf(n));
+  // 커뮤니티 강조 활성 여부 + 노드가 선택군에 속하는지.
+  const picking = (pickedCommunities?.size ?? 0) > 0;
+  const inPicked = (c?: number) => c != null && !!pickedCommunities?.has(c);
+  const commOf = (id: string) => nodeComm.get(id);
 
   // 노드 자기 색 — 커뮤니티 있으면 커뮤니티색, 없으면 폴더색.
   const ownColor = (gn: GNode): string => (gn.community != null ? communityColor(gn.community) : colorOf(gn.group));
@@ -105,6 +111,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, hidden
       return d === 1 ? BLAST_DIRECT : BLAST_TRANSITIVE;
     }
     if (related && !related.has(gn.id)) return DIM;
+    if (picking && !inPicked(gn.community)) return DIM; // 강조 모드: 비선택 커뮤니티 흐리게
     return ownColor(gn);
   };
 
@@ -294,8 +301,9 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, hidden
             if (blastMap) {
               return blastMap.has(s) && blastMap.has(t) ? "rgba(239,68,68,0.45)" : "rgba(120,120,130,0.06)";
             }
-            if (!related) return "rgba(120,120,130,0.20)";
-            return related.has(s) && related.has(t) ? "rgba(139,134,245,0.55)" : "rgba(120,120,130,0.07)";
+            if (related) return related.has(s) && related.has(t) ? "rgba(139,134,245,0.55)" : "rgba(120,120,130,0.07)";
+            if (picking) return inPicked(commOf(s)) && inPicked(commOf(t)) ? "rgba(139,134,245,0.5)" : "rgba(120,120,130,0.05)";
+            return "rgba(120,120,130,0.20)";
           }}
           linkDirectionalArrowLength={isLarge ? 0 : 2}
           linkDirectionalArrowRelPos={1}
