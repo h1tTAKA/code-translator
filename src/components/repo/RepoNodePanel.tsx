@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconX, IconArrowUpRight, IconArrowDownLeft, IconFile, IconSparkles, IconLoader2, IconMessageCircle, IconArrowUp } from "@tabler/icons-react";
+import { IconX, IconFile, IconSparkles, IconLoader2, IconMessageCircle, IconArrowUp } from "@tabler/icons-react";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
+import { communityColor } from "@/lib/repo/colors";
 import Markdown from "@/components/learning/Markdown";
 import { parseCardSuggestions, stripStreamingCardBlock } from "@/lib/cardSuggestion";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
@@ -14,7 +15,7 @@ type StreamEvent =
   | { type: "error"; message: string };
 
 // 노드 클릭 우측 패널 — 구조(파일·그룹·이웃 in/out) + 온디맨드 LLM 설명(기능·화면·연결·로직·설계의도).
-export default function RepoNodePanel({ graph, nodeId, providerId, providerSettings, explanation, onExplained, chat, onChat, onClose, onSelect }: {
+export default function RepoNodePanel({ graph, nodeId, providerId, providerSettings, explanation, onExplained, chat, onChat, onClose }: {
   graph: RepoGraph;
   nodeId: string;
   providerId: AgentProviderKind;
@@ -24,11 +25,12 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
   chat?: ChatMessage[];             // 캐시된 챗 스레드
   onChat: (msgs: ChatMessage[]) => void;
   onClose: () => void;
-  onSelect: (id: string) => void;
 }) {
   const t = useT();
   const { locale } = useLocale();
   const node = graph.nodes.find((n) => n.id === nodeId);
+  // 소속 커뮤니티(있으면) — 색점+라벨. 그래프로 연결은 보이니 우패널은 "어느 묶음인지"만.
+  const community = node?.community != null ? graph.communities?.find((c) => c.id === node.community) : undefined;
   const [generating, setGenerating] = useState(false);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -204,24 +206,25 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
             ))}
             <span className="font-semibold text-zinc-700 dark:text-zinc-200">{segs[segs.length - 1]}</span>
           </div>
-          {node.group && (
-            <div className="flex items-center gap-2 text-[12px]">
-              <span className="text-zinc-400 dark:text-zinc-500">{t("repo.node.group")}</span>
-              <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{node.group}</span>
+          {(node.group || community) && (
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              {node.group && (
+                <span className="flex items-center gap-1.5">
+                  <span className="text-zinc-400 dark:text-zinc-500">{t("repo.node.group")}</span>
+                  <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{node.group}</span>
+                </span>
+              )}
+              {community && (
+                <span className="flex items-center gap-1.5">
+                  <span className="text-zinc-400 dark:text-zinc-500">{t("repo.node.community")}</span>
+                  <span className="flex items-center gap-1 rounded-md bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: communityColor(community.id) }} />
+                    {community.label}
+                  </span>
+                </span>
+              )}
             </div>
           )}
-          <section className="flex flex-col gap-1.5">
-            <h3 className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-              <IconArrowUpRight size={12} stroke={2.5} aria-hidden /> {t("repo.node.imports")} ({imports.length})
-            </h3>
-            <NeighborList ids={imports} dir="out" onSelect={onSelect} none={t("repo.node.none")} />
-          </section>
-          <section className="flex flex-col gap-1.5">
-            <h3 className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-              <IconArrowDownLeft size={12} stroke={2.5} aria-hidden /> {t("repo.node.importedBy")} ({importedBy.length})
-            </h3>
-            <NeighborList ids={importedBy} dir="in" onSelect={onSelect} none={t("repo.node.none")} />
-          </section>
 
           {/* LLM 설명 — 온디맨드. 캐시 있으면 바로, 없으면 버튼. */}
           <section className="flex flex-col gap-2 border-t border-zinc-200/70 pt-4 dark:border-zinc-800/70">
@@ -300,28 +303,5 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
         </div>
       </div>
     </aside>
-  );
-}
-
-// 이웃 목록 — 파일명 클릭 시 그 노드로 이동. dir: out=imports / in=importedBy(아이콘 구분).
-function NeighborList({ ids, dir, onSelect, none }: { ids: string[]; dir: "out" | "in"; onSelect: (id: string) => void; none: string }) {
-  if (ids.length === 0) return <p className="text-[12px] text-zinc-400 dark:text-zinc-500">{none}</p>;
-  const Icon = dir === "out" ? IconArrowUpRight : IconArrowDownLeft;
-  return (
-    <ul className="flex flex-col gap-0.5">
-      {ids.map((id) => (
-        <li key={id}>
-          <button
-            type="button"
-            onClick={() => onSelect(id)}
-            className="flex w-full items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-[12px] text-zinc-600 transition hover:bg-zinc-100 hover:text-[#3B34E2] dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-[#8b86f5]"
-            title={id}
-          >
-            <Icon size={12} stroke={2} className="shrink-0 text-zinc-400 dark:text-zinc-500" aria-hidden />
-            <span className="truncate">{id.split("/").pop()}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
   );
 }
