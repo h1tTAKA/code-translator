@@ -30,7 +30,9 @@ function readGraphCache(path: string): RepoGraph | null {
     const raw = localStorage.getItem(REPO_GRAPH_KEY);
     if (!raw) return null;
     const obj = JSON.parse(raw) as { path: string; graph: RepoGraph };
-    return obj.path === path ? obj.graph : null;
+    if (obj.path !== path) return null;
+    if (!obj.graph.communities) return null; // 커뮤니티 없는 옛 캐시 = stale → 재분석
+    return obj.graph;
   } catch { return null; }
 }
 function writeGraphCache(path: string, graph: RepoGraph) {
