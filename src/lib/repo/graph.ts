@@ -6,6 +6,7 @@ import ts from "typescript";
 import { scanRepo } from "./scan";
 import { detectLang, SUPPORTED_EXTS } from "./langs";
 import { reconcile, type FileCache } from "./incremental";
+import { detectCommunities } from "./community";
 import type { RepoGraph, RepoNode, RepoEdge } from "./types";
 
 // 해석 시 붙여볼 확장자 — 지원 언어 전부 + d.ts.
@@ -137,10 +138,15 @@ export function buildRepoGraph(root: string): RepoGraph {
     }
   }
 
+  // 커뮤니티 검출(Louvain) — 실제 연결 촘촘한 논리 덩어리. 각 노드에 community 부여.
+  const { communities, nodeCommunity } = detectCommunities({ root, nodes, edges, stats: { files: nodes.length, edges: edges.length, scanned: files.length, capped } });
+  for (const n of nodes) n.community = nodeCommunity.get(n.id);
+
   return {
     root,
     nodes,
     edges,
     stats: { files: nodes.length, edges: edges.length, scanned: files.length, capped, reparsed },
+    communities,
   };
 }

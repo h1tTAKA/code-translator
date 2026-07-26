@@ -2,18 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { groupColors, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
-import { computeLayout, focusLayout, folderRegionLayout, treemapLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
+import { groupColors, communityColor, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
+import { computeLayout, focusLayout, folderRegionLayout, communityRegionLayout, treemapLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
 // react-force-graph-2d는 canvas·window를 쓰는 브라우저 전용 → SSR 끔(서버서 안 그림).
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
 // 런타임에 force-graph가 x/y를 채움. fx/fy=고정 좌표(물리 끔).
-type GNode = { id: string; name: string; group?: string; x?: number; y?: number; fx?: number; fy?: number };
+type GNode = { id: string; name: string; group?: string; community?: number; x?: number; y?: number; fx?: number; fy?: number };
 type GLink = { source: GNode | string; target: GNode | string };
 
-const groupOf = (n: GNode) => n.group ?? "(root)";
 const linkEnd = (e: GNode | string) => (typeof e === "object" ? e.id : e); // 링크 끝(노드객체 또는 id)
 const DIM = "rgba(120,120,130,0.30)"; // focus/blast 밖 흐림
 const short = (s: string) => (s.length > 22 ? s.slice(0, 21) + "…" : s); // 라벨 길이 캡
@@ -28,11 +27,12 @@ const LABEL_H = LABEL_FONT + 4; // 칩 높이(그래프 좌표)
 export const LARGE_GRAPH_NODES = 600;
 
 // 레포 그래프 — 파일 노드 + import 엣지. 고정 좌표(computeLayout)로 배치, 물리 끔(안 흩어짐).
-// 색=폴더. hiddenGroups=필터, focusId=선택 강조, blastMap=영향도, mode=배치 방식.
-export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusId, blastMap, mode = "grid" }: {
+// 색=폴더/커뮤니티, focusId=선택 강조, blastMap=영향도, pickedCommunities=커뮤니티 강조, mode=배치 방식.
+export default function RepoGraphView({ graph, onNodeClick, pickedCommunities, focusId, blastMap, mode = "grid" }: {
   graph: RepoGraph;
   onNodeClick?: (id: string) => void;
-  hiddenGroups?: Set<string>;
+  // 강조 선택 커뮤니티 — 비어있으면 전체 정상, 있으면 선택된 것만 밝고 나머진 dim.
+  pickedCommunities?: Set<number>;
   focusId?: string | null;
   blastMap?: Map<string, number> | null;
   mode?: LayoutMode;
@@ -62,9 +62,11 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     // grid/treemap=좌표+구역 사각형 함께. treemap은 캔버스 크기 넘겨 면적 타일링(size 0이면 기본). 그 외는 좌표만.
     const layout = mode === "grid"
       ? folderRegionLayout(graph)
-      : mode === "treemap"
-        ? treemapLayout(graph, size.w || 1600, size.h || 900)
-        : { pos: computeLayout(graph, mode), regions: [] as Region[] };
+      : mode === "community"
+        ? communityRegionLayout(graph)
+        : mode === "treemap"
+          ? treemapLayout(graph, size.w || 1600, size.h || 900)
+          : { pos: computeLayout(graph, mode), regions: [] as Region[] };
     const pos = layout.pos; // 결정적 기본 좌표
     return {
       colorOf,
@@ -73,7 +75,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
       data: {
         nodes: graph.nodes.map((n) => {
           const p = pos.get(n.id) ?? { x: 0, y: 0 };
-          return { id: n.id, name: n.label, group: n.group, x: p.x, y: p.y, fx: p.x, fy: p.y }; // fx/fy=고정
+          return { id: n.id, name: n.label, group: n.group, community: n.community, x: p.x, y: p.y, fx: p.x, fy: p.y }; // fx/fy=고정
         }),
         links: graph.edges.map((e) => ({ source: e.source, target: e.target })),
       },
@@ -91,18 +93,25 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     return set;
   }, [focusId, graph]);
 
-  const visible = (n: GNode) => !hiddenGroups?.has(groupOf(n));
+  const nodeComm = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n.community])), [graph]);
+  // 커뮤니티 강조 활성 여부 + 노드가 선택군에 속하는지.
+  const picking = (pickedCommunities?.size ?? 0) > 0;
+  const inPicked = (c?: number) => c != null && !!pickedCommunities?.has(c);
+  const commOf = (id: string) => nodeComm.get(id);
 
-  // 노드 색 — 영향도 > focus > 폴더색 순.
+  // 노드 자기 색 — 커뮤니티 있으면 커뮤니티색, 없으면 폴더색.
+  const ownColor = (gn: GNode): string => (gn.community != null ? communityColor(gn.community) : colorOf(gn.group));
+  // 노드 색 — 영향도 > focus > 자기색(커뮤니티/폴더) 순.
   const nodeFill = (gn: GNode): string => {
     if (blastMap) {
       const d = blastMap.get(gn.id);
       if (d === undefined) return DIM;
-      if (d === 0) return colorOf(gn.group);
+      if (d === 0) return ownColor(gn);
       return d === 1 ? BLAST_DIRECT : BLAST_TRANSITIVE;
     }
     if (related && !related.has(gn.id)) return DIM;
-    return colorOf(gn.group);
+    if (picking && !inPicked(gn.community)) return DIM; // 강조 모드: 비선택 커뮤니티 흐리게
+    return ownColor(gn);
   };
 
   const isLarge = graph.nodes.length > LARGE_GRAPH_NODES;
@@ -112,9 +121,9 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
   const fitFocus = (ms: number) => {
     const fg = fgRef.current;
     if (!fg || !related) return;
-    const visN = graph.nodes.filter((n) => related.has(n.id) && !hiddenGroups?.has(n.group ?? "(root)"));
+    const visN = graph.nodes.filter((n) => related.has(n.id));
     if (visN.length <= 1) { fg.centerAt?.(0, 0, ms); fg.zoom?.(2.5, ms); } // 포커스 노드는 focusLayout서 (0,0)
-    else fg.zoomToFit?.(ms, 60, (n: GNode) => related.has(n.id) && visible(n));
+    else fg.zoomToFit?.(ms, 60, (n: GNode) => related.has(n.id));
   };
 
   // 포커스 시 관련 노드를 focusLayout 좌표로, 해제 시 기본 좌표로 실좌표(fx/fy=x/y) 트윈 이동.
@@ -173,18 +182,16 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           graphData={data}
           nodeVisibility={(n) => {
             const gn = n as GNode;
-            if (!visible(gn)) return false;
             if (focusId && related && !related.has(gn.id)) return false; // 포커스: 비관련 숨김
             return true;
           }}
           // 폴더 구역 박스+라벨 — 노드 아래 레이어(onRenderFramePre). grid·비포커스일 때만.
           // 미리 계산한 regions 사용(매 프레임 좌표 스캔 X). 숨긴 폴더는 박스도 숨김.
           onRenderFramePre={(ctx, globalScale) => {
-            if ((mode !== "grid" && mode !== "treemap") || focusId || !regions.length) return; // grid·treemap 박스
+            if ((mode !== "grid" && mode !== "treemap" && mode !== "community") || focusId || !regions.length) return; // grid·treemap·community 박스
             const labelFont = ROW_GAP * 0.7; // 상단 라벨 밴드(ROW_GAP*2) 안에 들어가는 폴더명 크기
             for (const r of regions) {
-              if (hiddenGroups?.has(r.group)) continue; // 필터로 숨긴 폴더 → 박스도 숨김
-              const c = colorOf(r.group);
+              const c = r.community != null ? communityColor(r.community) : colorOf(r.group);
               ctx.fillStyle = hexToRgba(c, 0.05);   // 아주 옅은 채움(노드·라벨 안 가림)
               ctx.fillRect(r.x, r.y, r.w, r.h);
               ctx.lineWidth = 1 / globalScale;      // 줌 무관 헤어라인 경계
@@ -277,9 +284,6 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
           nodeRelSize={4}
           linkVisibility={(l) => {
             const s = (l as GLink).source, t = (l as GLink).target;
-            const sv = typeof s === "object" ? visible(s) : true;
-            const tv = typeof t === "object" ? visible(t) : true;
-            if (!sv || !tv) return false;
             if (mode === "treemap" && !focusId) return false; // 트리맵 개요=선 숨김(덩치 뷰), 포커스 시 복원
             if (focusId && related) { // 포커스: 양 끝 다 관련일 때만
               return related.has(linkEnd(s)) && related.has(linkEnd(t));
@@ -291,8 +295,9 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
             if (blastMap) {
               return blastMap.has(s) && blastMap.has(t) ? "rgba(239,68,68,0.45)" : "rgba(120,120,130,0.06)";
             }
-            if (!related) return "rgba(120,120,130,0.20)";
-            return related.has(s) && related.has(t) ? "rgba(139,134,245,0.55)" : "rgba(120,120,130,0.07)";
+            if (related) return related.has(s) && related.has(t) ? "rgba(139,134,245,0.55)" : "rgba(120,120,130,0.07)";
+            if (picking) return inPicked(commOf(s)) && inPicked(commOf(t)) ? "rgba(139,134,245,0.5)" : "rgba(120,120,130,0.05)";
+            return "rgba(120,120,130,0.20)";
           }}
           linkDirectionalArrowLength={isLarge ? 0 : 2}
           linkDirectionalArrowRelPos={1}

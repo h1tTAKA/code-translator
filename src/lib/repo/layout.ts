@@ -1,12 +1,12 @@
 import type { RepoGraph } from "./types";
 
-// 그래프 배치 모드 — 관계(grid)·흐름(layers)·구성(treemap).
-export type LayoutMode = "grid" | "layers" | "treemap";
-export const LAYOUT_MODES: LayoutMode[] = ["grid", "layers", "treemap"];
+// 그래프 배치 모드 — 관계(grid)·흐름(layers)·구성(treemap)·커뮤니티(community).
+export type LayoutMode = "grid" | "layers" | "treemap" | "community";
+export const LAYOUT_MODES: LayoutMode[] = ["grid", "layers", "treemap", "community"];
 
 export interface Pos { x: number; y: number }
-// 폴더 구역(그리드맵) 사각형 — 경계·라벨 그리기용.
-export interface Region { group: string; label: string; x: number; y: number; w: number; h: number }
+// 구역 사각형 — 경계·라벨 그리기용. group=유니크 키. community 있으면 커뮤니티색으로 렌더.
+export interface Region { group: string; label: string; community?: number; x: number; y: number; w: number; h: number }
 
 // 노드 간격(그래프 좌표계 px) — 라벨 칩이 가로로 기니 가로 넉넉, 세로는 칩 높이만큼.
 export const COL_GAP = 150;
@@ -225,35 +225,28 @@ export function computeLayout(graph: RepoGraph, mode: LayoutMode): Map<string, P
       return layeredLayout(graph).pos;
     case "treemap":
       return treemapLayout(graph).pos;
+    case "community":
+      return communityRegionLayout(graph).pos;
     case "grid":
     default:
       return folderRegionLayout(graph).pos;
   }
 }
 
-// 폴더 구역 배치 — 각 최상위 폴더가 자기 사각 구역(안에 파일 격자), 구역들을 shelf-pack 메타그리드로.
-// 결정적(그룹 정렬 '(root)' 먼저·id 정렬). 반환: 노드 좌표 + 구역 사각형 목록(경계/라벨 렌더용).
-export function folderRegionLayout(graph: RepoGraph): { pos: Map<string, Pos>; regions: Region[] } {
-  // 그룹별 노드 id 수집.
-  const byGroup = new Map<string, string[]>();
-  for (const n of graph.nodes) {
-    const g = n.group ?? "(root)";
-    const arr = byGroup.get(g);
-    if (arr) arr.push(n.id); else byGroup.set(g, [n.id]);
-  }
-  // 그룹 정렬: '(root)' 먼저, 나머지 알파벳.
-  const groups = [...byGroup.keys()].sort((a, b) =>
-    a === "(root)" ? -1 : b === "(root)" ? 1 : a < b ? -1 : a > b ? 1 : 0,
-  );
+// 구역 버킷 — 하나의 사각 구역이 될 노드 묶음. group=유니크 키, community 있으면 커뮤니티색.
+interface Bucket { group: string; label: string; community?: number; ids: string[] }
 
-  // 각 폴더의 내부 격자 크기(로컬) 선계산.
-  const plans = groups.map((g) => {
-    const ids = [...byGroup.get(g)!].sort();
+// 버킷들을 각자 사각 구역(안에 파일 격자)으로 만들고 shelf-pack 메타그리드로 배치. 결정적(입력 순서 유지·id 정렬).
+// 폴더 구역·커뮤니티 구역 공용. 반환: 노드 좌표 + 구역 사각형 목록(경계/라벨 렌더용).
+function packRegions(buckets: Bucket[]): { pos: Map<string, Pos>; regions: Region[] } {
+  // 각 구역 내부 격자 크기(로컬) 선계산.
+  const plans = buckets.map((b) => {
+    const ids = [...b.ids].sort();
     const nCols = Math.max(1, Math.round(Math.sqrt((ids.length * ROW_GAP) / COL_GAP)));
     const nRows = Math.ceil(ids.length / nCols);
     const w = nCols * COL_GAP + 2 * REGION_PAD_X;
     const h = nRows * ROW_GAP + REGION_PAD_TOP + REGION_PAD_BOT;
-    return { group: g, ids, nCols, w, h };
+    return { ...b, ids, nCols, w, h };
   });
 
   // 메타그리드 shelf-pack — 행 높이=행 내 최대 h, x는 w+GAP, 행 넘치면 y 내림.
@@ -264,7 +257,7 @@ export function folderRegionLayout(graph: RepoGraph): { pos: Map<string, Pos>; r
   for (const p of plans) {
     if (colInRow >= metaCols) { rowY += rowH + REGION_GAP; cursorX = 0; rowH = 0; colInRow = 0; }
     const ox = cursorX, oy = rowY;
-    regions.push({ group: p.group, label: p.group, x: ox, y: oy, w: p.w, h: p.h });
+    regions.push({ group: p.group, label: p.label, community: p.community, x: ox, y: oy, w: p.w, h: p.h });
     p.ids.forEach((id, i) => {
       const col = i % p.nCols, row = Math.floor(i / p.nCols);
       pos.set(id, {
@@ -277,4 +270,35 @@ export function folderRegionLayout(graph: RepoGraph): { pos: Map<string, Pos>; r
     colInRow++;
   }
   return { pos, regions };
+}
+
+// 폴더 구역 배치 — 각 최상위 폴더가 자기 사각 구역. 그룹 정렬 '(root)' 먼저·알파벳.
+export function folderRegionLayout(graph: RepoGraph): { pos: Map<string, Pos>; regions: Region[] } {
+  const byGroup = new Map<string, string[]>();
+  for (const n of graph.nodes) {
+    const g = n.group ?? "(root)";
+    const arr = byGroup.get(g);
+    if (arr) arr.push(n.id); else byGroup.set(g, [n.id]);
+  }
+  const groups = [...byGroup.keys()].sort((a, b) =>
+    a === "(root)" ? -1 : b === "(root)" ? 1 : a < b ? -1 : a > b ? 1 : 0,
+  );
+  return packRegions(groups.map((g) => ({ group: g, label: g, ids: byGroup.get(g)! })));
+}
+
+// 커뮤니티 구역 배치 — 각 커뮤니티가 자기 사각 구역(폴더 무시, 논리 덩어리로 묶기).
+// 구역 순서 = 커뮤니티 id(크기순 0,1,2…). 라벨 = 커뮤니티 label(AI 이름 있으면 그것).
+export function communityRegionLayout(graph: RepoGraph): { pos: Map<string, Pos>; regions: Region[] } {
+  const labelOf = new Map((graph.communities ?? []).map((c) => [c.id, c.label]));
+  const byComm = new Map<number, string[]>();
+  const noComm: string[] = [];
+  for (const n of graph.nodes) {
+    if (n.community == null) { noComm.push(n.id); continue; }
+    const arr = byComm.get(n.community);
+    if (arr) arr.push(n.id); else byComm.set(n.community, [n.id]);
+  }
+  const ids = [...byComm.keys()].sort((a, b) => a - b);
+  const buckets: Bucket[] = ids.map((cid) => ({ group: `c${cid}`, label: labelOf.get(cid) ?? `#${cid}`, community: cid, ids: byComm.get(cid)! }));
+  if (noComm.length) buckets.push({ group: "(none)", label: "(none)", ids: noComm });
+  return packRegions(buckets);
 }
