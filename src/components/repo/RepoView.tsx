@@ -60,6 +60,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
   // LLM 기능 라벨 — 커뮤니티 id → AI 이름(온디맨드·캐시).
   const [communityNames, setCommunityNames] = useState<Record<number, string>>({});
   const [naming, setNaming] = useState(false);
+  const [nameErr, setNameErr] = useState(false);
   // 영향도(블래스트) 모드 — 켜면 선택 노드의 의존자를 거리별 색으로.
   const [blastMode, setBlastMode] = useState(false);
   // 그래프 배치 모드(grid/layers/treemap).
@@ -103,6 +104,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
     setHiddenGroups(new Set());
     setHiddenCommunities(new Set());
     setCommunityNames({});
+    setNameErr(false);
     setBlastMode(false);
     setShowOverview(false);
     setOverviewSummary(null);
@@ -168,6 +170,8 @@ export default function RepoView({ active = true, providerId, providerSettings }
   async function nameCommunities() {
     if (!graph || naming || !(graph.communities?.length)) return;
     setNaming(true);
+    setNameErr(false);
+    let got = false;
     try {
       const members = new Map<number, string[]>();
       for (const n of graph.nodes) if (n.community != null) (members.get(n.community) ?? members.set(n.community, []).get(n.community)!).push(n.label);
@@ -177,7 +181,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId, request: { code: "", locale, providerId, mode: "chat", messages: [{ role: "user", content: ask }], providerSettings } }),
       });
-      if (!res.ok || !res.body) return;
+      if (!res.ok || !res.body) { setNameErr(true); return; }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "", answer = "";
@@ -198,9 +202,10 @@ export default function RepoView({ active = true, providerId, providerSettings }
         const m = /^\s*(\d+)\s*[:.\-]\s*(.+?)\s*$/.exec(line);
         if (m) map[Number(m[1])] = m[2].replace(/^["'*`]+|["'*`]+$/g, "").trim();
       }
-      if (Object.keys(map).length) setCommunityNames(map);
+      if (Object.keys(map).length) { setCommunityNames(map); got = true; }
     } catch { /* 무시 */ } finally {
       setNaming(false);
+      if (!got) setNameErr(true);
     }
   }
 
@@ -337,10 +342,12 @@ export default function RepoView({ active = true, providerId, providerSettings }
                       onClick={nameCommunities}
                       disabled={naming}
                       title={t("repo.communityName")}
-                      className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-[#3B34E2] transition hover:bg-zinc-100 disabled:opacity-50 dark:text-[#8b86f5] dark:hover:bg-zinc-800"
+                      className={`ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition hover:bg-zinc-100 disabled:opacity-60 dark:hover:bg-zinc-800 ${nameErr ? "text-amber-600 dark:text-amber-500" : "text-[#3B34E2] dark:text-[#8b86f5]"}`}
                     >
-                      {naming ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={11} stroke={2} aria-hidden />}
-                      {naming ? t("repo.communityNaming") : t("repo.communityName")}
+                      {naming ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden />
+                        : nameErr ? <IconAlertTriangle size={11} stroke={2} aria-hidden />
+                        : <IconSparkles size={11} stroke={2} aria-hidden />}
+                      {naming ? t("repo.communityNaming") : nameErr ? t("repo.communityNameRetry") : t("repo.communityName")}
                     </button>
                   </div>
                   {communityList.map(({ id, label, count, color }) => {
