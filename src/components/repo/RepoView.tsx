@@ -175,11 +175,11 @@ export default function RepoView({ active = true, providerId, providerSettings }
     try {
       const members = new Map<number, string[]>();
       for (const n of graph.nodes) if (n.community != null) (members.get(n.community) ?? members.set(n.community, []).get(n.community)!).push(n.label);
-      const lines = graph.communities.map((c) => `${c.id}: ${(members.get(c.id) ?? []).slice(0, 14).join(", ")}`).join("\n");
-      const ask = `아래는 코드베이스를 실제 의존 연결 기준으로 자동 분할한 커뮤니티들이다. 각 커뮤니티의 대표 파일명들을 보고, 그 커뮤니티가 무슨 기능·역할인지 2~5단어로 짧게 이름 붙여라(예: "아웃리치 자동화", "인증 & 세션", "SRS 스케줄러"). 형식은 한 줄에 "id: 이름"만. 그 외 설명·머리말 금지.\n\n${lines}`;
+      const lines = graph.communities.map((c) => `커뮤니티 ${c.id}: ${(members.get(c.id) ?? []).slice(0, 14).join(", ")}`).join("\n");
+      const ask = `위는 코드베이스를 실제 의존 연결 기준으로 자동 분할한 커뮤니티들과 각 커뮤니티의 대표 파일명이다. 각 커뮤니티가 무슨 기능·역할인지 2~5단어로 짧게 이름 붙여라(예: "아웃리치 자동화", "인증 & 세션", "SRS 스케줄러"). 형식은 한 줄에 "id: 이름"만. 그 외 설명·머리말 금지.`;
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId, request: { code: "", locale, providerId, mode: "chat", messages: [{ role: "user", content: ask }], providerSettings } }),
+        body: JSON.stringify({ providerId, request: { code: lines, locale, providerId, mode: "chat", messages: [{ role: "user", content: ask }], providerSettings } }),
       });
       if (!res.ok || !res.body) { setNameErr(true); return; }
       const reader = res.body.getReader();
