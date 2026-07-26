@@ -174,8 +174,13 @@ export default function RepoView({ active = true, providerId, providerSettings }
     try {
       const members = new Map<number, string[]>();
       for (const n of graph.nodes) if (n.community != null) (members.get(n.community) ?? members.set(n.community, []).get(n.community)!).push(n.label);
-      const lines = graph.communities.map((c) => `커뮤니티 ${c.id}: ${(members.get(c.id) ?? []).slice(0, 14).join(", ")}`).join("\n");
-      const ask = `위는 코드베이스를 실제 의존 연결 기준으로 자동 분할한 커뮤니티들과 각 커뮤니티의 대표 파일명이다. 각 커뮤니티가 무슨 기능·역할인지 2~5단어로 짧게 이름 붙여라(예: "아웃리치 자동화", "인증 & 세션", "SRS 스케줄러"). 형식은 한 줄에 "id: 이름"만. 그 외 설명·머리말 금지.`;
+      const lines = graph.communities.map((c) => `#${c.id}: ${(members.get(c.id) ?? []).slice(0, 14).join(", ")}`).join("\n");
+      // 프롬프트는 유저 locale로(멀티랭). 형식(한 줄 "id: 이름")은 언어 무관.
+      const ask = locale === "ja"
+        ? `上はコードベースを実際の依存関係で自動分割したコミュニティと各コミュニティの代表ファイル名だ。各コミュニティが何の機能・役割かを2〜5語で短く命名せよ（例: "アウトリーチ自動化", "認証 & セッション", "SRSスケジューラ"）。形式は1行に "id: 名前" のみ。説明・前置き禁止。`
+        : locale === "en"
+          ? `Above are communities auto-split from the codebase by real dependency links, with each community's representative filenames. Name each community by its function/role in 2-5 words (e.g. "Outreach automation", "Auth & session", "SRS scheduler"). Output only one "id: name" per line. No prose, no preamble.`
+          : `위는 코드베이스를 실제 의존 연결 기준으로 자동 분할한 커뮤니티들과 각 커뮤니티의 대표 파일명이다. 각 커뮤니티가 무슨 기능·역할인지 2~5단어로 짧게 이름 붙여라(예: "아웃리치 자동화", "인증 & 세션", "SRS 스케줄러"). 형식은 한 줄에 "id: 이름"만. 그 외 설명·머리말 금지.`;
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId, request: { code: lines, locale, providerId, mode: "chat", messages: [{ role: "user", content: ask }], providerSettings } }),
@@ -196,10 +201,17 @@ export default function RepoView({ active = true, providerId, providerSettings }
           if (ev.type === "result" && ev.response) answer = ev.response.summary;
         }
       }
+      // 파싱 하드닝: chat 모드가 튜터 프로즈 + ```nunopi-cards``` 블록을 덧붙이므로
+      // 코드펜스 이후는 버리고, 실제 커뮤니티 id인 "id: 이름" 줄만 취한다(오매칭 방지).
+      const validIds = new Set(graph.communities.map((c) => c.id));
+      const body = answer.split(/^\s*```/m)[0]; // 첫 코드펜스 전까지만
       const map: Record<number, string> = {};
-      for (const line of answer.split("\n")) {
-        const m = /^\s*(\d+)\s*[:.\-]\s*(.+?)\s*$/.exec(line);
-        if (m) map[Number(m[1])] = m[2].replace(/^["'*`]+|["'*`]+$/g, "").trim();
+      for (const line of body.split("\n")) {
+        const m = /^\s*#?(\d+)\s*[:.)\-]\s*(.+?)\s*$/.exec(line);
+        if (!m) continue;
+        const id = Number(m[1]);
+        if (!validIds.has(id)) continue; // 존재하는 커뮤니티 id만(프로즈 속 숫자줄 무시)
+        map[id] = m[2].replace(/^["'*`]+|["'*`]+$/g, "").trim();
       }
       if (Object.keys(map).length) {
         // 라벨을 graph에 써넣고 캐시 갱신 → 새로고침해도 이름 유지.

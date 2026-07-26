@@ -139,7 +139,7 @@ export function buildRepoGraph(root: string): RepoGraph {
   }
 
   // 커뮤니티 검출(Louvain) — 실제 연결 촘촘한 논리 덩어리. 각 노드에 community 부여.
-  const { communities, nodeCommunity } = detectCommunities({ root, nodes, edges, stats: { files: 0, edges: 0, scanned: 0, capped } });
+  const { communities, nodeCommunity } = detectCommunities({ root, nodes, edges, stats: { files: nodes.length, edges: edges.length, scanned: files.length, capped } });
   for (const n of nodes) n.community = nodeCommunity.get(n.id);
 
   return {
