@@ -43,15 +43,21 @@ export function detectCommunities(graph: RepoGraph): { communities: Community[];
     return am < bm ? -1 : am > bm ? 1 : 0;
   });
 
+  const fileOf = new Map(graph.nodes.map((n) => [n.id, n.file ?? n.id]));
   const groupOf = new Map(graph.nodes.map((n) => [n.id, n.group ?? "(root)"]));
   const communities: Community[] = [];
   const nodeCommunity = new Map<string, number>();
   ordered.forEach(([, ids], newId) => {
     for (const id of ids) nodeCommunity.set(id, newId);
-    // 라벨 = 멤버 최다 폴더.
-    const fc = new Map<string, number>();
-    for (const id of ids) { const f = groupOf.get(id) ?? "(root)"; fc.set(f, (fc.get(f) ?? 0) + 1); }
-    const label = [...fc.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
+    // 라벨(간이) = 멤버 파일들의 가장 흔한 상위 폴더(마지막 경로 조각). 모노레포서 "apps" 도배 방지.
+    // (기능적 라벨은 LLM 후속.)
+    const seg = new Map<string, number>();
+    for (const id of ids) {
+      const dir = (fileOf.get(id) ?? id).split("/").slice(0, -1);
+      const s = dir.length ? dir[dir.length - 1] : (groupOf.get(id) ?? "(root)");
+      seg.set(s, (seg.get(s) ?? 0) + 1);
+    }
+    const label = [...seg.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
     communities.push({ id: newId, label, count: ids.length });
   });
   return { communities, nodeCommunity };
