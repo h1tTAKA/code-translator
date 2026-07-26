@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3, IconLayoutGrid, IconStack2, IconLayoutBoardSplit } from "@tabler/icons-react";
-import { useT } from "@/lib/i18n/I18nProvider";
+import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3, IconLayoutGrid, IconStack2, IconLayoutBoardSplit, IconSparkles } from "@tabler/icons-react";
+import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import RepoGraphView, { LARGE_GRAPH_NODES } from "@/components/repo/RepoGraphView";
 import type { LayoutMode } from "@/lib/repo/layout";
 import RepoNodePanel from "@/components/repo/RepoNodePanel";
@@ -42,6 +42,7 @@ function writeGraphCache(path: string, graph: RepoGraph) {
 // 레포 분석 모드 — 로컬 레포 폴더 → 아키텍처 그래프 + 노드 클릭 설명(부모 #585).
 export default function RepoView({ active = true, providerId, providerSettings }: { active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings }) {
   const t = useT();
+  const { locale } = useLocale();
   const [path, setPath] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -56,6 +57,9 @@ export default function RepoView({ active = true, providerId, providerSettings }
   const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
   // 숨긴 커뮤니티 — 좌 커뮤니티 리스트 토글.
   const [hiddenCommunities, setHiddenCommunities] = useState<Set<number>>(new Set());
+  // LLM 기능 라벨 — 커뮤니티 id → AI 이름(온디맨드·캐시).
+  const [communityNames, setCommunityNames] = useState<Record<number, string>>({});
+  const [naming, setNaming] = useState(false);
   // 영향도(블래스트) 모드 — 켜면 선택 노드의 의존자를 거리별 색으로.
   const [blastMode, setBlastMode] = useState(false);
   // 그래프 배치 모드(grid/layers/treemap).
@@ -98,6 +102,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
     setChats({});
     setHiddenGroups(new Set());
     setHiddenCommunities(new Set());
+    setCommunityNames({});
     setBlastMode(false);
     setShowOverview(false);
     setOverviewSummary(null);
@@ -158,6 +163,46 @@ export default function RepoView({ active = true, providerId, providerSettings }
     if (n.has(id)) n.delete(id); else n.add(id);
     return n;
   });
+
+  // 커뮤니티 기능 라벨 — 각 커뮤니티 대표 파일명 보고 LLM이 1콜로 이름 생성.
+  async function nameCommunities() {
+    if (!graph || naming || !(graph.communities?.length)) return;
+    setNaming(true);
+    try {
+      const members = new Map<number, string[]>();
+      for (const n of graph.nodes) if (n.community != null) (members.get(n.community) ?? members.set(n.community, []).get(n.community)!).push(n.label);
+      const lines = graph.communities.map((c) => `${c.id}: ${(members.get(c.id) ?? []).slice(0, 14).join(", ")}`).join("\n");
+      const ask = `아래는 코드베이스를 실제 의존 연결 기준으로 자동 분할한 커뮤니티들이다. 각 커뮤니티의 대표 파일명들을 보고, 그 커뮤니티가 무슨 기능·역할인지 2~5단어로 짧게 이름 붙여라(예: "아웃리치 자동화", "인증 & 세션", "SRS 스케줄러"). 형식은 한 줄에 "id: 이름"만. 그 외 설명·머리말 금지.\n\n${lines}`;
+      const res = await fetch("/api/agent/analyze", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerId, request: { code: "", locale, providerId, mode: "chat", messages: [{ role: "user", content: ask }], providerSettings } }),
+      });
+      if (!res.ok || !res.body) return;
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", answer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const ls = buf.split("\n"); buf = ls.pop() ?? "";
+        for (const l of ls) {
+          if (!l.trim()) continue;
+          let ev: { type: string; response?: { summary: string } };
+          try { ev = JSON.parse(l); } catch { continue; }
+          if (ev.type === "result" && ev.response) answer = ev.response.summary;
+        }
+      }
+      const map: Record<number, string> = {};
+      for (const line of answer.split("\n")) {
+        const m = /^\s*(\d+)\s*[:.\-]\s*(.+?)\s*$/.exec(line);
+        if (m) map[Number(m[1])] = m[2].replace(/^["'*`]+|["'*`]+$/g, "").trim();
+      }
+      if (Object.keys(map).length) setCommunityNames(map);
+    } catch { /* 무시 */ } finally {
+      setNaming(false);
+    }
+  }
 
   // 영향도 맵 — 켜짐 + 노드 선택 시에만. id→거리(0=자기,1=직접,2+=전이). 그래프뷰 색·배지 공용.
   const blastMap = useMemo(
@@ -285,7 +330,19 @@ export default function RepoView({ active = true, providerId, providerSettings }
               {/* 커뮤니티 리스트 — 색·라벨·개수, 클릭 토글로 숨김/표시(그래프 색과 매칭). */}
               {communityList.length > 1 && (
                 <div className="nunopi-scroll absolute left-2 top-2 z-20 flex max-h-[70%] w-56 flex-col gap-0.5 overflow-y-auto rounded-xl border border-zinc-200 bg-white/85 p-1.5 backdrop-blur dark:border-zinc-800 dark:bg-[#111219]/85">
-                  <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{t("repo.communities")}</div>
+                  <div className="flex items-center gap-1 px-1.5 pb-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{t("repo.communities")}</span>
+                    <button
+                      type="button"
+                      onClick={nameCommunities}
+                      disabled={naming}
+                      title={t("repo.communityName")}
+                      className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-[#3B34E2] transition hover:bg-zinc-100 disabled:opacity-50 dark:text-[#8b86f5] dark:hover:bg-zinc-800"
+                    >
+                      {naming ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={11} stroke={2} aria-hidden />}
+                      {naming ? t("repo.communityNaming") : t("repo.communityName")}
+                    </button>
+                  </div>
                   {communityList.map(({ id, label, count, color }) => {
                     const off = hiddenCommunities.has(id);
                     return (
@@ -296,7 +353,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                         className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${off ? "opacity-40" : ""}`}
                       >
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
-                        <span className="truncate text-zinc-700 dark:text-zinc-200">{label}</span>
+                        <span className="truncate text-zinc-700 dark:text-zinc-200">{communityNames[id] ?? label}</span>
                         <span className="ml-auto shrink-0 tabular-nums text-zinc-400 dark:text-zinc-500">{count}</span>
                       </button>
                     );
