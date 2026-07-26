@@ -57,8 +57,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
   const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
   // 강조 선택 커뮤니티 — 좌 리스트 클릭. 비어있으면 전체 정상, 있으면 선택한 것만 강조.
   const [pickedCommunities, setPickedCommunities] = useState<Set<number>>(new Set());
-  // LLM 기능 라벨 — 커뮤니티 id → AI 이름(온디맨드·캐시).
-  const [communityNames, setCommunityNames] = useState<Record<number, string>>({});
+  // LLM 기능 라벨 — 생성하면 graph.communities[].label에 써넣고 캐시 저장(새로고침 유지).
   const [naming, setNaming] = useState(false);
   const [nameErr, setNameErr] = useState(false);
   // 영향도(블래스트) 모드 — 켜면 선택 노드의 의존자를 거리별 색으로.
@@ -103,7 +102,6 @@ export default function RepoView({ active = true, providerId, providerSettings }
     setChats({});
     setHiddenGroups(new Set());
     setPickedCommunities(new Set());
-    setCommunityNames({});
     setNameErr(false);
     setBlastMode(false);
     setShowOverview(false);
@@ -202,7 +200,13 @@ export default function RepoView({ active = true, providerId, providerSettings }
         const m = /^\s*(\d+)\s*[:.\-]\s*(.+?)\s*$/.exec(line);
         if (m) map[Number(m[1])] = m[2].replace(/^["'*`]+|["'*`]+$/g, "").trim();
       }
-      if (Object.keys(map).length) { setCommunityNames(map); got = true; }
+      if (Object.keys(map).length) {
+        // 라벨을 graph에 써넣고 캐시 갱신 → 새로고침해도 이름 유지.
+        const named: RepoGraph = { ...graph, communities: graph.communities.map((c) => (map[c.id] ? { ...c, label: map[c.id] } : c)) };
+        setGraph(named);
+        if (path) writeGraphCache(path, named);
+        got = true;
+      }
     } catch { /* 무시 */ } finally {
       setNaming(false);
       if (!got) setNameErr(true);
@@ -361,7 +365,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                         className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${on ? "bg-zinc-100 dark:bg-zinc-800" : picking ? "opacity-40" : ""}`}
                       >
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
-                        <span className="truncate text-zinc-700 dark:text-zinc-200">{communityNames[id] ?? label}</span>
+                        <span className="truncate text-zinc-700 dark:text-zinc-200">{label}</span>
                         <span className="ml-auto shrink-0 tabular-nums text-zinc-400 dark:text-zinc-500">{count}</span>
                       </button>
                     );
