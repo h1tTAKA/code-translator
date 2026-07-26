@@ -29,10 +29,11 @@ export const LARGE_GRAPH_NODES = 600;
 
 // 레포 그래프 — 파일 노드 + import 엣지. 고정 좌표(computeLayout)로 배치, 물리 끔(안 흩어짐).
 // 색=폴더. hiddenGroups=필터, focusId=선택 강조, blastMap=영향도, mode=배치 방식.
-export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusId, blastMap, mode = "grid" }: {
+export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, hiddenCommunities, focusId, blastMap, mode = "grid" }: {
   graph: RepoGraph;
   onNodeClick?: (id: string) => void;
   hiddenGroups?: Set<string>;
+  hiddenCommunities?: Set<number>;
   focusId?: string | null;
   blastMap?: Map<string, number> | null;
   mode?: LayoutMode;
@@ -91,7 +92,7 @@ export default function RepoGraphView({ graph, onNodeClick, hiddenGroups, focusI
     return set;
   }, [focusId, graph]);
 
-  const visible = (n: GNode) => !hiddenGroups?.has(groupOf(n));
+  const visible = (n: GNode) => !hiddenGroups?.has(groupOf(n)) && !(n.community != null && hiddenCommunities?.has(n.community));
 
   // 노드 자기 색 — 커뮤니티 있으면 커뮤니티색, 없으면 폴더색.
   const ownColor = (gn: GNode): string => (gn.community != null ? communityColor(gn.community) : colorOf(gn.group));

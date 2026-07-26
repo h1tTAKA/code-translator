@@ -7,7 +7,7 @@ import RepoGraphView, { LARGE_GRAPH_NODES } from "@/components/repo/RepoGraphVie
 import type { LayoutMode } from "@/lib/repo/layout";
 import RepoNodePanel from "@/components/repo/RepoNodePanel";
 import RepoOverviewPanel from "@/components/repo/RepoOverviewPanel";
-import { groupColors, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
+import { communityColor } from "@/lib/repo/colors";
 import { blastRadius } from "@/lib/repo/blast";
 import { repoOverview } from "@/lib/repo/overview";
 import { downloadText, graphToDot } from "@/lib/repo/export";
@@ -52,6 +52,8 @@ export default function RepoView({ active = true, providerId, providerSettings }
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   // 숨긴 그룹(폴더) — 필터 칩 토글.
   const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
+  // 숨긴 커뮤니티 — 좌 커뮤니티 리스트 토글.
+  const [hiddenCommunities, setHiddenCommunities] = useState<Set<number>>(new Set());
   // 영향도(블래스트) 모드 — 켜면 선택 노드의 의존자를 거리별 색으로.
   const [blastMode, setBlastMode] = useState(false);
   // 그래프 배치 모드(grid/layers/treemap).
@@ -93,6 +95,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
     setExplains({});
     setChats({});
     setHiddenGroups(new Set());
+    setHiddenCommunities(new Set());
     setBlastMode(false);
     setShowOverview(false);
     setOverviewSummary(null);
@@ -143,17 +146,14 @@ export default function RepoView({ active = true, providerId, providerSettings }
   const showGraph = !!graph && !analyzing;
 
   // 그룹(폴더) 목록 + 개수 + 색 — 필터 칩용.
-  const groupList = useMemo(() => {
-    if (!graph) return [] as { group: string; count: number; color: string }[];
-    const counts = new Map<string, number>();
-    for (const n of graph.nodes) { const g = n.group ?? "(root)"; counts.set(g, (counts.get(g) ?? 0) + 1); }
-    const groups = [...counts.keys()];
-    const colors = groupColors(groups);
-    return groups.map((g) => ({ group: g, count: counts.get(g) ?? 0, color: colors.get(g) ?? REPO_NODE_FALLBACK }));
-  }, [graph]);
-  const toggleGroup = (g: string) => setHiddenGroups((prev) => {
+  // 커뮤니티 리스트(색·라벨·개수) — 좌 패널. 크기순(graph.communities는 이미 정렬).
+  const communityList = useMemo(
+    () => (graph?.communities ?? []).map((c) => ({ ...c, color: communityColor(c.id) })),
+    [graph],
+  );
+  const toggleCommunity = (id: number) => setHiddenCommunities((prev) => {
     const n = new Set(prev);
-    if (n.has(g)) n.delete(g); else n.add(g);
+    if (n.has(id)) n.delete(id); else n.add(id);
     return n;
   });
 
@@ -280,20 +280,21 @@ export default function RepoView({ active = true, providerId, providerSettings }
                 aria-hidden
                 className={`pointer-events-none absolute inset-0 -z-10 bg-black transition-opacity duration-500 ${selectedId && !showOverview ? "opacity-100" : "opacity-0"}`}
               />
-              {/* 그룹(폴더) 필터 칩 — 클릭 토글로 숨김/표시. */}
-              {groupList.length > 1 && (
-                <div className="nunopi-scroll absolute left-2 top-2 z-20 flex max-h-[40%] max-w-[16rem] flex-col gap-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white/85 p-1.5 backdrop-blur dark:border-zinc-800 dark:bg-[#111219]/85">
-                  {groupList.map(({ group, count, color }) => {
-                    const off = hiddenGroups.has(group);
+              {/* 커뮤니티 리스트 — 색·라벨·개수, 클릭 토글로 숨김/표시(그래프 색과 매칭). */}
+              {communityList.length > 1 && (
+                <div className="nunopi-scroll absolute left-2 top-2 z-20 flex max-h-[70%] w-56 flex-col gap-0.5 overflow-y-auto rounded-xl border border-zinc-200 bg-white/85 p-1.5 backdrop-blur dark:border-zinc-800 dark:bg-[#111219]/85">
+                  <div className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{t("repo.communities")}</div>
+                  {communityList.map(({ id, label, count, color }) => {
+                    const off = hiddenCommunities.has(id);
                     return (
                       <button
-                        key={group}
+                        key={id}
                         type="button"
-                        onClick={() => toggleGroup(group)}
+                        onClick={() => toggleCommunity(id)}
                         className={`flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${off ? "opacity-40" : ""}`}
                       >
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
-                        <span className="truncate text-zinc-700 dark:text-zinc-200">{group}</span>
+                        <span className="truncate text-zinc-700 dark:text-zinc-200">{label}</span>
                         <span className="ml-auto shrink-0 tabular-nums text-zinc-400 dark:text-zinc-500">{count}</span>
                       </button>
                     );
@@ -312,7 +313,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                   onClose={() => setShowOverview(false)}
                 />
               )}
-              <RepoGraphView graph={graph} onNodeClick={setSelectedId} hiddenGroups={hiddenGroups} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
+              <RepoGraphView graph={graph} onNodeClick={setSelectedId} hiddenGroups={hiddenGroups} hiddenCommunities={hiddenCommunities} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
             </div>
             {selectedId && (
               <RepoNodePanel
