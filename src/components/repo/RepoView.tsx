@@ -408,7 +408,6 @@ export default function RepoView({ active = true, providerId, providerSettings }
                 chat={chats[selectedId]}
                 onChat={(msgs) => setChats((p) => ({ ...p, [selectedId]: msgs }))}
                 onClose={() => setSelectedId(null)}
-                onSelect={setSelectedId}
               />
             )}
           </div>
