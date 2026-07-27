@@ -1211,7 +1211,7 @@ export default function Home() {
           onLineFocus={focusLineFromPanel}
           onFillLine={fillLine}
           fillModalLine={fillModalLine}
-          onCloseFillModal={() => { setFillModalLine(null); setFillErrorLine(null); }}
+          onCloseFillModal={() => { fillAbortRef.current?.abort(); setFillModalLine(null); setFillErrorLine(null); setFillingLine(null); }}
           fillErrorLine={fillErrorLine}
           onMarkLines={setMarkedLines}
           excludedTerms={excludedTerms}
