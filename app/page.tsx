@@ -699,11 +699,8 @@ export default function Home() {
     if (mode !== "code" || isLoading || fillingLine != null || !analysisResult) return;
     const codeLines = code.split(/\r?\n/);
     if (line < 1 || line > codeLines.length) return;
-    // 맥락용 window(±3), 파일 경계 clamp. lineRange=클릭 줄 하나(그 줄만 설명 요청).
-    const CTX = 3;
-    const start = Math.max(1, line - CTX);
-    const end = Math.min(codeLines.length, line + CTX);
-    const snippet = codeLines.slice(start - 1, end).join("\n");
+    // 클릭한 그 줄 하나만 요청(window·이웃 재설명 금지 — 중복·자동닫힘 실패의 원인이었음).
+    const snippet = codeLines[line - 1];
     // 채우기 중 전체 재분석(runAnalyze)이 시작되면 abort — stale 병합 방지.
     const controller = new AbortController();
     fillAbortRef.current = controller;
@@ -715,7 +712,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           providerId,
-          request: { code: snippet, locale: getAnalysisLocale(), providerId, mode: "code", providerSettings, lineRange: { start, end } },
+          request: { code: snippet, locale: getAnalysisLocale(), providerId, mode: "code", providerSettings, lineRange: { start: line, end: line } },
         }),
         signal: controller.signal,
       });
@@ -736,19 +733,16 @@ export default function Home() {
           else if (ev.type === "partial") final = ev.response; // lineRange는 단일 호출이라 partial=최종에 근접
         }
       }
-      // 요청 범위 밖 줄은 무시(모델이 엉뚱한 절대번호를 낼 수 있음).
-      const fresh = (final?.lineExplanations ?? []).filter((le) => le.line >= start && le.line <= end);
-      // 클릭한 줄을 채우는 설명이 하나도 없으면(주석·빈줄 등) 실패 표시.
-      if (!fresh.some((le) => le.line === line)) { setFillErrorLine(line); return; }
-      // 병합 — 기존에 없는 줄만 추가(중복 줄은 기존 유지). 줄 오름차순 정렬.
-      // next를 밖에서 잡아 side-effect(히스토리)는 updater 밖에서 1회만(StrictMode 이중호출 방어).
+      // 한 줄만 요청 → 첫 설명을 취하고 줄번호·코드를 클릭한 줄로 강제(모델 오번호·reanchor 어긋남 방어).
+      const first = (final?.lineExplanations ?? [])[0];
+      if (!first || !first.explanation?.trim()) { setFillErrorLine(line); return; } // 주석·빈줄이면 빈 응답
+      const filled = { ...first, line, code: snippet };
+      // 병합 — 이미 있으면 스킵(유저는 미설명 줄만 클릭). side-effect는 updater 밖 1회(StrictMode 방어).
       let nextResult: AgentAnalyzeResponse | null = null;
       setAnalysisResult((prev) => {
         if (!prev) return prev;
-        const have = new Set((prev.lineExplanations ?? []).map((le) => le.line));
-        const add = fresh.filter((le) => !have.has(le.line));
-        if (add.length === 0) return prev;
-        nextResult = { ...prev, lineExplanations: [...(prev.lineExplanations ?? []), ...add].sort((a, b) => a.line - b.line) };
+        if ((prev.lineExplanations ?? []).some((le) => le.line === line)) return prev;
+        nextResult = { ...prev, lineExplanations: [...(prev.lineExplanations ?? []), filled].sort((a, b) => a.line - b.line) };
         return nextResult;
       });
       if (nextResult && currentHistoryId) {
