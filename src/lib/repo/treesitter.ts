@@ -66,5 +66,6 @@ export async function parseFile(text: string, file: string): Promise<{ tree: Par
   const parser = new Parser();
   parser.setLanguage(lang);
   const tree = parser.parse(text);
+  parser.delete(); // WASM 힙 객체 — GC 안 됨. tree는 파서와 독립이라 여기서 파서 해제(호출자가 tree.delete()).
   return { tree, grammar };
 }

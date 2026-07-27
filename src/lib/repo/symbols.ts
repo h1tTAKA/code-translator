@@ -45,13 +45,14 @@ function symbolName(node: Parser.SyntaxNode): string | null {
   return null;
 }
 
-// 호출식의 대상 이름 — identifier면 그대로, 멤버/셀렉터면 마지막 조각(obj.method→method).
+// 호출식의 대상 이름 — bare identifier(foo()) 또는 this/self 멤버(this.bar())만.
+// 임의 객체 멤버(arr.push, xs.map)는 null — 빌트인/타 객체 메서드가 동명 로컬 심볼로 오연결되는 노이즈 차단(리뷰).
 function calleeNameOf(fn: Parser.SyntaxNode): string | null {
   if (fn.type === "identifier") return fn.text;
+  const obj = fn.childForFieldName("object") ?? fn.childForFieldName("receiver") ?? fn.namedChild(0);
   const prop = fn.childForFieldName("property") ?? fn.childForFieldName("field") ?? fn.childForFieldName("name");
-  if (prop?.text) return prop.text;
-  const seg = fn.text.split(/[.:]/).pop()?.trim();
-  return seg && /^[A-Za-z_]\w*$/.test(seg) ? seg : null; // 식별자꼴만(체이닝·괄호 노이즈 배제)
+  if (obj && /^(this|self)$/.test(obj.text) && prop?.text) return prop.text; // this.x / self.x 만 허용
+  return null;
 }
 
 // 소스+파일 → 심볼 목록 + 노드 + contains 엣지(file→symbol) + 원시 호출. 미지원 언어면 빈 결과.
@@ -113,6 +114,7 @@ export async function extractSymbols(text: string, file: string): Promise<{ symb
     for (let i = 0; i < node.namedChildCount; i++) { const c = node.namedChild(i); if (c) walkCalls(c); }
   };
   walkCalls(parsed.tree.rootNode);
+  parsed.tree.delete(); // 순회 끝 — WASM tree 해제(추출물은 이미 원시값 배열이라 tree 불필요).
 
   const nodes: RepoNode[] = symbols.map((s) => ({ id: s.id, label: s.name, file, kind: s.kind }));
   const contains: RepoEdge[] = symbols.map((s) => ({ source: file, target: s.id, relation: "contains" }));

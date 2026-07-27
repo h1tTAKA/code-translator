@@ -32,8 +32,8 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "shiki": "^4.2.0",
-    "tree-sitter-wasms": "^0.1.13",
-    "web-tree-sitter": "^0.20.8"
+    "tree-sitter-wasms": "0.1.13",
+    "web-tree-sitter": "0.20.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

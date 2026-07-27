@@ -68,4 +68,10 @@ assert.ok(crossEdges.some((e) => e.source === "a.ts#go" && e.target === "util.ts
 const un = await extractSymbols(`function q(){ nonexistentFn(); }`, "u.ts");
 assert.strictEqual(resolveCalls(un.calls, un.symbols, new Map()).length, 0, "미해결 호출 엣지 0");
 
+// 멤버 호출 노이즈 차단 — 로컬에 add 함수 있어도 arr.add()는 연결 안 됨(this.add는 연결).
+const mem = await extractSymbols(`function add(){}\nfunction useArr(){ const arr=[]; arr.add(1); }\nclass K { add(){} run(){ this.add(); } }`, "m.ts");
+const memEdges = resolveCalls(mem.calls, mem.symbols, new Map());
+assert.ok(!memEdges.some((e) => e.source === "m.ts#useArr"), "arr.add() → 로컬 add 오연결 안 함");
+assert.ok(memEdges.some((e) => e.target.endsWith("#add") && e.source.includes("#run")), "this.add() → 연결됨");
+
 console.log("symbols.check OK");

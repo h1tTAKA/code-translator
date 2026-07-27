@@ -251,7 +251,9 @@ export default function RepoView({ active = true, providerId, providerSettings }
       const nodes: RepoNode[] = [fileNode, ...symbolNodes];
       const edges = data.edges as RepoGraph["edges"];
       const sub: RepoGraph = { root: graph.root, nodes, edges, stats: { files: nodes.length, edges: edges.length, scanned: nodes.length, capped: false } };
-      setSymbolView({ label: node.label, count: data.nodes.length, graph: sub });
+      // 개수는 이 파일 심볼만(cross-file 호출 대상 노드는 제외).
+      const localCount = (data.nodes as RepoNode[]).filter((n) => n.file === node.file).length;
+      setSymbolView({ label: node.label, count: localCount, graph: sub });
     } catch { setExpandErr(true); } finally {
       setExpanding(false);
     }
@@ -471,7 +473,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
                 onExplained={(text) => setExplains((p) => ({ ...p, [selectedId]: text }))}
                 chat={chats[selectedId]}
                 onChat={(msgs) => setChats((p) => ({ ...p, [selectedId]: msgs }))}
-                onClose={() => setSelectedId(null)}
+                onClose={() => { setSelectedId(null); setSymbolView(null); }}
                 onExpandSymbols={() => expandSymbols(selectedId)}
                 expanding={expanding}
                 expandError={expandErr}
