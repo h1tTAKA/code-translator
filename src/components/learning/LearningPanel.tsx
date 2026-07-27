@@ -45,6 +45,7 @@ import ItConceptSection from "./ItConceptSection";
 import { dedupeConcepts, dedupeTokens } from "@/lib/agent/dedupe";
 import { formatResultAsHtml } from "@/lib/exportHtml";
 import { reanchorLineNumbers, remapLines } from "@/lib/reanchorLines";
+import { isCommentOnlyLine } from "@/lib/isCommentLine";
 import { formatDuration } from "@/lib/formatDuration";
 
 const BOOKMARKS_KEY = "nunopi:bookmark-tokens";
@@ -1072,8 +1073,11 @@ export default function LearningPanel({
             {/* 누락 줄 채우기(#633) — 클릭한 줄이 설명 없고 빈줄이 아니면 "이 줄 설명 추가" 노출. */}
             {(() => {
               if (!onFillLine || activeLine == null || isLoading) return null;
+              // 에디터 클릭 때만(패널 스크롤로 activeLine이 바뀌며 깜빡이는 것 방지, #635-B).
+              if (activeLineSource !== "editor") return null;
               const codeLine = code.split(/\r?\n/)[activeLine - 1] ?? "";
               if (!codeLine.trim()) return null; // 빈 줄은 채울 것 없음
+              if (isCommentOnlyLine(codeLine)) return null; // 주석 줄은 원래 설명 안 붙음(#635-A)
               if (anchoredLineExplanations.some((le) => le.line === activeLine)) return null; // 이미 설명 있음
               const busy = fillingLine === activeLine;
               const failed = fillErrorLine === activeLine;
