@@ -142,6 +142,7 @@ export default function Home() {
   const [languageChoice, setLanguageChoice] = useState<LanguageChoice>("auto");
   // 진행 중인 분석을 멈추기 위한 AbortController 보관.
   const abortRef = useRef<AbortController | null>(null);
+  const fillAbortRef = useRef<AbortController | null>(null); // 누락 줄 채우기(#633) 진행 요청 abort용
   // 모드(코드/글)별 분석 상태 스냅샷 — 모드 전환 시 저장/복원해 하던 분석 보존(#374).
   type AnalysisSnapshot = {
     analysisResult: AgentAnalyzeResponse | null;
@@ -498,6 +499,8 @@ export default function Home() {
     // 챗 스트리밍 중엔 새 분석 금지 — 세션 리셋으로 진행 답변이 유실된다(#312).
     if (chatLoading) return;
 
+    // 진행 중인 누락 줄 채우기가 있으면 취소(그 결과가 새 분석 결과를 덮어쓰지 않게).
+    fillAbortRef.current?.abort();
     const startedAt = Date.now();
     setAnalysisStartedAt(startedAt);
     setLastElapsedMs(null);
@@ -701,6 +704,9 @@ export default function Home() {
     const start = Math.max(1, line - CTX);
     const end = Math.min(codeLines.length, line + CTX);
     const snippet = codeLines.slice(start - 1, end).join("\n");
+    // 채우기 중 전체 재분석(runAnalyze)이 시작되면 abort — stale 병합 방지.
+    const controller = new AbortController();
+    fillAbortRef.current = controller;
     setFillingLine(line);
     setFillErrorLine(null);
     try {
@@ -711,6 +717,7 @@ export default function Home() {
           providerId,
           request: { code: snippet, locale: getAnalysisLocale(), providerId, mode: "code", providerSettings, lineRange: { start, end } },
         }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) { setFillErrorLine(line); return; }
       const reader = response.body.getReader();
@@ -729,29 +736,32 @@ export default function Home() {
           else if (ev.type === "partial") final = ev.response; // lineRange는 단일 호출이라 partial=최종에 근접
         }
       }
-      const fresh = final?.lineExplanations ?? [];
+      // 요청 범위 밖 줄은 무시(모델이 엉뚱한 절대번호를 낼 수 있음).
+      const fresh = (final?.lineExplanations ?? []).filter((le) => le.line >= start && le.line <= end);
       // 클릭한 줄을 채우는 설명이 하나도 없으면(주석·빈줄 등) 실패 표시.
       if (!fresh.some((le) => le.line === line)) { setFillErrorLine(line); return; }
       // 병합 — 기존에 없는 줄만 추가(중복 줄은 기존 유지). 줄 오름차순 정렬.
+      // next를 밖에서 잡아 side-effect(히스토리)는 updater 밖에서 1회만(StrictMode 이중호출 방어).
+      let nextResult: AgentAnalyzeResponse | null = null;
       setAnalysisResult((prev) => {
         if (!prev) return prev;
         const have = new Set((prev.lineExplanations ?? []).map((le) => le.line));
         const add = fresh.filter((le) => !have.has(le.line));
         if (add.length === 0) return prev;
-        const merged = [...(prev.lineExplanations ?? []), ...add].sort((a, b) => a.line - b.line);
-        const next = { ...prev, lineExplanations: merged };
-        // 히스토리 항목 있으면 갱신(새로고침·복원 유지).
-        if (currentHistoryId) {
-          const id = currentHistoryId;
-          updateHistory(id, { result: next }).catch(() => {});
-          setHistoryEntries((entries) => entries.map((e) => (e.id === id ? { ...e, result: next } : e)));
-        }
-        return next;
+        nextResult = { ...prev, lineExplanations: [...(prev.lineExplanations ?? []), ...add].sort((a, b) => a.line - b.line) };
+        return nextResult;
       });
+      if (nextResult && currentHistoryId) {
+        const id = currentHistoryId;
+        updateHistory(id, { result: nextResult }).catch(() => {});
+        setHistoryEntries((entries) => entries.map((e) => (e.id === id ? { ...e, result: nextResult! } : e)));
+      }
       focusLineFromEditor(line); // 채운 줄로 스크롤·강조
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return; // 재분석에 밀림 — 조용히
       setFillErrorLine(line);
     } finally {
+      if (fillAbortRef.current === controller) fillAbortRef.current = null;
       setFillingLine(null);
     }
   }
