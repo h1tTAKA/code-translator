@@ -1,6 +1,6 @@
 // symbols.ts self-check — 앱 미import. 실행: node --experimental-strip-types src/lib/repo/symbols.check.ts
 import assert from "node:assert";
-import { extractSymbols } from "./symbols.ts";
+import { extractSymbols, resolveCalls } from "./symbols.ts";
 
 // TS — 함수 선언·arrow const·클래스·메서드·타입.
 const ts = `export function foo() {}
@@ -44,5 +44,28 @@ assert.ok(gonames.has("Foo") && gonames.has("M") && gonames.has("S"), `go func/m
 // 미지원 언어 → 빈 결과.
 const none = await extractSymbols("hello", "a.txt");
 assert.strictEqual(none.symbols.length, 0, "미지원 언어 심볼 0");
+
+// --- 호출(calls) ---
+// in-file: foo가 bar 호출, C(arrow)가 foo 호출.
+const callSrc = `function foo(){ return bar(); }
+function bar(){ return 1; }
+const C = () => { foo(); };`;
+const cr = await extractSymbols(callSrc, "c.ts");
+const inFile = resolveCalls(cr.calls, cr.symbols, new Map());
+const hasEdge = (s: string, t: string) => inFile.some((e) => e.source === s && e.target === t && e.relation === "calls");
+assert.ok(hasEdge("c.ts#foo", "c.ts#bar"), "foo→bar calls");
+assert.ok(hasEdge("c.ts#C", "c.ts#foo"), "C→foo calls");
+assert.ok(!inFile.some((e) => e.source === e.target), "자기호출 없음");
+
+// cross-file: a가 util의 helper 호출 → import 테이블로 해석.
+const aSrc = `import { helper } from "./util";\nfunction go(){ return helper(); }`;
+const a = await extractSymbols(aSrc, "a.ts");
+const util = await extractSymbols(`export function helper(){ return 2; }`, "util.ts");
+const crossEdges = resolveCalls(a.calls, a.symbols, new Map([["util.ts", util.symbols]]));
+assert.ok(crossEdges.some((e) => e.source === "a.ts#go" && e.target === "util.ts#helper" && e.relation === "calls"), "cross-file go→util.helper");
+
+// 미해결 호출(어디에도 없는 이름) → 엣지 없음.
+const un = await extractSymbols(`function q(){ nonexistentFn(); }`, "u.ts");
+assert.strictEqual(resolveCalls(un.calls, un.symbols, new Map()).length, 0, "미해결 호출 엣지 0");
 
 console.log("symbols.check OK");
