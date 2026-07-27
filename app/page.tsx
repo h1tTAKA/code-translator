@@ -173,6 +173,9 @@ export default function Home() {
   const [markedLines, setMarkedLines] = useState<number[]>([]);
   // 제외(차단) 목록 — 글(IT 용어) 모드 전용. 코드 토큰은 X 삭제로 대체(제외 없음).
   const [excludedTerms, setExcludedTerms] = useState<string[]>([]);
+  // 누락 줄 채우기(#633) — 유저가 설명 없는 줄 클릭 시 그 줄만 타겟 분석. 진행/실패 줄 번호.
+  const [fillingLine, setFillingLine] = useState<number | null>(null);
+  const [fillErrorLine, setFillErrorLine] = useState<number | null>(null);
   // 토큰 사전은 분석 시 token/category/lines만 채워지고, 뜻(label/description)은 카드 클릭 시
   // on-demand로 받아 병합한다(#505). explainingTokens는 로딩 표시용(토큰 텍스트).
   const [explainingTokens, setExplainingTokens] = useState<string[]>([]);
@@ -687,6 +690,72 @@ export default function Home() {
     abortRef.current?.abort();
   }
 
+  // 누락 줄 채우기(#633) — 그 줄 주변 스니펫 + lineRange로 타겟 분석(청크 우회, 단일 호출).
+  // 결과 lineExplanations를 기존에 병합(줄 dedup). reanchor는 LearningPanel이 렌더 시 적용.
+  async function fillLine(line: number) {
+    if (mode !== "code" || isLoading || fillingLine != null || !analysisResult) return;
+    const codeLines = code.split(/\r?\n/);
+    if (line < 1 || line > codeLines.length) return;
+    // 맥락용 window(±3), 파일 경계 clamp. lineRange=클릭 줄 하나(그 줄만 설명 요청).
+    const CTX = 3;
+    const start = Math.max(1, line - CTX);
+    const end = Math.min(codeLines.length, line + CTX);
+    const snippet = codeLines.slice(start - 1, end).join("\n");
+    setFillingLine(line);
+    setFillErrorLine(null);
+    try {
+      const response = await fetch("/api/agent/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          providerId,
+          request: { code: snippet, locale: getAnalysisLocale(), providerId, mode: "code", providerSettings, lineRange: { start, end } },
+        }),
+      });
+      if (!response.ok || !response.body) { setFillErrorLine(line); return; }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "", final: AgentAnalyzeResponse | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
+        for (const l of lines) {
+          if (!l.trim()) continue;
+          let ev: AnalyzeStreamEvent;
+          try { ev = JSON.parse(l) as AnalyzeStreamEvent; } catch { continue; }
+          if (ev.type === "result") final = ev.response;
+          else if (ev.type === "partial") final = ev.response; // lineRange는 단일 호출이라 partial=최종에 근접
+        }
+      }
+      const fresh = final?.lineExplanations ?? [];
+      // 클릭한 줄을 채우는 설명이 하나도 없으면(주석·빈줄 등) 실패 표시.
+      if (!fresh.some((le) => le.line === line)) { setFillErrorLine(line); return; }
+      // 병합 — 기존에 없는 줄만 추가(중복 줄은 기존 유지). 줄 오름차순 정렬.
+      setAnalysisResult((prev) => {
+        if (!prev) return prev;
+        const have = new Set((prev.lineExplanations ?? []).map((le) => le.line));
+        const add = fresh.filter((le) => !have.has(le.line));
+        if (add.length === 0) return prev;
+        const merged = [...(prev.lineExplanations ?? []), ...add].sort((a, b) => a.line - b.line);
+        const next = { ...prev, lineExplanations: merged };
+        // 히스토리 항목 있으면 갱신(새로고침·복원 유지).
+        if (currentHistoryId) {
+          const id = currentHistoryId;
+          updateHistory(id, { result: next }).catch(() => {});
+          setHistoryEntries((entries) => entries.map((e) => (e.id === id ? { ...e, result: next } : e)));
+        }
+        return next;
+      });
+      focusLineFromEditor(line); // 채운 줄로 스크롤·강조
+    } catch {
+      setFillErrorLine(line);
+    } finally {
+      setFillingLine(null);
+    }
+  }
+
   // 토큰 카드 클릭 → 그 토큰의 뜻(label/description/example)을 on-demand로 받아 병합(#505).
   // 이미 설명이 있거나 로딩 중이면 무시. 등장 줄(lines)/category/id는 기존 것 유지.
   // 토큰 뜻을 on-demand로 받아 기존 토큰 카드에 병합하고, 받은 뜻을 반환한다(#505/#509).
@@ -1132,6 +1201,9 @@ export default function Home() {
           activeLine={activeLineLink?.line ?? null}
           activeLineSource={activeLineLink?.source}
           onLineFocus={focusLineFromPanel}
+          onFillLine={fillLine}
+          fillingLine={fillingLine}
+          fillErrorLine={fillErrorLine}
           onMarkLines={setMarkedLines}
           excludedTerms={excludedTerms}
           onExclude={handleExclude}

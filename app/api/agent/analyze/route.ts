@@ -272,6 +272,13 @@ function isValidAnalyzeRequestPayload(
     return false;
   }
 
+  // 줄 범위 타겟 분석(누락 줄 채우기·2차 sub-call) — 1-based 양수 정수 {start,end}.
+  if (value.lineRange !== undefined) {
+    const lr = value.lineRange;
+    if (!isRecord(lr) || !isPositiveInteger(lr.start) || !isPositiveInteger(lr.end)) return false;
+    if ((lr.start as number) > (lr.end as number)) return false;
+  }
+
   if (!isOptionalAnalyzeOptions(value.options)) {
     return false;
   }
