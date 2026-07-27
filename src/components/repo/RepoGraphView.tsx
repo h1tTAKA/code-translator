@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { groupColors, communityColor, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
+import { groupColors, communityColor, symbolKindColor, hexToRgba, REPO_NODE_FALLBACK } from "@/lib/repo/colors";
 import { computeLayout, focusLayout, folderRegionLayout, communityRegionLayout, treemapLayout, ROW_GAP, type LayoutMode, type Pos, type Region } from "@/lib/repo/layout";
 import type { RepoGraph } from "@/lib/repo/types";
 
@@ -10,7 +10,7 @@ import type { RepoGraph } from "@/lib/repo/types";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
 // 런타임에 force-graph가 x/y를 채움. fx/fy=고정 좌표(물리 끔).
-type GNode = { id: string; name: string; group?: string; community?: number; x?: number; y?: number; fx?: number; fy?: number };
+type GNode = { id: string; name: string; group?: string; community?: number; kind?: string; x?: number; y?: number; fx?: number; fy?: number };
 type GLink = { source: GNode | string; target: GNode | string };
 
 const linkEnd = (e: GNode | string) => (typeof e === "object" ? e.id : e); // 링크 끝(노드객체 또는 id)
@@ -75,7 +75,7 @@ export default function RepoGraphView({ graph, onNodeClick, pickedCommunities, f
       data: {
         nodes: graph.nodes.map((n) => {
           const p = pos.get(n.id) ?? { x: 0, y: 0 };
-          return { id: n.id, name: n.label, group: n.group, community: n.community, x: p.x, y: p.y, fx: p.x, fy: p.y }; // fx/fy=고정
+          return { id: n.id, name: n.label, group: n.group, community: n.community, kind: n.kind, x: p.x, y: p.y, fx: p.x, fy: p.y }; // fx/fy=고정
         }),
         links: graph.edges.map((e) => ({ source: e.source, target: e.target })),
       },
@@ -99,8 +99,11 @@ export default function RepoGraphView({ graph, onNodeClick, pickedCommunities, f
   const inPicked = (c?: number) => c != null && !!pickedCommunities?.has(c);
   const commOf = (id: string) => nodeComm.get(id);
 
-  // 노드 자기 색 — 커뮤니티 있으면 커뮤니티색, 없으면 폴더색.
-  const ownColor = (gn: GNode): string => (gn.community != null ? communityColor(gn.community) : colorOf(gn.group));
+  // 노드 자기 색 — 심볼(비 file kind)이면 kind색, 커뮤니티 있으면 커뮤니티색, 없으면 폴더색.
+  const ownColor = (gn: GNode): string =>
+    gn.kind && gn.kind !== "file" ? symbolKindColor(gn.kind)
+    : gn.community != null ? communityColor(gn.community)
+    : colorOf(gn.group);
   // 노드 색 — 영향도 > focus > 자기색(커뮤니티/폴더) 순.
   const nodeFill = (gn: GNode): string => {
     if (blastMap) {
