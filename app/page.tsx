@@ -1212,7 +1212,6 @@ export default function Home() {
           activeLineSource={activeLineLink?.source}
           onLineFocus={focusLineFromPanel}
           onFillLine={fillLine}
-          fillingLine={fillingLine}
           fillErrorLine={fillErrorLine}
           onMarkLines={setMarkedLines}
           excludedTerms={excludedTerms}

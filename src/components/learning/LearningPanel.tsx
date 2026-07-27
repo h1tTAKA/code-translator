@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { IconFolder, IconTrash, IconLoader2, IconSparkles } from "@tabler/icons-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { IconFolder, IconTrash, IconLoader2, IconSparkles, IconAlertTriangle, IconX } from "@tabler/icons-react";
 import { StarIcon } from "./icons";
 import type { AgentAnalyzeResponse, AgentProviderKind, AnalyzeMode } from "@/lib/agent";
 import type { HistoryEntry } from "@/lib/historyDB";
@@ -99,7 +99,6 @@ interface LearningPanelProps {
   onLineFocus?: (line: number) => void;
   // 누락 줄 채우기(#633) — 설명 없는 줄 클릭 시 그 줄만 타겟 분석.
   onFillLine?: (line: number) => void;
-  fillingLine?: number | null;
   fillErrorLine?: number | null;
   // 글 원문에서 클릭한 IT 용어 id — 그 용어 카드로 스크롤(글 모드).
   activeTermId?: string | null;
@@ -155,7 +154,6 @@ export default function LearningPanel({
   activeLineSource,
   onLineFocus,
   onFillLine,
-  fillingLine = null,
   fillErrorLine = null,
   activeTermId = null,
   onMarkLines,
@@ -215,6 +213,32 @@ export default function LearningPanel({
     [code, result],
   );
   const anchoredLineExplanations = reanchor.lineExplanations;
+
+  // 누락 줄 채우기(#635) — 설명 없는 코드 줄을 에디터서 클릭하면 모달 띄우고 자동 분석.
+  const [fillModalLine, setFillModalLine] = useState<number | null>(null);
+  const autoFiredRef = useRef<number | null>(null); // 이 줄 자동 발동 1회 가드
+  // 에디터 클릭 → 채울 수 있는(빈줄·주석·기존설명 아님) 줄이면 모달 열고 fillLine 자동 발동.
+  useEffect(() => {
+    if (!onFillLine || activeLine == null || isLoading || activeLineSource !== "editor") return;
+    const codeLine = code.split(/\r?\n/)[activeLine - 1] ?? "";
+    if (!codeLine.trim() || isCommentOnlyLine(codeLine)) return;      // 빈줄·주석은 원래 설명 없음
+    if (anchoredLineExplanations.some((le) => le.line === activeLine)) return; // 이미 설명 있음
+    if (autoFiredRef.current === activeLine) return;                  // 이 줄 이미 발동
+    autoFiredRef.current = activeLine;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 클릭 시 모달 열고 자동 채우기
+    setFillModalLine(activeLine);
+    onFillLine(activeLine);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 클릭(activeLine/source) 변화에만 발동
+  }, [activeLine, activeLineSource, isLoading]);
+  // 채워지면(설명 생김) 모달 닫기. 실패는 모달 유지(재시도).
+  useEffect(() => {
+    if (fillModalLine != null && anchoredLineExplanations.some((le) => le.line === fillModalLine)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 채워지면 모달 닫기
+      setFillModalLine(null);
+      autoFiredRef.current = null;
+    }
+  }, [anchoredLineExplanations, fillModalLine]);
+  const closeFillModal = () => { setFillModalLine(null); autoFiredRef.current = null; };
   const safeTokens = useMemo(
     () => dedupedTokens.map((t) => ({ ...t, lines: remapLines(t.lines, reanchor.lineMap) })),
     [dedupedTokens, reanchor],
@@ -1070,31 +1094,43 @@ export default function LearningPanel({
             <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
               {t("panel.lineExplain")}
             </p>
-            {/* 누락 줄 채우기(#633) — 클릭한 줄이 설명 없고 빈줄이 아니면 "이 줄 설명 추가" 노출. */}
-            {(() => {
-              if (!onFillLine || activeLine == null || isLoading) return null;
-              // 에디터 클릭 때만(패널 스크롤로 activeLine이 바뀌며 깜빡이는 것 방지, #635-B).
-              if (activeLineSource !== "editor") return null;
-              const codeLine = code.split(/\r?\n/)[activeLine - 1] ?? "";
-              if (!codeLine.trim()) return null; // 빈 줄은 채울 것 없음
-              if (isCommentOnlyLine(codeLine)) return null; // 주석 줄은 원래 설명 안 붙음(#635-A)
-              if (anchoredLineExplanations.some((le) => le.line === activeLine)) return null; // 이미 설명 있음
-              const busy = fillingLine === activeLine;
-              const failed = fillErrorLine === activeLine;
+            {/* 누락 줄 채우기(#635) — 클릭한 줄이 설명 없으면 모달 띄우고 자동 분석. 성공 시 자동 닫힘. */}
+            {fillModalLine != null && (() => {
+              const failed = fillErrorLine === fillModalLine;
               return (
-                <div className="mb-2 flex items-center gap-2 rounded-lg border border-dashed border-zinc-300 bg-white/60 px-2.5 py-1.5 dark:border-zinc-700 dark:bg-zinc-900/40">
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-                    {t("line.addExplainHint", { n: String(activeLine) })}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onFillLine(activeLine)}
-                    disabled={busy}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition disabled:opacity-60 ${failed ? "text-amber-600 dark:text-amber-500" : "text-[#3B34E2] hover:bg-zinc-100 dark:text-[#8b86f5] dark:hover:bg-zinc-800"}`}
-                  >
-                    {busy ? <IconLoader2 size={12} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={12} stroke={2} aria-hidden />}
-                    {busy ? t("line.adding") : failed ? t("line.addFailed") : t("line.addExplain")}
-                  </button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+                  <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-800 dark:bg-[#15161d]">
+                    <div className="mb-3 flex items-start gap-2.5">
+                      {failed
+                        ? <IconAlertTriangle size={18} stroke={2} className="mt-0.5 shrink-0 text-amber-500" aria-hidden />
+                        : <IconSparkles size={18} stroke={2} className="mt-0.5 shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                          {t("line.fillMissingTitle", { n: String(fillModalLine) })}
+                        </p>
+                        <p className="mt-1 text-[12px] text-zinc-500 dark:text-zinc-400">
+                          {failed ? t("line.fillMissingFailed") : t("line.fillMissingBody", { n: String(fillModalLine) })}
+                        </p>
+                      </div>
+                      <button type="button" onClick={closeFillModal} aria-label={t("line.fillClose")} className="shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+                        <IconX size={15} stroke={2} aria-hidden />
+                      </button>
+                    </div>
+                    {failed ? (
+                      <div className="flex justify-end gap-1.5">
+                        <button type="button" onClick={closeFillModal} className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">
+                          {t("line.fillClose")}
+                        </button>
+                        <button type="button" onClick={() => { if (onFillLine) onFillLine(fillModalLine); }} className="inline-flex items-center gap-1 rounded-lg bg-[#3B34E2] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#322bc9] dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
+                          <IconSparkles size={13} stroke={2} aria-hidden /> {t("line.fillRetry")}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[12px] text-zinc-400 dark:text-zinc-500">
+                        <IconLoader2 size={14} stroke={2} className="animate-spin" aria-hidden /> {t("line.adding")}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })()}
