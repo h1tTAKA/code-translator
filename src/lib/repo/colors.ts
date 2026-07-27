@@ -12,6 +12,17 @@ export function communityColor(id: number): string {
   return REPO_PALETTE[id % REPO_PALETTE.length];
 }
 
+// 심볼 kind → 색(드릴다운 심볼 그래프). function=인디고·class=앰버·type=틸·file=회색.
+export function symbolKindColor(kind: string): string {
+  switch (kind) {
+    case "function": return "#3B34E2";
+    case "component": return "#8b5cf6";
+    case "class": return "#f59e0b";
+    case "type": return "#14b8a6";
+    default: return REPO_NODE_FALLBACK; // file 등
+  }
+}
+
 // #rrggbb → rgba(r,g,b,a). 폴더 구역 tint/경계/라벨 알파 조절용.
 // 전제: REPO_PALETTE·REPO_NODE_FALLBACK 모두 6자리 hex(#rrggbb). 아니면 원본 반환(안전).
 export function hexToRgba(hex: string, a: number): string {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconX, IconFile, IconSparkles, IconLoader2, IconMessageCircle, IconArrowUp } from "@tabler/icons-react";
+import { IconX, IconFile, IconSparkles, IconLoader2, IconMessageCircle, IconArrowUp, IconBinaryTree2 } from "@tabler/icons-react";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { communityColor } from "@/lib/repo/colors";
 import Markdown from "@/components/learning/Markdown";
@@ -15,7 +15,7 @@ type StreamEvent =
   | { type: "error"; message: string };
 
 // 노드 클릭 우측 패널 — 구조(파일·그룹·이웃 in/out) + 온디맨드 LLM 설명(기능·화면·연결·로직·설계의도).
-export default function RepoNodePanel({ graph, nodeId, providerId, providerSettings, explanation, onExplained, chat, onChat, onClose }: {
+export default function RepoNodePanel({ graph, nodeId, providerId, providerSettings, explanation, onExplained, chat, onChat, onClose, onExpandSymbols, expanding, expandError }: {
   graph: RepoGraph;
   nodeId: string;
   providerId: AgentProviderKind;
@@ -25,6 +25,9 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
   chat?: ChatMessage[];             // 캐시된 챗 스레드
   onChat: (msgs: ChatMessage[]) => void;
   onClose: () => void;
+  onExpandSymbols: () => void;      // 이 파일 심볼 드릴다운
+  expanding: boolean;
+  expandError: boolean;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -225,6 +228,17 @@ export default function RepoNodePanel({ graph, nodeId, providerId, providerSetti
               )}
             </div>
           )}
+
+          {/* 심볼 드릴다운 — 이 파일 안 함수/클래스 + 호출 그래프. */}
+          <button
+            type="button"
+            onClick={onExpandSymbols}
+            disabled={expanding}
+            className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition disabled:opacity-50 ${expandError ? "border-amber-300 text-amber-600 dark:border-amber-500/50 dark:text-amber-500" : "border-zinc-200 text-zinc-600 hover:border-[#3B34E2] hover:text-[#3B34E2] dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-[#8b86f5] dark:hover:text-[#8b86f5]"}`}
+          >
+            {expanding ? <IconLoader2 size={13} stroke={2} className="animate-spin" aria-hidden /> : <IconBinaryTree2 size={13} stroke={2} aria-hidden />}
+            {expanding ? t("repo.symbols.expanding") : expandError ? t("repo.symbols.none") : t("repo.symbols.expand")}
+          </button>
 
           {/* LLM 설명 — 온디맨드. 캐시 있으면 바로, 없으면 버튼. */}
           <section className="flex flex-col gap-2 border-t border-zinc-200/70 pt-4 dark:border-zinc-800/70">

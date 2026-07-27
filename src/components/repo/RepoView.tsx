@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3, IconLayoutGrid, IconStack2, IconLayoutBoardSplit, IconAffiliate, IconSparkles } from "@tabler/icons-react";
+import { IconSitemap, IconFolderOpen, IconLoader2, IconAlertTriangle, IconRadar, IconEye, IconRefresh, IconShare3, IconLayoutGrid, IconStack2, IconLayoutBoardSplit, IconAffiliate, IconSparkles, IconArrowLeft, IconBinaryTree2 } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import RepoGraphView, { LARGE_GRAPH_NODES } from "@/components/repo/RepoGraphView";
 import type { LayoutMode } from "@/lib/repo/layout";
@@ -11,7 +11,7 @@ import { communityColor } from "@/lib/repo/colors";
 import { blastRadius } from "@/lib/repo/blast";
 import { repoOverview } from "@/lib/repo/overview";
 import { downloadText, graphToDot } from "@/lib/repo/export";
-import type { RepoGraph } from "@/lib/repo/types";
+import type { RepoGraph, RepoNode } from "@/lib/repo/types";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
 
 const REPO_PATH_KEY = "nunopi:repo-path";
@@ -59,6 +59,10 @@ export default function RepoView({ active = true, providerId, providerSettings }
   // LLM 기능 라벨 — 생성하면 graph.communities[].label에 써넣고 캐시 저장(새로고침 유지).
   const [naming, setNaming] = useState(false);
   const [nameErr, setNameErr] = useState(false);
+  // 심볼 드릴다운(자식D) — 파일 확장 시 그 파일 심볼 서브그래프. null=파일 그래프 뷰.
+  const [symbolView, setSymbolView] = useState<{ label: string; count: number; graph: RepoGraph } | null>(null);
+  const [expanding, setExpanding] = useState(false);
+  const [expandErr, setExpandErr] = useState(false);
   // 영향도(블래스트) 모드 — 켜면 선택 노드의 의존자를 거리별 색으로.
   const [blastMode, setBlastMode] = useState(false);
   // 그래프 배치 모드(grid/layers/treemap).
@@ -101,6 +105,8 @@ export default function RepoView({ active = true, providerId, providerSettings }
     setChats({});
     setPickedCommunities(new Set());
     setNameErr(false);
+    setSymbolView(null);
+    setExpandErr(false);
     setBlastMode(false);
     setShowOverview(false);
     setOverviewSummary(null);
@@ -220,6 +226,30 @@ export default function RepoView({ active = true, providerId, providerSettings }
     } catch { /* 무시 */ } finally {
       setNaming(false);
       if (!got) setNameErr(true);
+    }
+  }
+
+  // 파일 드릴다운 — 그 파일 심볼 + 호출을 온디맨드로 받아 서브그래프 뷰로. import 파일은 그래프서 이미 해석됨.
+  async function expandSymbols(nodeId: string) {
+    if (!graph || expanding) return;
+    const node = graph.nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    setExpanding(true); setExpandErr(false);
+    try {
+      const importedFiles = graph.edges.filter((e) => e.source === nodeId && e.relation === "imports").map((e) => e.target);
+      const res = await fetch("/api/repo/symbols", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: graph.root, file: node.file, importedFiles }),
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.nodes) || data.nodes.length === 0) { setExpandErr(true); return; }
+      const fileNode: RepoNode = { id: node.id, label: node.label, file: node.file, kind: "file" };
+      const nodes: RepoNode[] = [fileNode, ...(data.nodes as RepoNode[])];
+      const edges = data.edges as RepoGraph["edges"];
+      const sub: RepoGraph = { root: graph.root, nodes, edges, stats: { files: nodes.length, edges: edges.length, scanned: nodes.length, capped: false } };
+      setSymbolView({ label: node.label, count: data.nodes.length, graph: sub });
+    } catch { setExpandErr(true); } finally {
+      setExpanding(false);
     }
   }
 
@@ -395,6 +425,28 @@ export default function RepoView({ active = true, providerId, providerSettings }
                 />
               )}
               <RepoGraphView graph={graph} onNodeClick={setSelectedId} pickedCommunities={pickedCommunities} focusId={selectedId} blastMap={blastMap} mode={layoutMode} />
+              {/* 심볼 드릴다운 오버레이 — 파일 확장 시 그 파일 심볼 서브그래프(layered). 뒤로가기로 파일 그래프 복귀. */}
+              {symbolView && (
+                <div className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-[#0b0c12]">
+                  <div className="flex items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setSymbolView(null)}
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                      <IconArrowLeft size={14} stroke={2} aria-hidden /> {t("repo.symbols.back")}
+                    </button>
+                    <span className="flex items-center gap-1.5 text-[12px] text-zinc-500 dark:text-zinc-400">
+                      <IconBinaryTree2 size={14} stroke={2} className="text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+                      <span className="font-semibold text-zinc-700 dark:text-zinc-200">{symbolView.label}</span>
+                      <span className="tabular-nums">· {t("repo.symbols.count", { n: String(symbolView.count) })}</span>
+                    </span>
+                  </div>
+                  <div className="relative min-h-0 flex-1">
+                    <RepoGraphView graph={symbolView.graph} mode="layers" />
+                  </div>
+                </div>
+              )}
             </div>
             {selectedId && (
               <RepoNodePanel
@@ -408,6 +460,9 @@ export default function RepoView({ active = true, providerId, providerSettings }
                 chat={chats[selectedId]}
                 onChat={(msgs) => setChats((p) => ({ ...p, [selectedId]: msgs }))}
                 onClose={() => setSelectedId(null)}
+                onExpandSymbols={() => expandSymbols(selectedId)}
+                expanding={expanding}
+                expandError={expandErr}
               />
             )}
           </div>
