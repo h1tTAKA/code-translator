@@ -177,6 +177,8 @@ export default function Home() {
   // 누락 줄 채우기(#633) — 유저가 설명 없는 줄 클릭 시 그 줄만 타겟 분석. 진행/실패 줄 번호.
   const [fillingLine, setFillingLine] = useState<number | null>(null);
   const [fillErrorLine, setFillErrorLine] = useState<number | null>(null);
+  // 누락 줄 모달 대상(#637) — page가 소유: fillLine이 열고 성공/취소 시 직접 닫아 결정적.
+  const [fillModalLine, setFillModalLine] = useState<number | null>(null);
   // 토큰 사전은 분석 시 token/category/lines만 채워지고, 뜻(label/description)은 카드 클릭 시
   // on-demand로 받아 병합한다(#505). explainingTokens는 로딩 표시용(토큰 텍스트).
   const [explainingTokens, setExplainingTokens] = useState<string[]>([]);
@@ -704,6 +706,7 @@ export default function Home() {
     // 채우기 중 전체 재분석(runAnalyze)이 시작되면 abort — stale 병합 방지.
     const controller = new AbortController();
     fillAbortRef.current = controller;
+    setFillModalLine(line);   // 모달 열기(page 소유)
     setFillingLine(line);
     setFillErrorLine(null);
     try {
@@ -751,9 +754,10 @@ export default function Home() {
         setHistoryEntries((entries) => entries.map((e) => (e.id === id ? { ...e, result: nextResult! } : e)));
       }
       focusLineFromEditor(line); // 채운 줄로 스크롤·강조
+      setFillModalLine(null);    // 성공 → 모달 닫기(결정적, reanchor 감지 안 씀)
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return; // 재분석에 밀림 — 조용히
-      setFillErrorLine(line);
+      if (error instanceof DOMException && error.name === "AbortError") { setFillModalLine(null); return; } // 재분석에 밀림
+      setFillErrorLine(line);    // 실패 → 모달 유지(재시도/닫기)
     } finally {
       if (fillAbortRef.current === controller) fillAbortRef.current = null;
       setFillingLine(null);
@@ -1206,6 +1210,8 @@ export default function Home() {
           activeLineSource={activeLineLink?.source}
           onLineFocus={focusLineFromPanel}
           onFillLine={fillLine}
+          fillModalLine={fillModalLine}
+          onCloseFillModal={() => { fillAbortRef.current?.abort(); setFillModalLine(null); setFillErrorLine(null); setFillingLine(null); }}
           fillErrorLine={fillErrorLine}
           onMarkLines={setMarkedLines}
           excludedTerms={excludedTerms}

@@ -99,6 +99,8 @@ interface LearningPanelProps {
   onLineFocus?: (line: number) => void;
   // 누락 줄 채우기(#633) — 설명 없는 줄 클릭 시 그 줄만 타겟 분석.
   onFillLine?: (line: number) => void;
+  fillModalLine?: number | null;   // page 소유 — 열린 모달 대상 줄(null=닫힘)
+  onCloseFillModal?: () => void;
   fillErrorLine?: number | null;
   // 글 원문에서 클릭한 IT 용어 id — 그 용어 카드로 스크롤(글 모드).
   activeTermId?: string | null;
@@ -154,6 +156,8 @@ export default function LearningPanel({
   activeLineSource,
   onLineFocus,
   onFillLine,
+  fillModalLine = null,
+  onCloseFillModal,
   fillErrorLine = null,
   activeTermId = null,
   onMarkLines,
@@ -215,9 +219,10 @@ export default function LearningPanel({
   const anchoredLineExplanations = reanchor.lineExplanations;
 
   // 누락 줄 채우기(#635) — 설명 없는 코드 줄을 에디터서 클릭하면 모달 띄우고 자동 분석.
-  const [fillModalLine, setFillModalLine] = useState<number | null>(null);
+  // 모달 상태(fillModalLine)는 page가 소유 — 채우기 성공/실패를 아는 곳이 직접 열고 닫아야
+  // 결정적(reanchor 재배치로 대상 줄번호가 어긋나도 무한 스피너 안 됨, #637).
   const autoFiredRef = useRef<number | null>(null); // 이 줄 자동 발동 1회 가드
-  // 에디터 클릭 → 채울 수 있는(빈줄·주석·기존설명 아님) 줄이면 모달 열고 fillLine 자동 발동.
+  // 에디터 클릭 → 채울 수 있는(빈줄·주석·기존설명 아님) 줄이면 fillLine 자동 발동(page가 모달 연다).
   useEffect(() => {
     if (!onFillLine || activeLine == null || isLoading || activeLineSource !== "editor") return;
     const codeLine = code.split(/\r?\n/)[activeLine - 1] ?? "";
@@ -225,20 +230,11 @@ export default function LearningPanel({
     if (anchoredLineExplanations.some((le) => le.line === activeLine)) return; // 이미 설명 있음
     if (autoFiredRef.current === activeLine) return;                  // 이 줄 이미 발동
     autoFiredRef.current = activeLine;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 클릭 시 모달 열고 자동 채우기
-    setFillModalLine(activeLine);
     onFillLine(activeLine);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 클릭(activeLine/source) 변화에만 발동
   }, [activeLine, activeLineSource, isLoading]);
-  // 채워지면(설명 생김) 모달 닫기. 실패는 모달 유지(재시도).
-  useEffect(() => {
-    if (fillModalLine != null && anchoredLineExplanations.some((le) => le.line === fillModalLine)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- 채워지면 모달 닫기
-      setFillModalLine(null);
-      autoFiredRef.current = null;
-    }
-  }, [anchoredLineExplanations, fillModalLine]);
-  const closeFillModal = () => { setFillModalLine(null); autoFiredRef.current = null; };
+  // 모달 닫히면(page가 성공/취소로 fillModalLine=null) 자동발동 가드 리셋 → 재클릭 가능.
+  useEffect(() => { if (fillModalLine == null) autoFiredRef.current = null; }, [fillModalLine]);
   const safeTokens = useMemo(
     () => dedupedTokens.map((t) => ({ ...t, lines: remapLines(t.lines, reanchor.lineMap) })),
     [dedupedTokens, reanchor],
@@ -1112,13 +1108,13 @@ export default function LearningPanel({
                           {failed ? t("line.fillMissingFailed") : t("line.fillMissingBody", { n: String(fillModalLine) })}
                         </p>
                       </div>
-                      <button type="button" onClick={closeFillModal} aria-label={t("line.fillClose")} className="shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+                      <button type="button" onClick={onCloseFillModal} aria-label={t("line.fillClose")} className="shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
                         <IconX size={15} stroke={2} aria-hidden />
                       </button>
                     </div>
                     {failed ? (
                       <div className="flex justify-end gap-1.5">
-                        <button type="button" onClick={closeFillModal} className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">
+                        <button type="button" onClick={onCloseFillModal} className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">
                           {t("line.fillClose")}
                         </button>
                         <button type="button" onClick={() => { if (onFillLine) onFillLine(fillModalLine); }} className="inline-flex items-center gap-1 rounded-lg bg-[#3B34E2] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#322bc9] dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
