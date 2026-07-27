@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconFolder, IconTrash } from "@tabler/icons-react";
+import { IconFolder, IconTrash, IconLoader2, IconSparkles } from "@tabler/icons-react";
 import { StarIcon } from "./icons";
 import type { AgentAnalyzeResponse, AgentProviderKind, AnalyzeMode } from "@/lib/agent";
 import type { HistoryEntry } from "@/lib/historyDB";
@@ -96,6 +96,10 @@ interface LearningPanelProps {
   activeLine?: number | null;
   activeLineSource?: "editor" | "panel";
   onLineFocus?: (line: number) => void;
+  // 누락 줄 채우기(#633) — 설명 없는 줄 클릭 시 그 줄만 타겟 분석.
+  onFillLine?: (line: number) => void;
+  fillingLine?: number | null;
+  fillErrorLine?: number | null;
   // 글 원문에서 클릭한 IT 용어 id — 그 용어 카드로 스크롤(글 모드).
   activeTermId?: string | null;
   // 토큰 호버/클릭으로 에디터에서 강조할 코드 줄들을 상위(page)에 올린다.
@@ -149,6 +153,9 @@ export default function LearningPanel({
   activeLine = null,
   activeLineSource,
   onLineFocus,
+  onFillLine,
+  fillingLine = null,
+  fillErrorLine = null,
   activeTermId = null,
   onMarkLines,
   excludedTerms = [],
@@ -1062,6 +1069,31 @@ export default function LearningPanel({
             <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
               {t("panel.lineExplain")}
             </p>
+            {/* 누락 줄 채우기(#633) — 클릭한 줄이 설명 없고 빈줄이 아니면 "이 줄 설명 추가" 노출. */}
+            {(() => {
+              if (!onFillLine || activeLine == null || isLoading) return null;
+              const codeLine = code.split(/\r?\n/)[activeLine - 1] ?? "";
+              if (!codeLine.trim()) return null; // 빈 줄은 채울 것 없음
+              if (anchoredLineExplanations.some((le) => le.line === activeLine)) return null; // 이미 설명 있음
+              const busy = fillingLine === activeLine;
+              const failed = fillErrorLine === activeLine;
+              return (
+                <div className="mb-2 flex items-center gap-2 rounded-lg border border-dashed border-zinc-300 bg-white/60 px-2.5 py-1.5 dark:border-zinc-700 dark:bg-zinc-900/40">
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+                    {t("line.addExplainHint", { n: String(activeLine) })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onFillLine(activeLine)}
+                    disabled={busy}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition disabled:opacity-60 ${failed ? "text-amber-600 dark:text-amber-500" : "text-[#3B34E2] hover:bg-zinc-100 dark:text-[#8b86f5] dark:hover:bg-zinc-800"}`}
+                  >
+                    {busy ? <IconLoader2 size={12} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={12} stroke={2} aria-hidden />}
+                    {busy ? t("line.adding") : failed ? t("line.addFailed") : t("line.addExplain")}
+                  </button>
+                </div>
+              );
+            })()}
             <ResizableBody id="lines" defaultHeight={440}>
               <LineExplanationList
                 key={result.createdAt}
