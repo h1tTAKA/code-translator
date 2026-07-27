@@ -7,7 +7,7 @@ import RepoGraphView, { LARGE_GRAPH_NODES } from "@/components/repo/RepoGraphVie
 import type { LayoutMode } from "@/lib/repo/layout";
 import RepoNodePanel from "@/components/repo/RepoNodePanel";
 import RepoOverviewPanel from "@/components/repo/RepoOverviewPanel";
-import { communityColor } from "@/lib/repo/colors";
+import { communityColor, symbolKindColor } from "@/lib/repo/colors";
 import { blastRadius } from "@/lib/repo/blast";
 import { repoOverview } from "@/lib/repo/overview";
 import { downloadText, graphToDot } from "@/lib/repo/export";
@@ -244,7 +244,11 @@ export default function RepoView({ active = true, providerId, providerSettings }
       const data = await res.json();
       if (!res.ok || !Array.isArray(data.nodes) || data.nodes.length === 0) { setExpandErr(true); return; }
       const fileNode: RepoNode = { id: node.id, label: node.label, file: node.file, kind: "file" };
-      const nodes: RepoNode[] = [fileNode, ...(data.nodes as RepoNode[])];
+      // cross-file 호출 대상(다른 파일 심볼)은 라벨에 소속 파일명 부기 — 그래프 라벨은 이름만이라 어느 파일인지 안 보임.
+      const symbolNodes = (data.nodes as RepoNode[]).map((n) =>
+        n.file !== node.file ? { ...n, label: `${n.label} · ${n.file.split("/").pop()}` } : n,
+      );
+      const nodes: RepoNode[] = [fileNode, ...symbolNodes];
       const edges = data.edges as RepoGraph["edges"];
       const sub: RepoGraph = { root: graph.root, nodes, edges, stats: { files: nodes.length, edges: edges.length, scanned: nodes.length, capped: false } };
       setSymbolView({ label: node.label, count: data.nodes.length, graph: sub });
@@ -444,6 +448,14 @@ export default function RepoView({ active = true, providerId, providerSettings }
                   </div>
                   <div className="relative min-h-0 flex-1">
                     <RepoGraphView graph={symbolView.graph} mode="layers" />
+                    {/* kind 색 범례 — 색이 무슨 종류인지. 그래프가 이미 호출·소속을 보여주므로 목록 패널은 두지 않음. */}
+                    <div className="absolute bottom-2 left-2 z-10 flex items-center gap-3 rounded-lg border border-zinc-200 bg-white/85 px-2.5 py-1.5 text-[10px] backdrop-blur dark:border-zinc-800 dark:bg-[#111219]/85">
+                      {([["function", "repo.symbols.fn"], ["class", "repo.symbols.cls"], ["type", "repo.symbols.typ"]] as const).map(([kind, key]) => (
+                        <span key={kind} className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
+                          <span className="h-2 w-2 rounded-full" style={{ background: symbolKindColor(kind) }} />{t(key)}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
