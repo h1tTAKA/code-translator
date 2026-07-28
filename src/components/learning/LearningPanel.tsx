@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconFolder, IconTrash, IconLoader2, IconSparkles, IconAlertTriangle, IconX } from "@tabler/icons-react";
+import { IconFolder, IconTrash, IconLoader2, IconSparkles, IconAlertTriangle, IconX, IconBookmarkFilled } from "@tabler/icons-react";
 import { StarIcon } from "./icons";
 import type { AgentAnalyzeResponse, AgentProviderKind, AnalyzeMode } from "@/lib/agent";
 import type { HistoryEntry } from "@/lib/historyDB";
@@ -1092,9 +1092,22 @@ export default function LearningPanel({
           ) : (
             <>
           <section className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-2 dark:border-zinc-800 dark:bg-zinc-900/40">
-            <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-              {t("panel.lineExplain")}
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-2 px-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                {t("panel.lineExplain")}
+              </p>
+              {/* 책갈피 있으면 어디 있는지 배지(#639) — 클릭 시 그 줄로 스크롤. 밑에 있어도 놓치지 않게. */}
+              {pinnedLine != null && (
+                <button
+                  type="button"
+                  onClick={() => document.getElementById(`nunopi-line-${pinnedLine}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 transition hover:bg-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/70"
+                >
+                  <IconBookmarkFilled size={12} stroke={2} aria-hidden />
+                  {t("line.goToPin", { n: String(pinnedLine) })}
+                </button>
+              )}
+            </div>
             {/* 누락 줄 채우기(#635) — 클릭한 줄이 설명 없으면 모달 띄우고 자동 분석. 성공 시 자동 닫힘. */}
             {fillModalLine != null && (() => {
               const failed = fillErrorLine === fillModalLine;
