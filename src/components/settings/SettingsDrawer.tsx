@@ -14,6 +14,9 @@ interface SettingsDrawerProps {
   onRemoveExclusion?: (mode: AnalyzeMode, text: string) => void;
   theme: "light" | "dark";
   onThemeChange: (next: "light" | "dark") => void;
+  // 카드보기 날아오는 애니메이션 on/off (#641).
+  cardFlyAnimation: boolean;
+  onCardFlyAnimationChange: (next: boolean) => void;
   // 암기모드 카드 기본 설명 생성에 쓸 provider(분석 provider와 별개).
   memorizeProviderId: AgentProviderKind;
   onMemorizeProviderChange: (id: AgentProviderKind) => void;
@@ -71,6 +74,8 @@ export default function SettingsDrawer({
   onRemoveExclusion,
   theme,
   onThemeChange,
+  cardFlyAnimation,
+  onCardFlyAnimationChange,
   memorizeProviderId,
   onMemorizeProviderChange,
 }: SettingsDrawerProps) {
@@ -181,6 +186,23 @@ export default function SettingsDrawer({
                   );
                 })}
               </div>
+            </div>
+            {/* 카드보기 날아오는 애니메이션 on/off (#641) */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t("settings.cardFlyAnimation")}</span>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500">{t("settings.cardFlyAnimationDesc")}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={cardFlyAnimation}
+                aria-label={t("settings.cardFlyAnimation")}
+                onClick={() => onCardFlyAnimationChange(!cardFlyAnimation)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition ${cardFlyAnimation ? "bg-[#3B34E2] dark:bg-[#8b86f5]" : "bg-zinc-300 dark:bg-zinc-700"}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${cardFlyAnimation ? "left-[22px]" : "left-0.5"}`} />
+              </button>
             </div>
           </section>
 

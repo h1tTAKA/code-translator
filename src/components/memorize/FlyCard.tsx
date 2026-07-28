@@ -27,6 +27,7 @@ interface Fly {
   sway: number; // 낙하 방향(좌/우)
   fallY: number; // 낙하 목표 y(화면 밖)
   openChat?: boolean; // peek 뜰 때 챗룸을 바로 열기(전역 히스토리 카드챗 이동용)
+  instant?: boolean; // 설정서 애니 끔(#641) — 비행 스킵, 카드 즉시 표시
 }
 
 // throwCard(card, origin?): origin(DOMRect) 위치에서 카드가 3D로 날아와 중앙에 멈춘다.
@@ -99,18 +100,21 @@ export function FlyCardProvider({
       { offset: 0.85, opacity: 1, transform: `translate3d(0,-18px,0) rotateX(7deg) rotateY(-11deg) rotateZ(-7deg) scale(2.74)` }, // 바운스
       { offset: 1, opacity: 1, transform: REST }, // 중앙 정지
     ];
+    // 설정서 애니 끔(#641) — throw 시점 localStorage 직접 읽어 즉시 반영. off면 비행 스킵.
+    const instant = typeof localStorage !== "undefined" && localStorage.getItem("nunopi:card-fly") === "off";
     setArrived(false);
     setDropping(false);
-    setFly({ id: ++flyId.current, card, inKf, sway, fallY, openChat: opts?.openChat });
+    setFly({ id: ++flyId.current, card, inKf, sway, fallY, openChat: opts?.openChat, instant });
   }, [reduced]);
 
   // 도착 애니 — fly 세팅 시 재생, 끝나면 중앙에 정지 유지(fill forwards) + arrived 플래그.
   useLayoutEffect(() => {
     if (!fly || !cardRef.current) return;
-    const anim = cardRef.current.animate(fly.inKf, { duration: 1700, fill: "forwards" });
+    const anim = cardRef.current.animate(fly.inKf, { duration: fly.instant ? 0 : 1700, fill: "forwards" });
     inAnimRef.current = anim;
     const onArrive = () => setArrived((a) => (fly.id === flyId.current ? true : a));
     anim.addEventListener("finish", onArrive);
+    if (fly.instant) onArrive(); // 즉시표시 — duration 0 finish에 의존 않고 바로 peek(레이스 방어)
     return () => anim.cancel();
   }, [fly]);
 
@@ -125,7 +129,7 @@ export function FlyCardProvider({
       { offset: 0.9, opacity: 1, transform: `translate3d(${sway * 24}px,${fallY * 0.72}px,0) rotateZ(${sway * 16}deg) scale(2.5)` },
       { offset: 1, opacity: 0, transform: `translate3d(${sway * 34}px,${fallY}px,0) rotateZ(${sway * 22}deg) scale(2.4)` },
     ];
-    const anim = cardRef.current.animate(outKf, { duration: 1100, fill: "forwards" });
+    const anim = cardRef.current.animate(outKf, { duration: fly.instant ? 0 : 1100, fill: "forwards" });
     const done = () => { setFly(null); setArrived(false); setDropping(false); };
     anim.addEventListener("finish", done);
     anim.addEventListener("cancel", done);
