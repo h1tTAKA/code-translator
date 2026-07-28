@@ -114,6 +114,7 @@ export function FlyCardProvider({
     inAnimRef.current = anim;
     const onArrive = () => setArrived((a) => (fly.id === flyId.current ? true : a));
     anim.addEventListener("finish", onArrive);
+    if (fly.instant) onArrive(); // 즉시표시 — duration 0 finish에 의존 않고 바로 peek(레이스 방어)
     return () => anim.cancel();
   }, [fly]);
 
