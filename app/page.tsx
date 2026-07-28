@@ -137,6 +137,16 @@ export default function Home() {
     document.documentElement.classList.toggle("dark", next === "dark");
     try { localStorage.setItem("nunopi:theme", next); } catch {}
   }
+  // 카드보기 날아오는 애니메이션 on/off (#641). 기본 on. localStorage "off"면 끔.
+  const [cardFlyAnimation, setCardFlyAnimation] = useState(true);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCardFlyAnimation(localStorage.getItem("nunopi:card-fly") !== "off");
+  }, []);
+  function changeCardFlyAnimation(next: boolean) {
+    setCardFlyAnimation(next);
+    try { localStorage.setItem("nunopi:card-fly", next ? "on" : "off"); } catch {}
+  }
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [languageChoice, setLanguageChoice] = useState<LanguageChoice>("auto");
@@ -1339,6 +1349,8 @@ export default function Home() {
         onRemoveExclusion={handleRemoveExclusion}
         theme={theme}
         onThemeChange={changeTheme}
+        cardFlyAnimation={cardFlyAnimation}
+        onCardFlyAnimationChange={changeCardFlyAnimation}
         memorizeProviderId={memorizeProviderId}
         onMemorizeProviderChange={handleMemorizeProviderChange}
       />
