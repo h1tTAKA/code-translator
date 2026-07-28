@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { IconBookmark, IconBookmarkFilled } from "@tabler/icons-react";
 import type { AgentLineExplanation } from "@/lib/agent";
 import type { ConceptOccurrence } from "@/lib/translator/types";
 import CodeBlock from "./CodeBlock";
@@ -20,6 +21,9 @@ interface LineExplanationListProps {
   isStreaming?: boolean;
   // 청크 진행률(완료/전체) — "남은 줄 분석 중" 안내용.
   chunkProgress?: { done: number; total: number } | null;
+  // 책갈피(#639) — "여기까지 봤음" 핀 줄 + 토글 콜백.
+  pinnedLine?: number | null;
+  onPinLine?: (line: number) => void;
 }
 
 export default function LineExplanationList({
@@ -31,6 +35,8 @@ export default function LineExplanationList({
   onLineFocus,
   isStreaming = false,
   chunkProgress = null,
+  pinnedLine = null,
+  onPinLine,
 }: LineExplanationListProps) {
   const t = useT();
   // bounded 스크롤 박스 안에서 전체를 렌더(더보기 없이 스크롤).
@@ -113,6 +119,7 @@ export default function LineExplanationList({
           .filter((c): c is ConceptOccurrence => c !== undefined);
 
         const isActive = item.line === activeLine;
+        const isPinned = item.line === pinnedLine;
         return (
           <div
             key={`${i}-${item.line}`}
@@ -121,18 +128,33 @@ export default function LineExplanationList({
             className={`scroll-mt-4 rounded-2xl border p-4 transition-colors ${
               isActive
                 ? "border-blue-500 bg-blue-100 dark:border-blue-500 dark:bg-blue-950/30"
-                : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
+                : isPinned
+                  ? "border-amber-400 bg-amber-50 dark:border-amber-500/60 dark:bg-amber-950/20"
+                  : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
             }`}
           >
             <div className="mb-2 flex items-center justify-between">
               <span className="inline-flex items-center rounded-lg bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200">
                 {t("panel.lineN", { n: item.line })}
               </span>
-              {item.confidence != null && (
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                  {Math.round(item.confidence * 100)}%
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {item.confidence != null && (
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                    {Math.round(item.confidence * 100)}%
+                  </span>
+                )}
+                {onPinLine && (
+                  <button
+                    type="button"
+                    onClick={() => onPinLine(item.line)}
+                    aria-label={isPinned ? t("line.unpin") : t("line.pin")}
+                    title={isPinned ? t("line.unpin") : t("line.pin")}
+                    className={`rounded p-1 transition ${isPinned ? "text-amber-500" : "text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"}`}
+                  >
+                    {isPinned ? <IconBookmarkFilled size={15} stroke={2} aria-hidden /> : <IconBookmark size={15} stroke={2} aria-hidden />}
+                  </button>
+                )}
+              </div>
             </div>
             <CodeBlock code={item.code} language={language} />
             <Markdown className="mt-3 text-sm text-zinc-700 dark:text-zinc-200">

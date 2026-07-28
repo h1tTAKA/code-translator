@@ -102,6 +102,9 @@ interface LearningPanelProps {
   fillModalLine?: number | null;   // page 소유 — 열린 모달 대상 줄(null=닫힘)
   onCloseFillModal?: () => void;
   fillErrorLine?: number | null;
+  // 책갈피(#639) — 핀 줄 + 토글.
+  pinnedLine?: number | null;
+  onPinLine?: (line: number) => void;
   // 글 원문에서 클릭한 IT 용어 id — 그 용어 카드로 스크롤(글 모드).
   activeTermId?: string | null;
   // 토큰 호버/클릭으로 에디터에서 강조할 코드 줄들을 상위(page)에 올린다.
@@ -159,6 +162,8 @@ export default function LearningPanel({
   fillModalLine = null,
   onCloseFillModal,
   fillErrorLine = null,
+  pinnedLine = null,
+  onPinLine,
   activeTermId = null,
   onMarkLines,
   excludedTerms = [],
@@ -1141,6 +1146,8 @@ export default function LearningPanel({
                 onLineFocus={onLineFocus}
                 isStreaming={isLoading}
                 chunkProgress={chunkProgress}
+                pinnedLine={pinnedLine}
+                onPinLine={onPinLine}
               />
             </ResizableBody>
           </section>
