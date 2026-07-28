@@ -1113,6 +1113,8 @@ export default function Home() {
     setActiveCollectionId(null); // 다른 모드 항목 복원 시 이전 모드 목록 필터 해제.
     // 복원한 항목을 현재 결과로 지정 → 상단 제목/핀 헤더가 그 항목 기준으로 표시된다.
     setCurrentHistoryId(entry.id);
+    // 책갈피(#639) — 저장된 핀 줄로 스크롤(코드 모드). 렌더 후 스크롤 effect가 nunopi-line-N로 이동.
+    if (entryMode !== "text" && entry.pinnedLine != null) focusLineFromEditor(entry.pinnedLine);
   }
 
   // 암기 카드 → 그 카드를 담은 분석 히스토리로 이동. 뷰를 코드/글로 전환하고 엔트리를 복원한다.
@@ -1167,6 +1169,16 @@ export default function Home() {
       .catch(() => {});
   }
 
+  // 줄별설명 책갈피(#639) — 현재 분석 항목의 pinnedLine 토글(같은 줄 재클릭=해제). 저장 안 된 분석이면 무시.
+  function handlePinLine(line: number) {
+    if (!currentHistoryId) return;
+    const id = currentHistoryId;
+    const cur = historyEntries.find((e) => e.id === id)?.pinnedLine;
+    const next = cur === line ? undefined : line;
+    updateHistory(id, { pinnedLine: next }).catch(() => {});
+    setHistoryEntries((prev) => prev.map((e) => (e.id === id ? { ...e, pinnedLine: next } : e)));
+  }
+
   return (
     <I18nProvider>
     <ConfirmProvider>
@@ -1213,6 +1225,8 @@ export default function Home() {
           fillModalLine={fillModalLine}
           onCloseFillModal={() => { fillAbortRef.current?.abort(); setFillModalLine(null); setFillErrorLine(null); setFillingLine(null); }}
           fillErrorLine={fillErrorLine}
+          pinnedLine={historyEntries.find((e) => e.id === currentHistoryId)?.pinnedLine ?? null}
+          onPinLine={handlePinLine}
           onMarkLines={setMarkedLines}
           excludedTerms={excludedTerms}
           onExclude={handleExclude}

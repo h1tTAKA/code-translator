@@ -21,6 +21,7 @@ export interface HistoryEntry {
   createdAt: string;
   isPinned?: boolean;
   title?: string;
+  pinnedLine?: number; // 줄별설명 책갈피 — "여기까지 봤음"(코드 모드, 분석당 1개). #639
 }
 
 function newSessionId(): string {
@@ -118,7 +119,7 @@ export async function getAllHistory(): Promise<HistoryEntry[]> {
 
 export async function updateHistory(
   id: string,
-  changes: Partial<Pick<HistoryEntry, "isPinned" | "title" | "result" | "chat" | "chatSessions" | "activeChatSessionId" | "collectionIds" | "incomplete">>,
+  changes: Partial<Pick<HistoryEntry, "isPinned" | "title" | "result" | "chat" | "chatSessions" | "activeChatSessionId" | "collectionIds" | "incomplete" | "pinnedLine">>,
 ): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
