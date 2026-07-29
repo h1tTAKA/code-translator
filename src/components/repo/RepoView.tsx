@@ -175,13 +175,16 @@ export default function RepoView({ active = true, providerId, providerSettings }
   // 커뮤니티 기능 라벨 — 각 커뮤니티 대표 파일명 보고 LLM이 1콜로 이름 생성.
   async function nameCommunities() {
     if (!graph || naming || !(graph.communities?.length)) return;
+    // 증분(#643): 이미 이름 붙은(named) 커뮤니티는 건너뛰고 안 붙은 것만 LLM에. 재분석 후 리셋된 것만 재라벨 = 토큰 절약.
+    const targets = graph.communities.filter((c) => !c.named);
+    if (targets.length === 0) return; // 다 이름 있음 — 할 것 없음
     setNaming(true);
     setNameErr(false);
     let got = false;
     try {
       const members = new Map<number, string[]>();
       for (const n of graph.nodes) if (n.community != null) (members.get(n.community) ?? members.set(n.community, []).get(n.community)!).push(n.label);
-      const lines = graph.communities.map((c) => `#${c.id}: ${(members.get(c.id) ?? []).slice(0, 14).join(", ")}`).join("\n");
+      const lines = targets.map((c) => `#${c.id}: ${(members.get(c.id) ?? []).slice(0, 14).join(", ")}`).join("\n");
       // 프롬프트는 유저 locale로(멀티랭). 형식(한 줄 "id: 이름")은 언어 무관.
       const ask = locale === "ja"
         ? `上はコードベースを実際の依存関係で自動分割したコミュニティと各コミュニティの代表ファイル名だ。各コミュニティが何の機能・役割かを2〜5語で短く命名せよ（例: "アウトリーチ自動化", "認証 & セッション", "SRSスケジューラ"）。形式は1行に "id: 名前" のみ。説明・前置き禁止。`
@@ -210,7 +213,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
       }
       // 파싱 하드닝: chat 모드가 튜터 프로즈 + ```nunopi-cards``` 블록을 덧붙이므로
       // 코드펜스 이후는 버리고, 실제 커뮤니티 id인 "id: 이름" 줄만 취한다(오매칭 방지).
-      const validIds = new Set(graph.communities.map((c) => c.id));
+      const validIds = new Set(targets.map((c) => c.id)); // 대상(안 붙은 것)만 — 이미 named된 id 오매칭 방지
       const body = answer.split(/^\s*```/m)[0]; // 첫 코드펜스 전까지만
       const map: Record<number, string> = {};
       for (const line of body.split("\n")) {
