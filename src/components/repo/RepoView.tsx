@@ -11,6 +11,7 @@ import { communityColor, symbolKindColor } from "@/lib/repo/colors";
 import { blastRadius } from "@/lib/repo/blast";
 import { repoOverview } from "@/lib/repo/overview";
 import { downloadText, graphToDot } from "@/lib/repo/export";
+import { carryOverNames } from "@/lib/repo/communityNames";
 import type { RepoGraph, RepoNode } from "@/lib/repo/types";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
 
@@ -97,6 +98,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
   }, [mounted]);
 
   async function analyze(target: string, opts?: { note?: boolean }) {
+    const prevGraph = graph; // 재분석 시 이전 AI 이름 승계용(setGraph(null) 전에 캡처, #643)
     setAnalyzing(true);
     setGraph(null);
     setError(null);
@@ -118,9 +120,11 @@ export default function RepoView({ active = true, providerId, providerSettings }
       });
       const data = await res.json();
       if (!res.ok) { setError(data?.error ?? "failed"); return; }
-      setGraph(data as RepoGraph);
+      // 재분석이면 이전 AI 커뮤니티 이름을 멤버 겹침으로 승계(#643). 첫 분석·다른 레포는 그대로.
+      const graphData = carryOverNames(prevGraph, data as RepoGraph);
+      setGraph(graphData);
       try { localStorage.setItem(REPO_PATH_KEY, target); } catch { /* ignore */ }
-      writeGraphCache(target, data as RepoGraph);
+      writeGraphCache(target, graphData);
       if (opts?.note) {
         // 새로고침(증분) 후 재파싱 개수 잠깐 표시. 이전 타이머 정리(연타 중첩 방지).
         setReparsedNote((data as RepoGraph).stats.reparsed ?? null);
@@ -218,7 +222,7 @@ export default function RepoView({ active = true, providerId, providerSettings }
       }
       if (Object.keys(map).length) {
         // 라벨을 graph에 써넣고 캐시 갱신 → 새로고침해도 이름 유지.
-        const named: RepoGraph = { ...graph, communities: graph.communities.map((c) => (map[c.id] ? { ...c, label: map[c.id] } : c)) };
+        const named: RepoGraph = { ...graph, communities: graph.communities.map((c) => (map[c.id] ? { ...c, label: map[c.id], named: true } : c)) };
         setGraph(named);
         if (path) writeGraphCache(path, named);
         got = true;
