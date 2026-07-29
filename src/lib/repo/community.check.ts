@@ -39,19 +39,20 @@ const mk = (root: string, comm: Record<string, number>, communities: Community[]
   stats: { files: Object.keys(comm).length, edges: 0, scanned: 0, capped: false },
   communities,
 });
-const prev = mk("/r", { A: 0, B: 0, C: 0, X: 1, Y: 1 }, [
+// 커뮤니티1은 폴더 "ui/" 아래라 폴백="ui"=label → 이름 아님(승계 대상 X).
+const prev = mk("/r", { A: 0, B: 0, C: 0, "ui/X": 1, "ui/Y": 1 }, [
   { id: 0, label: "인증", count: 3, named: true },
   { id: 1, label: "ui", count: 2 },
 ]);
 // next: 같은 root, 커뮤니티0 멤버 {A,B,C,D}(4중 3 겹침 = Jaccard 3/4=0.75 ≥0.5) → "인증" 승계.
-const next = mk("/r", { A: 0, B: 0, C: 0, D: 0, X: 1, Y: 1 }, [
+const next = mk("/r", { A: 0, B: 0, C: 0, D: 0, "ui/X": 1, "ui/Y": 1 }, [
   { id: 0, label: "app", count: 4 },
   { id: 1, label: "ui", count: 2 },
 ]);
 const carried = carryOverNames(prev, next);
 assert.strictEqual(carried.communities![0].label, "인증", "멤버 겹침 큰 커뮤니티 AI 이름 승계");
 assert.strictEqual(carried.communities![0].named, true, "승계 시 named 표식");
-assert.strictEqual(carried.communities![1].named, undefined, "AI 이름 아니던 건 미승계");
+assert.strictEqual(carried.communities![1].named, undefined, "이름 아니던 건 미승계");
 
 // root 다르면(다른 레포) 미승계.
 const other = carryOverNames(prev, mk("/other", { A: 0, B: 0, C: 0 }, [{ id: 0, label: "app", count: 3 }]));
@@ -63,5 +64,22 @@ assert.strictEqual(reshuffled.communities![0].label, "new", "겹침 없으면 �
 
 // prev 없으면 그대로.
 assert.strictEqual(carryOverNames(null, next).communities![0].label, "app", "prev 없으면 그대로");
+
+// 레거시(named 플래그 없이 AI 이름만 있던 옛 캐시) — label이 폴더 폴백과 달라 이름으로 추론·승계.
+// prev 멤버 A,B,C 폴더 폴백="src"(파일 src/A 등)인데 label="인증"(다름) → named 없어도 승계.
+const legacyPrev: RepoGraph = {
+  root: "/r",
+  nodes: [["src/A",0],["src/B",0],["src/C",0],["ui/X",1],["ui/Y",1]].map(([id,c]) => ({ id: id as string, label: (id as string), file: id as string, kind: "file" as const, community: c as number })),
+  edges: [],
+  stats: { files: 5, edges: 0, scanned: 0, capped: false },
+  communities: [{ id: 0, label: "인증", count: 3 }, { id: 1, label: "ui", count: 2 }], // named 없음(레거시). id1 label="ui"=폴더폴백이라 이름 아님
+};
+const legacyNext = mk("/r", { "src/A": 0, "src/B": 0, "src/C": 0, "src/D": 0, "ui/X": 1, "ui/Y": 1 }, [
+  { id: 0, label: "src", count: 4 },
+  { id: 1, label: "ui", count: 2 },
+]);
+const lc = carryOverNames(legacyPrev, legacyNext);
+assert.strictEqual(lc.communities![0].label, "인증", "레거시 AI 이름(폴더폴백과 다름) 승계");
+assert.strictEqual(lc.communities![1].label, "ui", "폴더폴백과 같은 건 이름 아님 → 미승계(그대로)");
 
 console.log("community.check OK");

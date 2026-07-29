@@ -15,14 +15,32 @@ function membersByCommunity(g: RepoGraph): Map<number, Set<string>> {
   return m;
 }
 
-// prev의 named 커뮤니티 이름을 next 커뮤니티에 멤버 겹침으로 승계한 새 그래프 반환.
+// 멤버 파일들의 최다 상위 폴더(마지막 경로 조각) — community.ts의 자동 라벨과 동일 규칙.
+// "AI 이름인지" 추론에 씀: label이 이 폴백과 다르면 사람이 붙인 이름.
+function folderFallback(files: Set<string>): string {
+  const seg = new Map<string, number>();
+  for (const f of files) {
+    const dir = f.split("/").slice(0, -1);
+    const s = dir.length ? dir[dir.length - 1] : "(root)";
+    seg.set(s, (seg.get(s) ?? 0) + 1);
+  }
+  let best = "", n = -1;
+  for (const [s, c] of seg) if (c > n || (c === n && s < best)) { n = c; best = s; }
+  return best;
+}
+
+// prev의 "이름 붙은" 커뮤니티를 next 커뮤니티에 멤버 겹침으로 승계한 새 그래프 반환.
+// "이름 붙음" = named 플래그 true(#643 이후) 또는 label이 폴더 폴백과 다름(레거시 캐시 — 플래그 없이 붙인 AI 이름).
 // prev 없거나(첫 분석) root 다르면(다른 레포) next 그대로.
 export function carryOverNames(prev: RepoGraph | null, next: RepoGraph): RepoGraph {
-  const prevNamed = (prev?.communities ?? []).filter((c) => c.named);
-  if (!prev || prev.root !== next.root || prevNamed.length === 0 || !next.communities) return next;
+  if (!prev || prev.root !== next.root || !prev.communities || !next.communities) return next;
 
   const prevMembers = membersByCommunity(prev);
   const nextMembers = membersByCommunity(next);
+  const prevNamed = prev.communities.filter(
+    (c) => c.named || c.label !== folderFallback(prevMembers.get(c.id) ?? new Set()),
+  );
+  if (prevNamed.length === 0) return next;
   const prevLabel = new Map(prevNamed.map((c) => [c.id, c.label]));
 
   const communities = next.communities.map((c) => {
