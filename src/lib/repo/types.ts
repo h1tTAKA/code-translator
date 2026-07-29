@@ -16,8 +16,9 @@ export interface RepoNode {
 // 커뮤니티(자식6) — Louvain 검출한 논리 덩어리.
 export interface Community {
   id: number;      // 0..k-1 (크기 내림차순 정규화)
-  label: string;   // 자동 라벨(멤버 최다 폴더)
+  label: string;   // 라벨 — 기본 자동(멤버 최다 폴더), AI 이름 붙으면 그것으로 대체
   count: number;   // 멤버 수
+  named?: boolean; // true=LLM이 붙인 기능 이름(#643). 재분석 시 멤버 겹침으로 승계·증분 라벨 판별
 }
 
 export interface RepoEdge {
