@@ -2,26 +2,26 @@
 // 재분석 시 커뮤니티 id는 크기순 재정규화되어 id로는 못 잇는다. 대신 멤버(파일) 집합의 겹침
 // (Jaccard) 최대인 이전 커뮤니티를 찾아, 충분히 겹치고 그게 AI 이름(named)이면 승계.
 // 파일이 크게 안 바뀐 커뮤니티는 이름 유지, 대개편된 것만 폴더 폴백으로 리셋(유저가 다시 이름 생성).
-import type { RepoGraph } from "./types";
+import type { RepoGraph, RepoNode } from "./types";
 
 const CARRY_JACCARD = 0.5; // ponytail: 절반 이상 겹치면 같은 기능으로 봄. 튜닝 여지.
 
-function membersByCommunity(g: RepoGraph): Map<number, Set<string>> {
-  const m = new Map<number, Set<string>>();
+function nodesByCommunity(g: RepoGraph): Map<number, RepoNode[]> {
+  const m = new Map<number, RepoNode[]>();
   for (const n of g.nodes) {
     if (n.community == null) continue;
-    (m.get(n.community) ?? m.set(n.community, new Set()).get(n.community)!).add(n.id);
+    (m.get(n.community) ?? m.set(n.community, []).get(n.community)!).push(n);
   }
   return m;
 }
 
-// 멤버 파일들의 최다 상위 폴더(마지막 경로 조각) — community.ts의 자동 라벨과 동일 규칙.
-// "AI 이름인지" 추론에 씀: label이 이 폴백과 다르면 사람이 붙인 이름.
-function folderFallback(files: Set<string>): string {
+// 멤버 파일들의 최다 상위 폴더(마지막 경로 조각) — community.ts 자동 라벨과 동일 규칙(디렉터리 없으면 group).
+// "AI 이름인지" 추론: label이 이 폴백과 다르면 사람이 붙인 이름.
+function folderFallback(nodes: RepoNode[]): string {
   const seg = new Map<string, number>();
-  for (const f of files) {
-    const dir = f.split("/").slice(0, -1);
-    const s = dir.length ? dir[dir.length - 1] : "(root)";
+  for (const n of nodes) {
+    const dir = (n.file ?? n.id).split("/").slice(0, -1);
+    const s = dir.length ? dir[dir.length - 1] : (n.group ?? "(root)");
     seg.set(s, (seg.get(s) ?? 0) + 1);
   }
   let best = "", n = -1;
@@ -35,12 +35,15 @@ function folderFallback(files: Set<string>): string {
 export function carryOverNames(prev: RepoGraph | null, next: RepoGraph): RepoGraph {
   if (!prev || prev.root !== next.root || !prev.communities || !next.communities) return next;
 
-  const prevMembers = membersByCommunity(prev);
-  const nextMembers = membersByCommunity(next);
+  const prevNodes = nodesByCommunity(prev);
+  const nextNodes = nodesByCommunity(next);
+  const idSet = (nodes: RepoNode[] | undefined) => new Set((nodes ?? []).map((n) => n.id));
   const prevNamed = prev.communities.filter(
-    (c) => c.named || c.label !== folderFallback(prevMembers.get(c.id) ?? new Set()),
+    (c) => c.named || c.label !== folderFallback(prevNodes.get(c.id) ?? []),
   );
   if (prevNamed.length === 0) return next;
+  const prevMembers = new Map([...prevNodes].map(([id, nodes]) => [id, idSet(nodes)]));
+  const nextMembers = new Map([...nextNodes].map(([id, nodes]) => [id, idSet(nodes)]));
   const prevLabel = new Map(prevNamed.map((c) => [c.id, c.label]));
 
   const communities = next.communities.map((c) => {
