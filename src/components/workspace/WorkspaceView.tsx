@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { IconFolderOpen, IconFiles, IconTerminal2, IconFileCode, IconMessageCircle, IconLoader2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
+import CodePane from "@/components/workspace/CodePane";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -122,8 +123,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
               <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
                 <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
                 <span className="truncate">{openFile}</span>
+                <button type="button" onClick={() => setOpenFile(null)} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
               </div>
-              <div className="min-h-0 flex-1"><ZonePlaceholder Icon={IconFileCode} label={t("workspace.code")} /></div>
+              <div className="min-h-0 flex-1"><CodePane root={path} file={openFile} /></div>
             </div>
           )}
         </section>
