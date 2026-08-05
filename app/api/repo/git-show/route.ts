@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 // file 없으면 name-status(목록), 있으면 그 파일 diff. execFile(인자 배열, shell 미경유).
 export const runtime = "nodejs";
 const pexecFile = promisify(execFile);
-const isHash = (h: string) => /^[0-9a-fA-F]{4,40}$/.test(h);
+const isHash = (h: string) => /^[0-9a-fA-F]{4,64}$/.test(h); // SHA-1(40) + SHA-256(64)
 
 export async function POST(request: Request): Promise<Response> {
   let path: unknown, hash: unknown, file: unknown;
@@ -31,6 +31,6 @@ export async function POST(request: Request): Promise<Response> {
     });
     return Response.json({ ok: true, files });
   } catch (e) {
-    return Response.json({ ok: false, error: String((e as Error)?.message ?? e) }, { status: 200 });
+    return Response.json({ ok: false, error: String((e as Error)?.message ?? e) }, { status: 500 });
   }
 }
