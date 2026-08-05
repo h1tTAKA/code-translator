@@ -44,6 +44,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
 
   useEffect(() => {
     if (!mounted) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 경로 복원(1회)
     try { const s = localStorage.getItem(WS_PATH_KEY); if (s) setPath(s); } catch { /* ignore */ }
   }, [mounted]);
 
@@ -51,6 +52,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   useEffect(() => {
     if (!mounted) return;
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 폭 복원(1회)
       const t = Number(localStorage.getItem("nunopi:ws-tree-w")); if (t) { const v = clamp(t, 140, 560); setTreeW(v); wRef.current.tree = v; }
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
       const k = Number(localStorage.getItem("nunopi:ws-code-w")); if (k) { const v = clamp(k, 240, 900); setCodeW(v); wRef.current.code = v; }
@@ -81,12 +83,14 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
 
   const startDrag = (kind: "tree" | "code" | "chat", startVal: number) => (e: React.MouseEvent) => {
     e.preventDefault();
+    // eslint-disable-next-line react-hooks/refs -- 이벤트 핸들러 내 ref 쓰기(렌더 중 아님)
     dragRef.current = { kind, startX: e.clientX, startVal };
     document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
   };
 
   // 폴더 정해지면 파일트리 로드.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
     if (!path) { setFiles([]); return; }
     let cancelled = false;
     setTreeLoading(true); setOpenFile(null);

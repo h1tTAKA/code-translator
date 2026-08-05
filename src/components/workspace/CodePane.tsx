@@ -29,6 +29,7 @@ export default function CodePane({ root, file }: { root: string; file: string })
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 파일 바뀌면 로딩 리셋(마운트/키변경 시 1회)
     setStatus("loading"); setHtml(""); setRaw("");
     (async () => {
       try {
