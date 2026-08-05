@@ -1,7 +1,8 @@
 "use client";
 // 워크스페이스 파일트리(#647) — scan이 준 flat 경로 목록을 중첩 트리로. 폴더 접기 + 파일 클릭.
 import { useMemo, useState } from "react";
-import { IconChevronRight, IconFolder, IconFolderOpen, IconFile } from "@tabler/icons-react";
+import { IconChevronRight, IconFolder, IconFolderOpen } from "@tabler/icons-react";
+import { fileGlyph } from "@/lib/repo/fileIcon";
 
 interface TreeNode { name: string; path: string; children?: TreeNode[] } // children 있으면 폴더
 
@@ -49,7 +50,7 @@ function Node({ node, depth, open, toggle, selected, onSelect }: {
   return (
     <button type="button" onClick={() => onSelect(node.path)} style={pad}
       className={`flex w-full items-center gap-1 py-0.5 pr-1.5 text-left text-[12px] transition ${on ? "bg-[#3B34E2]/10 text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>
-      <IconFile size={13} stroke={2} className="ml-[13px] shrink-0 text-zinc-400" aria-hidden />
+      <span className="ml-[13px] flex shrink-0">{fileGlyph(node.name)}</span>
       <span className="truncate">{node.name}</span>
     </button>
   );
