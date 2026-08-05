@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "rebuild:native": "electron-rebuild -f -w node-pty,better-sqlite3",
+    "rebuild:native": "electron-rebuild -f -w node-pty",
     "electron:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && ELECTRON_START_URL=http://localhost:3000 electron electron/main.cjs\"",
     "electron:build": "next build && node scripts/copy-standalone-assets.mjs",
     "electron:prod": "npm run electron:build && electron electron/main.cjs",
