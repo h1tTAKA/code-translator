@@ -216,7 +216,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 우: 챗룸 */}
         <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-          <WorkspaceChat root={path} openFile={openFile} providerId={providerId} providerSettings={providerSettings} />
+          <WorkspaceChat root={path} files={files} openFile={openFile} openDiff={null} focusedBranch={null} providerId={providerId} providerSettings={providerSettings} />
         </aside>
       </div>
     </div>
