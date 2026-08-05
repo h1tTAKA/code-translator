@@ -6,7 +6,7 @@ import { IconFolderOpen, IconFiles, IconFileCode, IconLoader2, IconGitBranch, Ic
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
-import WorkspaceChat from "@/components/workspace/WorkspaceChat";
+import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceChat";
 import Terminal from "@/components/workspace/Terminal";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
@@ -34,7 +34,10 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [treeLoading, setTreeLoading] = useState(false);
   const [openFile, setOpenFile] = useState<string | null>(null); // 열린 파일(코드칸은 이게 있을 때만)
   const [openDiff, setOpenDiff] = useState<{ hash: string; file: string } | null>(null); // 커밋 diff(있으면 코드칸=diff)
-  const [focusedBranch, setFocusedBranch] = useState<string | null>(null); // 브랜치 챗 세션 트리거(#653)
+  // 챗 포커스 신호(#653) — 파일/diff/브랜치 클릭 시 그 챗 세션 열기. n(nonce)로 같은 대상 재클릭도 발화.
+  const [chatFocus, setChatFocus] = useState<ChatFocus | null>(null);
+  const focusN = useRef(0);
+  const focusChat = (key: string, kind: ChatFocus["kind"], label: string) => { focusN.current += 1; setChatFocus({ key, kind, label, n: focusN.current }); };
   // 패널 폭(px) — 드래그 리사이즈, localStorage 영속.
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
@@ -173,7 +176,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             {treeLoading ? (
               <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : files.length > 0 ? (
-              <FileTree files={files} selected={openFile} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); }} />
+              <FileTree files={files} selected={openFile} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
             ) : (
               <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
             )}
@@ -181,7 +184,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           {gitOpen && (
             <>
               <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => setOpenDiff({ hash, file })} onFocusBranch={setFocusedBranch} /></div>
+              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => { setOpenDiff({ hash, file }); focusChat(`diff:${hash}:${file}`, "diff", `${file.split("/").pop()} @${hash.slice(0, 7)}`); }} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} /></div>
             </>
           )}
           <button type="button" onClick={toggleGit} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
@@ -217,7 +220,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 우: 챗룸 */}
         <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-          <WorkspaceChat root={path} files={files} openFile={openFile} openDiff={openDiff} focusedBranch={focusedBranch} providerId={providerId} providerSettings={providerSettings} />
+          <WorkspaceChat root={path} files={files} focus={chatFocus} providerId={providerId} providerSettings={providerSettings} />
         </aside>
       </div>
     </div>

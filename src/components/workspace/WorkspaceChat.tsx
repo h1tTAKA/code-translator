@@ -3,7 +3,7 @@
 // #653: 단일 스레드 → "무엇에 대한 대화인가"별 키드 세션 맵.
 //   repo(기본, 레포 전체) / file:<path>(그 파일) / diff:<hash>:<file>(커밋 변경) / branch:<name>(브랜치 작업).
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
-// localStorage 영속. 상단 세션 탭바 + 그 아래 서브 대화 탭바.
+// 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconTrash, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
@@ -17,9 +17,11 @@ type StreamEvent = { type: "progress"; line: string } | { type: "result"; respon
 type SessionKind = "repo" | "file" | "diff" | "branch";
 interface Sub { id: string; messages: ChatMessage[]; } // 세션 안의 한 대화 스레드
 interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; }
+// WorkspaceView가 주는 포커스 신호 — n(nonce)로 같은 대상 재클릭도 매번 발화.
+export interface ChatFocus { key: string; kind: SessionKind; label: string; n: number; }
 
 const REPO_KEY = "repo";
-const MAX_SESSIONS = 24; // 상한만(골격) — 초과 시 가장 오래된 비활성 세션 정리. 세밀 LRU는 후속.
+const MAX_SESSIONS = 40; // 닫힌 세션 포함 저장 상한 — 초과 시 가장 오래된 "닫힌" 세션부터 정리.
 
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
 const freshSub = (): Sub => ({ id: genId(), messages: [] });
@@ -31,12 +33,10 @@ function kindGlyph(k: SessionKind, size: number, className?: string) {
   return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : <IconFileCode {...p} />;
 }
 
-export default function WorkspaceChat({ root, files, openFile, openDiff, focusedBranch, providerId, providerSettings }: {
+export default function WorkspaceChat({ root, files, focus, providerId, providerSettings }: {
   root: string;
   files: string[];
-  openFile: string | null;
-  openDiff: { hash: string; file: string } | null;
-  focusedBranch: string | null;
+  focus: ChatFocus | null;
   providerId: AgentProviderKind;
   providerSettings: ProviderSettings;
 }) {
@@ -46,6 +46,7 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
   const store = `nunopi:ws-chat:${root}`;
 
   const [sessions, setSessions] = useState<Record<string, Session>>({ [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) });
+  const [openKeys, setOpenKeys] = useState<string[]>([REPO_KEY]); // 탭바에 보이는 세션들(닫으면 여기서만 빠짐, 데이터는 유지)
   const [activeKey, setActiveKey] = useState<string>(REPO_KEY);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,28 +59,33 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
   const activeSub = active.subs.find((s) => s.id === active.activeSubId) ?? active.subs[0];
   const messages = activeSub.messages;
 
-  // 루트 바뀌면 저장된 세션 복원(레포별 격리). 구버전(messages[]) → subs[] 마이그레이션.
+  // 루트 바뀌면 저장된 세션 복원(레포별 격리). 구버전(messages[])·openKeys 없던 것 마이그레이션.
   useEffect(() => {
     hydrated.current = false;
-    let next: Record<string, Session> = { [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) };
+    let nextSessions: Record<string, Session> = { [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) };
+    let nextOpen: string[] = [REPO_KEY];
     let act = REPO_KEY;
     try {
       const raw = localStorage.getItem(store);
       if (raw) {
-        const p = JSON.parse(raw) as { sessions?: Record<string, Partial<Session> & { messages?: ChatMessage[] }>; activeKey?: string };
+        const p = JSON.parse(raw) as { sessions?: Record<string, Partial<Session> & { messages?: ChatMessage[] }>; openKeys?: string[]; activeKey?: string };
         if (p.sessions && p.sessions[REPO_KEY]) {
           const migrated: Record<string, Session> = {};
           for (const [k, s] of Object.entries(p.sessions)) {
             const subs = Array.isArray(s.subs) && s.subs.length ? s.subs : [{ id: genId(), messages: Array.isArray(s.messages) ? s.messages : [] }];
             migrated[k] = { key: k, kind: (s.kind ?? "file") as SessionKind, label: s.label ?? k, subs, activeSubId: s.activeSubId && subs.some((x) => x.id === s.activeSubId) ? s.activeSubId : subs[0].id };
           }
-          next = migrated;
+          nextSessions = migrated;
+          nextOpen = Array.isArray(p.openKeys) && p.openKeys.length ? p.openKeys.filter((k) => migrated[k]) : Object.keys(migrated);
         }
-        if (p.activeKey && next[p.activeKey]) act = p.activeKey;
+        if (p.activeKey && nextSessions[p.activeKey]) act = p.activeKey;
       }
     } catch { /* ignore */ }
+    if (!nextOpen.includes(REPO_KEY)) nextOpen = [REPO_KEY, ...nextOpen];
+    else nextOpen = [REPO_KEY, ...nextOpen.filter((k) => k !== REPO_KEY)]; // repo 항상 맨 앞
+    if (!nextOpen.includes(act)) act = REPO_KEY;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 루트 변경 시 세션 복원(1회)
-    setSessions(next); setActiveKey(act);
+    setSessions(nextSessions); setOpenKeys(nextOpen); setActiveKey(act);
     ctxCache.current.clear();
     hydrated.current = true;
   }, [store, t]);
@@ -87,43 +93,38 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
   // 세션 변경 영속.
   useEffect(() => {
     if (!hydrated.current) return;
-    try { localStorage.setItem(store, JSON.stringify({ sessions, activeKey })); } catch { /* ignore */ }
-  }, [sessions, activeKey, store]);
+    try { localStorage.setItem(store, JSON.stringify({ sessions, openKeys, activeKey })); } catch { /* ignore */ }
+  }, [sessions, openKeys, activeKey, store]);
 
   // 새 메시지·스트리밍·세션/서브 전환 시 하단으로.
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages, streaming, activeKey, activeSub.id]);
 
-  // 세션 ensure + 활성화(중복 방지, 상한 정리).
+  // 세션 ensure(기존 데이터 보존) + 탭 열기 + 활성화.
   function openSession(key: string, kind: SessionKind, label: string) {
     setSessions((prev) => {
-      if (prev[key]) return prev;
+      if (prev[key]) return prev; // 이미 있으면 대화 그대로 보존
       const next = { ...prev, [key]: mkSession(key, kind, label) };
-      const closable = Object.keys(next).filter((k) => k !== REPO_KEY && k !== key);
-      if (closable.length > MAX_SESSIONS - 1) delete next[closable[0]]; // 가장 오래된 것 정리
+      // 상한 정리 — 닫힌(openKeys에 없는) 세션 중 가장 오래된 것부터.
+      const closed = Object.keys(next).filter((k) => k !== REPO_KEY && k !== key && !openKeys.includes(k));
+      while (Object.keys(next).length > MAX_SESSIONS && closed.length) delete next[closed.shift()!];
       return next;
     });
+    setOpenKeys((prev) => prev.includes(key) ? prev : [...prev, key]);
     setActiveKey(key);
   }
 
-  // 컨텍스트 신호 → 해당 세션 ensure+활성. (openFile/openDiff/focusedBranch 변화 감지)
+  // 포커스 신호(WorkspaceView) → 해당 세션 열기·활성. n(nonce) 덕에 같은 대상 재클릭도 발화.
   useEffect(() => {
-    if (!openFile) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부 prop 신호를 세션 상태로 동기화(변화 시)
-    openSession(`file:${openFile}`, "file", openFile.split("/").pop() ?? openFile);
-  }, [openFile]);
-  useEffect(() => {
-    if (!openDiff) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부 prop 신호를 세션 상태로 동기화(변화 시)
-    openSession(`diff:${openDiff.hash}:${openDiff.file}`, "diff", `${openDiff.file.split("/").pop()} @${openDiff.hash.slice(0, 7)}`);
-  }, [openDiff]);
-  useEffect(() => {
-    if (!focusedBranch) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부 prop 신호를 세션 상태로 동기화(변화 시)
-    openSession(`branch:${focusedBranch}`, "branch", focusedBranch);
-  }, [focusedBranch]);
+    if (!focus) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부 클릭 신호를 세션 상태로 동기화
+    openSession(focus.key, focus.kind, focus.label);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus만 감시(openSession 넣으면 매 렌더 재실행)
+  }, [focus]);
 
+  // 탭 닫기 — 탭바에서만 제거, 대화 데이터는 sessions에 보존(다시 열면 복원).
   function closeSession(key: string) {
-    setSessions((prev) => { if (key === REPO_KEY) return prev; const n = { ...prev }; delete n[key]; return n; });
+    if (key === REPO_KEY) return;
+    setOpenKeys((prev) => prev.filter((k) => k !== key));
     setActiveKey((cur) => cur === key ? REPO_KEY : cur);
   }
 
@@ -260,11 +261,8 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     }
   }
 
-  // 탭 순서: repo 먼저, 나머지 삽입 순.
-  const tabs = useMemo(() => {
-    const keys = Object.keys(sessions);
-    return [REPO_KEY, ...keys.filter((k) => k !== REPO_KEY)].filter((k) => sessions[k]).map((k) => sessions[k]);
-  }, [sessions]);
+  // 탭 = openKeys 순서(repo 맨 앞).
+  const tabs = useMemo(() => openKeys.filter((k) => sessions[k]).map((k) => sessions[k]), [openKeys, sessions]);
 
   // 서브 대화 제목 — "질문 N"(세션 내 순번). 단순·예측가능.
   const subTitle = (i: number) => `${t("workspace.chatThread")} ${i + 1}`;
