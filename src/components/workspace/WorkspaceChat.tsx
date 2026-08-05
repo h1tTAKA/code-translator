@@ -9,6 +9,7 @@ import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconTrash, I
 import Markdown from "@/components/learning/Markdown";
 import { parseCardSuggestions } from "@/lib/cardSuggestion";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
@@ -41,6 +42,7 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
 }) {
   const t = useT();
   const { locale } = useLocale();
+  const confirm = useConfirm();
   const store = `nunopi:ws-chat:${root}`;
 
   const [sessions, setSessions] = useState<Record<string, Session>>({ [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) });
@@ -140,7 +142,10 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
   function switchSub(id: string) {
     setSessions((prev) => { const s = prev[activeKey]; if (!s) return prev; return { ...prev, [activeKey]: { ...s, activeSubId: id } }; });
   }
-  function closeSub(id: string) {
+  async function closeSub(id: string) {
+    // 내용 있는 대화면 삭제 확인(실수 방지). 빈 대화는 바로 제거.
+    const sub = active.subs.find((su) => su.id === id);
+    if (sub?.messages.length && !(await confirm({ title: t("workspace.chatDeleteThreadTitle"), message: t("workspace.chatDeleteThread"), confirmText: t("common.delete"), danger: true }))) return;
     setSessions((prev) => {
       const s = prev[activeKey]; if (!s) return prev;
       let subs = s.subs.filter((su) => su.id !== id);
@@ -309,7 +314,7 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
                 <IconMessageCircle size={10} stroke={2} className="shrink-0" aria-hidden />
                 <span className="whitespace-nowrap">{subTitle(i)}</span>
                 {active.subs.length > 1 && (
-                  <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); closeSub(sub.id); }}
+                  <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); void closeSub(sub.id); }}
                     className="ml-0.5 shrink-0 rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-600" aria-label="close thread">
                     <IconX size={9} stroke={2.5} aria-hidden />
                   </span>
