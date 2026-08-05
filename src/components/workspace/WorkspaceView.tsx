@@ -2,12 +2,13 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useEffect, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconLoader2 } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat from "@/components/workspace/WorkspaceChat";
 import Terminal from "@/components/workspace/Terminal";
+import GitGraph from "@/components/workspace/GitGraph";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -35,8 +36,10 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
   const [codeW, setCodeW] = useState(480);
-  const dragRef = useRef<{ kind: "tree" | "code" | "chat"; startX: number; startVal: number } | null>(null);
-  const wRef = useRef({ tree: 240, chat: 320, code: 480 }); // 최신 폭 미러(드래그 종료 시 영속용)
+  const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
+  const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
+  const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH"; startX: number; startY: number; startVal: number } | null>(null);
+  const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
   const [mounted, setMounted] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
   useEffect(() => setMounted(true), []);
@@ -56,6 +59,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const t = Number(localStorage.getItem("nunopi:ws-tree-w")); if (t) { const v = clamp(t, 140, 560); setTreeW(v); wRef.current.tree = v; }
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
       const k = Number(localStorage.getItem("nunopi:ws-code-w")); if (k) { const v = clamp(k, 240, 900); setCodeW(v); wRef.current.code = v; }
+      const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
+      setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
     } catch { /* ignore */ }
   }, [mounted]);
 
@@ -66,7 +71,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const dx = e.clientX - d.startX;
       if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
       else if (d.kind === "code") { const v = clamp(d.startVal - dx, 240, 900); setCodeW(v); wRef.current.code = v; }
-      else { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
+      else if (d.kind === "chat") { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
+      else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // gitH: 세로
     };
     const up = () => {
       if (!dragRef.current) return;
@@ -75,18 +81,21 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         localStorage.setItem("nunopi:ws-tree-w", String(wRef.current.tree));
         localStorage.setItem("nunopi:ws-chat-w", String(wRef.current.chat));
         localStorage.setItem("nunopi:ws-code-w", String(wRef.current.code));
+        localStorage.setItem("nunopi:ws-git-h", String(wRef.current.gitH));
       } catch { /* ignore */ }
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, []);
 
-  const startDrag = (kind: "tree" | "code" | "chat", startVal: number) => (e: React.MouseEvent) => {
+  const startDrag = (kind: "tree" | "code" | "chat" | "gitH", startVal: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     // eslint-disable-next-line react-hooks/refs -- 이벤트 핸들러 내 ref 쓰기(렌더 중 아님)
-    dragRef.current = { kind, startX: e.clientX, startVal };
-    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
+    dragRef.current = { kind, startX: e.clientX, startY: e.clientY, startVal };
+    document.body.style.cursor = kind === "gitH" ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
   };
+
+  const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
 
   // 폴더 정해지면 파일트리 로드.
   useEffect(() => {
@@ -155,15 +164,28 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         </button>
       </header>
       <div className="flex min-h-0 flex-1">
-        {/* 좌: 파일트리 */}
-        <aside style={{ width: treeW }} className="shrink-0 border-r border-zinc-200 dark:border-zinc-800">
-          {treeLoading ? (
-            <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
-          ) : files.length > 0 ? (
-            <FileTree files={files} selected={openFile} onSelect={setOpenFile} />
-          ) : (
-            <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
+        {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
+        <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {treeLoading ? (
+              <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
+            ) : files.length > 0 ? (
+              <FileTree files={files} selected={openFile} onSelect={setOpenFile} />
+            ) : (
+              <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
+            )}
+          </div>
+          {gitOpen && (
+            <>
+              <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
+              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} /></div>
+            </>
           )}
+          <button type="button" onClick={toggleGit} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
+            <IconGitBranch size={12} stroke={2} aria-hidden />
+            <span>git</span>
+            {gitOpen ? <IconChevronDown size={12} stroke={2} className="ml-auto" aria-hidden /> : <IconChevronUp size={12} stroke={2} className="ml-auto" aria-hidden />}
+          </button>
         </aside>
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
