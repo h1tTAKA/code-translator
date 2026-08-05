@@ -43,6 +43,10 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
   const rulerRef = useRef<HTMLDivElement>(null);
   const draggingRuler = useRef(false);
   const [vp, setVp] = useState({ top: 0, height: 100 }); // 오버뷰 썸(현재 보이는 구간, %)
+  const [showRuler, setShowRuler] = useState(false);     // 오버뷰 미니맵 표시(스크롤·호버 시만)
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reveal = () => { setShowRuler(true); if (hideTimer.current) clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setShowRuler(false), 1200); };
+  useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current); }, []);
 
   const syncVp = () => {
     const el = scrollRef.current; if (!el) return;
@@ -115,8 +119,10 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
     if (s >= 0) flush(lines.length);
   }
   return (
-    <div className="relative h-full bg-white dark:bg-[#0b0c12]">
-      <div ref={scrollRef} onScroll={syncVp} className="h-full overflow-auto pr-3 font-mono text-[11px] leading-[1.55] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="relative h-full bg-white dark:bg-[#0b0c12]"
+      onMouseEnter={() => { if (hideTimer.current) clearTimeout(hideTimer.current); setShowRuler(true); }}
+      onMouseLeave={() => { if (hideTimer.current) clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setShowRuler(false), 400); }}>
+      <div ref={scrollRef} onScroll={() => { syncVp(); reveal(); }} className="h-full overflow-auto pr-3 font-mono text-[11px] leading-[1.55] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {lines.map((l, i) => {
         // meta(diff/index/+++/---) + hunk(@@) 헤더 숨김 — -U100000으로 전체 컨텍스트라 생략 구분선 불필요.
         if (l.kind === "meta" || l.kind === "hunk") return null;
@@ -137,7 +143,7 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
       })}
       </div>
       {/* 오른쪽 오버뷰 미니맵 스크롤바 — 트랙 + 변경 마크(초록/빨강) + 잡을 수 있는 뷰포트 썸. 드래그/클릭 이동. */}
-      <div ref={rulerRef} onMouseDown={rulerDown} className="absolute inset-y-0 right-0 w-3.5 cursor-pointer border-l border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-zinc-800/40">
+      <div ref={rulerRef} onMouseDown={rulerDown} className={`absolute inset-y-0 right-0 w-3.5 cursor-pointer border-l border-zinc-200 bg-zinc-100/70 transition-opacity duration-300 dark:border-zinc-800 dark:bg-zinc-800/40 ${showRuler ? "opacity-100" : "pointer-events-none opacity-0"}`}>
         {blocks.map((b, k) => (
           <div key={k} className={`pointer-events-none absolute inset-x-0 ${b.add ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${b.top}%`, height: `${Math.max(0.6, b.height)}%`, minHeight: 3 }} />
         ))}
