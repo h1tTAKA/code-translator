@@ -136,10 +136,19 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
         const d = await r.json();
         const diff = r.ok && d.ok ? String(d.diff ?? "") : "";
         ctx = diff ? `# 커밋 ${hash.slice(0, 7)}에서 ${file}의 변경(diff, before/after)\n\`\`\`diff\n${diff}\n\`\`\`\n` : "";
+      } else if (s.kind === "branch") {
+        const branch = s.key.slice("branch:".length);
+        const r = await fetch("/api/repo/git-branch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, branch }) });
+        const d = await r.json();
+        if (r.ok && d.ok) {
+          const parts = [`# 브랜치: ${branch}`];
+          if (d.commits) parts.push(`## 최근 커밋\n${d.commits}`);
+          if (d.stat) parts.push(`## ${d.base} 대비 변경 요약\n\`\`\`\n${d.stat}\n\`\`\``);
+          ctx = parts.join("\n\n") + "\n";
+        }
       } else if (s.kind === "repo") {
         ctx = await repoContext();
       }
-      // branch 컨텍스트는 후속 커밋(#653 커밋3)서 채움.
     } catch { ctx = ""; }
     ctxCache.current.set(s.key, ctx);
     return ctx;

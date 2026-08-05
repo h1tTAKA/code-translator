@@ -20,7 +20,7 @@ const laneColor = (l: number) => LANE_COLORS[((l % LANE_COLORS.length) + LANE_CO
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
 const STATUS = { M: ["M", "text-amber-600 dark:text-amber-500"], A: ["A", "text-emerald-600 dark:text-emerald-500"], D: ["D", "text-rose-600 dark:text-rose-500"], R: ["R", "text-sky-600 dark:text-sky-500"], C: ["C", "text-sky-600 dark:text-sky-500"] } as const;
 
-export default function GitGraph({ root, onOpenDiff }: { root: string; onOpenDiff: (hash: string, file: string) => void }) {
+export default function GitGraph({ root, onOpenDiff, onFocusBranch }: { root: string; onOpenDiff: (hash: string, file: string) => void; onFocusBranch: (branch: string) => void }) {
   const t = useT();
   const [model, setModel] = useState<GitGraphModel | null>(null);
   const [isGit, setIsGit] = useState(true);
@@ -104,8 +104,13 @@ export default function GitGraph({ root, onOpenDiff }: { root: string; onOpenDif
                     {row.commit.refs.map((rf) => {
                       const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
                       const b = refBadge(rf, branch);
+                      // 브랜치 배지(태그 제외) 클릭 → 그 브랜치 챗 세션(#653). 커밋 토글 전파 차단.
+                      const clickable = !b.tag;
                       return (
-                        <span key={rf} className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls}`} title={isCur ? t("workspace.gitHeadHint") : undefined}>
+                        <span key={rf} role={clickable ? "button" : undefined} tabIndex={clickable ? -1 : undefined}
+                          onClick={clickable ? (e) => { e.stopPropagation(); onFocusBranch(rf); } : undefined}
+                          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls} ${clickable ? "cursor-pointer hover:ring-1 hover:ring-current" : ""}`}
+                          title={clickable ? t("workspace.gitAskBranch", { branch: rf }) : undefined}>
                           {isCur ? <IconGitCommit size={8} stroke={2.5} aria-hidden /> : b.tag ? <IconTag size={8} stroke={2} aria-hidden /> : <IconGitBranch size={8} stroke={2} aria-hidden />}
                           {isCur && <span className="font-bold">HEAD</span>}{rf}
                         </span>
