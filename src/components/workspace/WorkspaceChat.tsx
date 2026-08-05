@@ -262,11 +262,8 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     return [REPO_KEY, ...keys.filter((k) => k !== REPO_KEY)].filter((k) => sessions[k]).map((k) => sessions[k]);
   }, [sessions]);
 
-  // 서브 대화 제목 — 첫 유저 메시지 요약. 없으면 번호만("대화" 접두어는 자리 낭비).
-  const subTitle = (sub: Sub, i: number) => {
-    const first = sub.messages.find((m) => m.role === "user")?.content?.trim();
-    return first ? (first.length > 18 ? first.slice(0, 18) + "…" : first) : String(i + 1);
-  };
+  // 서브 대화 제목 — "질문 N"(세션 내 순번). 단순·예측가능.
+  const subTitle = (i: number) => `${t("workspace.chatThread")} ${i + 1}`;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -301,26 +298,28 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
         )}
       </div>
 
-      {/* 서브 대화 탭바 — 이 세션 안의 여러 대화 스레드(질문 쌓이면 새 대화로 분리) */}
-      <div className="nunopi-scroll flex shrink-0 items-center gap-1 border-b border-zinc-100 bg-zinc-50/60 px-1.5 py-1 dark:border-zinc-800/60 dark:bg-zinc-900/40">
-        {active.subs.map((sub, i) => {
-          const on = sub.id === active.activeSubId;
-          return (
-            <button key={sub.id} type="button" onClick={() => switchSub(sub.id)} title={subTitle(sub, i)}
-              className={`group inline-flex min-w-0 shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition ${on ? "bg-white font-semibold text-zinc-700 shadow-sm dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-white/70 dark:text-zinc-500 dark:hover:bg-zinc-800"}`}>
-              <IconMessageCircle size={10} stroke={2} className="shrink-0" aria-hidden />
-              <span className="max-w-[100px] truncate">{subTitle(sub, i)}</span>
-              {active.subs.length > 1 && (
-                <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); closeSub(sub.id); }}
-                  className="ml-0.5 shrink-0 rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-600" aria-label="close thread">
-                  <IconX size={9} stroke={2.5} aria-hidden />
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {/* 서브 대화 탭바 — 이 세션 안의 여러 대화 스레드. 탭은 가로 스크롤, +는 우측 고정 */}
+      <div className="flex shrink-0 items-center border-b border-zinc-100 bg-zinc-50/60 dark:border-zinc-800/60 dark:bg-zinc-900/40">
+        <div className="nunopi-scroll flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1.5 py-1">
+          {active.subs.map((sub, i) => {
+            const on = sub.id === active.activeSubId;
+            return (
+              <button key={sub.id} type="button" onClick={() => switchSub(sub.id)} title={subTitle(i)}
+                className={`group inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition ${on ? "bg-white font-semibold text-zinc-700 shadow-sm dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-white/70 dark:text-zinc-500 dark:hover:bg-zinc-800"}`}>
+                <IconMessageCircle size={10} stroke={2} className="shrink-0" aria-hidden />
+                <span className="whitespace-nowrap">{subTitle(i)}</span>
+                {active.subs.length > 1 && (
+                  <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); closeSub(sub.id); }}
+                    className="ml-0.5 shrink-0 rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-600" aria-label="close thread">
+                    <IconX size={9} stroke={2.5} aria-hidden />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <button type="button" onClick={newSub} title={t("workspace.chatNewThread")}
-          className="shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-white hover:text-[#3B34E2] dark:hover:bg-zinc-700 dark:hover:text-[#8b86f5]">
+          className="shrink-0 border-l border-zinc-200 px-2 py-1.5 text-zinc-400 transition hover:bg-white hover:text-[#3B34E2] dark:border-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-[#8b86f5]">
           <IconPlus size={12} stroke={2.5} aria-hidden />
         </button>
       </div>
