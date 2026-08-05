@@ -101,16 +101,18 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
   if (status === "error" || !lines) return <div className="flex h-full items-center justify-center gap-1.5 text-[12px] text-amber-600 dark:text-amber-500"><IconAlertTriangle size={14} stroke={2} aria-hidden /> diff 실패</div>;
 
   let codeIdx = 0; // add/del/ctx 진행 인덱스 → tokens 매칭
-  // 오버뷰 룰러용: 연속 변경 줄을 한 블록으로 병합(줄마다 틱 찍으면 새파일서 바코드 벽). add 있으면 초록, 삭제만 빨강.
+  // 오버뷰 룰러용: 연속 "같은 종류(추가/삭제)" 줄을 한 블록으로. 수정(삭제+추가)은 빨강 블록·초록 블록 따로 →
+  // 삭제도 빨강으로 보임. (줄마다 틱 찍으면 새파일서 바코드 벽이라 병합.)
   const total = Math.max(1, lines.length);
   const blocks: { top: number; height: number; add: boolean }[] = [];
-  { let s = -1, hasAdd = false;
+  { let s = -1; let kind: "add" | "del" | null = null;
+    const flush = (end: number) => { if (s >= 0 && kind) blocks.push({ top: (s / total) * 100, height: Math.max(0.5, ((end - s) / total) * 100), add: kind === "add" }); };
     lines.forEach((l, i) => {
-      const ch = l.kind === "add" || l.kind === "del";
-      if (ch) { if (s < 0) { s = i; hasAdd = false; } if (l.kind === "add") hasAdd = true; }
-      else if (s >= 0) { blocks.push({ top: (s / total) * 100, height: Math.max(0.5, ((i - s) / total) * 100), add: hasAdd }); s = -1; }
+      const k = l.kind === "add" ? "add" : l.kind === "del" ? "del" : null;
+      if (k) { if (s < 0) { s = i; kind = k; } else if (k !== kind) { flush(i); s = i; kind = k; } }
+      else if (s >= 0) { flush(i); s = -1; kind = null; }
     });
-    if (s >= 0) blocks.push({ top: (s / total) * 100, height: Math.max(0.5, ((lines.length - s) / total) * 100), add: hasAdd });
+    if (s >= 0) flush(lines.length);
   }
   return (
     <div className="relative h-full bg-white dark:bg-[#0b0c12]">
