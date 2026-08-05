@@ -105,7 +105,7 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
         const mark = l.kind === "add" ? "+" : l.kind === "del" ? "−" : " ";
         const markCls = l.kind === "add" ? "text-emerald-600 dark:text-emerald-500" : l.kind === "del" ? "text-rose-600 dark:text-rose-500" : "text-transparent";
         return (
-          <div key={i} className={`flex ${bg}`}>
+          <div key={i} className={`flex w-max min-w-full ${bg}`}>
             <span className="w-9 shrink-0 select-none border-r border-zinc-100 px-1 text-right text-[10px] text-zinc-300 dark:border-zinc-800 dark:text-zinc-600">{l.oldN ?? ""}</span>
             <span className="w-9 shrink-0 select-none border-r border-zinc-100 px-1 text-right text-[10px] text-zinc-300 dark:border-zinc-800 dark:text-zinc-600">{l.newN ?? ""}</span>
             <span className={`w-4 shrink-0 select-none text-center ${markCls}`}>{mark}</span>
