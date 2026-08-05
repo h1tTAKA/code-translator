@@ -31,8 +31,10 @@ export default function GitGraph({ root, onOpenDiff }: { root: string; onOpenDif
     } catch { setIsGit(false); setModel(null); }
     finally { setLoading(false); }
   }, [root]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load()가 setLoading 동기 호출(마운트/root 변경 시 로드)
   useEffect(() => { void load(); }, [load]);
   // 폴더 바뀌면 펼침·캐시 초기화.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- root 변경 시 펼침·캐시 리셋
   useEffect(() => { setExpanded(new Set()); setFilesByHash({}); }, [root]);
 
   const toggle = async (hash: string) => {
