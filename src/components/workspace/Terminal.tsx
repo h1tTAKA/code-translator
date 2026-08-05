@@ -34,18 +34,22 @@ export default function Terminal({ cwd }: { cwd: string }) {
       try { term.loadAddon(new webgl.WebglAddon()); } catch { /* WebGL 미지원 → 기본 렌더 폴백 */ }
       fit.fit();
 
-      const r = await nd.terminal.ensure({ cwd, cols: term.cols, rows: term.rows });
-      if (disposed || !term) return;
-      if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
-      if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생
-
-      offData = nd.terminal.onData(({ cwd: c, data }) => { if (c === cwd && term) term.write(data); });
-      term.onData((d) => nd.terminal.input({ cwd, data: d }));
-      ro = new ResizeObserver(() => {
-        if (!term) return;
-        try { fit.fit(); nd.terminal.resize({ cwd, cols: term.cols, rows: term.rows }); } catch { /* ignore */ }
-      });
-      ro.observe(host);
+      try {
+        const r = await nd.terminal.ensure({ cwd, cols: term.cols, rows: term.rows });
+        if (disposed || !term) return;
+        if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
+        if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생
+        offData = nd.terminal.onData(({ cwd: c, data }) => { if (c === cwd && term) term.write(data); });
+        term.onData((d) => nd.terminal.input({ cwd, data: d }));
+        ro = new ResizeObserver(() => {
+          if (!term) return;
+          try { fit.fit(); nd.terminal.resize({ cwd, cols: term.cols, rows: term.rows }); } catch { /* ignore */ }
+        });
+        ro.observe(host);
+      } catch {
+        // 핸들러 미등록(옛 메인) 등 — 크래시 대신 안내.
+        if (term && !disposed) term.write("\r\n[터미널 연결 실패 — electron:dev를 완전히 껐다 재시작해 주세요]\r\n");
+      }
     })();
 
     return () => { disposed = true; offData?.(); ro?.disconnect(); term?.dispose(); term = null; };
