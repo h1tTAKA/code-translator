@@ -127,10 +127,19 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
         const d = await r.json();
         const src = r.ok ? String(d.content ?? "") : "";
         ctx = src ? `# 지금 열린 파일: ${f}\n\`\`\`\n${src}\n\`\`\`\n` : "";
+      } else if (s.kind === "diff") {
+        // 키: diff:<hash>:<file> — hash 뒤 첫 ':' 기준 분리(파일 경로 안전).
+        const rest = s.key.slice("diff:".length);
+        const ci = rest.indexOf(":");
+        const hash = rest.slice(0, ci), file = rest.slice(ci + 1);
+        const r = await fetch("/api/repo/git-show", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, hash, file }) });
+        const d = await r.json();
+        const diff = r.ok && d.ok ? String(d.diff ?? "") : "";
+        ctx = diff ? `# 커밋 ${hash.slice(0, 7)}에서 ${file}의 변경(diff, before/after)\n\`\`\`diff\n${diff}\n\`\`\`\n` : "";
       } else if (s.kind === "repo") {
         ctx = await repoContext();
       }
-      // diff/branch 컨텍스트는 후속 커밋(#653 커밋2·3)서 채움.
+      // branch 컨텍스트는 후속 커밋(#653 커밋3)서 채움.
     } catch { ctx = ""; }
     ctxCache.current.set(s.key, ctx);
     return ctx;
