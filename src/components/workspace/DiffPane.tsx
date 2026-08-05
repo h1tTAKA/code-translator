@@ -116,13 +116,8 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
     <div className="relative h-full bg-white dark:bg-[#0b0c12]">
       <div ref={scrollRef} onScroll={syncVp} className="h-full overflow-auto pr-3 font-mono text-[11px] leading-[1.55] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {lines.map((l, i) => {
-        if (l.kind === "meta") return null; // diff/index/+++/--- 헤더 숨김(잡음)
-        if (l.kind === "hunk") return (
-          // 건너뛴(안 바뀐) 구간 표시만 — 얇은 구분선 + ⋯. 함수 컨텍스트는 title(호버)로.
-          <div key={i} className="flex select-none items-center gap-2 px-2 py-1 text-zinc-300 dark:text-zinc-700" title={l.ctxLabel || undefined}>
-            <span className="h-px flex-1 bg-zinc-100 dark:bg-zinc-800" /><span className="text-[10px]">⋯</span><span className="h-px flex-1 bg-zinc-100 dark:bg-zinc-800" />
-          </div>
-        );
+        // meta(diff/index/+++/---) + hunk(@@) 헤더 숨김 — -U100000으로 전체 컨텍스트라 생략 구분선 불필요.
+        if (l.kind === "meta" || l.kind === "hunk") return null;
         const tok = tokens[codeIdx++]; // 이 코드줄의 토큰
         const bg = l.kind === "add" ? "bg-emerald-500/20" : l.kind === "del" ? "bg-rose-500/20" : "";
         const mark = l.kind === "add" ? "+" : l.kind === "del" ? "−" : " ";
