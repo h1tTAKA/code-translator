@@ -1,8 +1,8 @@
 "use client";
 // 워크스페이스 파일트리(#647) — scan이 준 flat 경로 목록을 중첩 트리로. 폴더 접기 + 파일 클릭.
 import { useMemo, useState } from "react";
-import { IconChevronRight, IconFolder, IconFolderOpen } from "@tabler/icons-react";
-import { fileGlyph } from "@/lib/repo/fileIcon";
+import { IconChevronRight } from "@tabler/icons-react";
+import { fileGlyph, folderGlyph } from "@/lib/repo/fileIcon";
 
 interface TreeNode { name: string; path: string; children?: TreeNode[] } // children 있으면 폴더
 
@@ -39,7 +39,7 @@ function Node({ node, depth, open, toggle, selected, onSelect }: {
         <button type="button" onClick={() => toggle(node.path)} style={pad}
           className="flex w-full items-center gap-1 py-0.5 pr-1.5 text-left text-[12px] text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">
           <IconChevronRight size={12} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
-          {isOpen ? <IconFolderOpen size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden /> : <IconFolder size={13} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />}
+          {folderGlyph(node.name, isOpen)}
           <span className="truncate">{node.name}</span>
         </button>
         {isOpen && node.children.map((c) => <Node key={c.path} node={c} depth={depth + 1} open={open} toggle={toggle} selected={selected} onSelect={onSelect} />)}
