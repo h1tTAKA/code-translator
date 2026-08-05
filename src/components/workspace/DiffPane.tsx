@@ -1,6 +1,6 @@
 "use client";
 // 워크스페이스 diff 뷰(#649) — 커밋+파일의 git diff. shiki 신택스 하이라이팅 + 빨강(−)/초록(+) 배경.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { codeToTokens, type ThemedToken, type BundledLanguage } from "shiki";
 import { IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
 
@@ -39,6 +39,21 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
   const [tokens, setTokens] = useState<ThemedToken[][]>([]); // 코드줄(add/del/ctx) 순서별 하이라이트 토큰
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [isDark, setIsDark] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [vp, setVp] = useState({ top: 0, height: 100 }); // 오버뷰 룰러 위 현재 보이는 구간(%)
+
+  const syncVp = () => {
+    const el = scrollRef.current; if (!el) return;
+    const h = el.scrollHeight || 1;
+    setVp({ top: (el.scrollTop / h) * 100, height: Math.min(100, (el.clientHeight / h) * 100) });
+  };
+  useEffect(() => { if (status === "ok") syncVp(); }, [status, lines]);
+  const jump = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = scrollRef.current; if (!el) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = (e.clientY - rect.top) / rect.height;
+    el.scrollTop = frac * el.scrollHeight - el.clientHeight / 2;
+  };
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 테마 초기 감지(1회)
@@ -76,7 +91,7 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
   let codeIdx = 0; // add/del/ctx 진행 인덱스 → tokens 매칭
   return (
     <div className="relative h-full bg-white dark:bg-[#0b0c12]">
-      <div className="nunopi-scroll h-full overflow-auto pr-2.5 font-mono text-[11px] leading-[1.55]">
+      <div ref={scrollRef} onScroll={syncVp} className="nunopi-scroll h-full overflow-auto pr-3 font-mono text-[11px] leading-[1.55]">
       {lines.map((l, i) => {
         if (l.kind === "meta") return null; // diff/index/+++/--- 헤더 숨김(잡음)
         if (l.kind === "hunk") return (
@@ -101,11 +116,13 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
         );
       })}
       </div>
-      {/* 오른쪽 변경 오버뷰 룰러 — 파일 전체서 어디가 바뀌었는지(초록=추가·빨강=삭제) 미니맵. */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-2 border-l border-zinc-100 bg-zinc-50/40 dark:border-zinc-800 dark:bg-zinc-900/30">
+      {/* 오른쪽 변경 오버뷰 룰러 — 변경 위치(초록=추가·빨강=삭제) + 현재 보이는 구간(뷰포트) 표시. 클릭=점프. */}
+      <div onMouseDown={jump} className="absolute inset-y-0 right-0 w-3 cursor-pointer border-l border-zinc-100 bg-zinc-50/50 dark:border-zinc-800 dark:bg-zinc-900/40">
         {lines.map((l, i) => (l.kind === "add" || l.kind === "del") ? (
-          <div key={i} className={`absolute right-0 h-[2px] w-full ${l.kind === "add" ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${(i / Math.max(1, lines.length)) * 100}%` }} />
+          <div key={i} className={`pointer-events-none absolute right-0 h-[2px] w-full ${l.kind === "add" ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${(i / Math.max(1, lines.length)) * 100}%` }} />
         ) : null)}
+        {/* 현재 뷰포트(지금 보고 있는 구간) */}
+        <div className="pointer-events-none absolute inset-x-0 rounded-sm border border-[#3B34E2]/50 bg-[#3B34E2]/15 dark:border-[#8b86f5]/50 dark:bg-[#8b86f5]/20" style={{ top: `${vp.top}%`, height: `${Math.max(4, vp.height)}%` }} />
       </div>
     </div>
   );
