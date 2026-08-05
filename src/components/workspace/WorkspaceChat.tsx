@@ -143,9 +143,8 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     setSessions((prev) => { const s = prev[activeKey]; if (!s) return prev; return { ...prev, [activeKey]: { ...s, activeSubId: id } }; });
   }
   async function closeSub(id: string) {
-    // 내용 있는 대화면 삭제 확인(실수 방지). 빈 대화는 바로 제거.
-    const sub = active.subs.find((su) => su.id === id);
-    if (sub?.messages.length && !(await confirm({ title: t("workspace.chatDeleteThreadTitle"), message: t("workspace.chatDeleteThread"), confirmText: t("common.delete"), danger: true }))) return;
+    // 항상 삭제 확인(실수 방지) — Ask 챗룸과 동일.
+    if (!(await confirm({ title: t("workspace.chatDeleteThreadTitle"), message: t("workspace.chatDeleteThread"), confirmText: t("common.delete"), danger: true }))) return;
     setSessions((prev) => {
       const s = prev[activeKey]; if (!s) return prev;
       let subs = s.subs.filter((su) => su.id !== id);
