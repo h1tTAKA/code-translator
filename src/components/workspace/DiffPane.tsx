@@ -91,7 +91,7 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
   let codeIdx = 0; // add/del/ctx 진행 인덱스 → tokens 매칭
   return (
     <div className="relative h-full bg-white dark:bg-[#0b0c12]">
-      <div ref={scrollRef} onScroll={syncVp} className="nunopi-scroll h-full overflow-auto pr-3 font-mono text-[11px] leading-[1.55]">
+      <div ref={scrollRef} onScroll={syncVp} className="h-full overflow-auto pr-3 font-mono text-[11px] leading-[1.55] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {lines.map((l, i) => {
         if (l.kind === "meta") return null; // diff/index/+++/--- 헤더 숨김(잡음)
         if (l.kind === "hunk") return (
