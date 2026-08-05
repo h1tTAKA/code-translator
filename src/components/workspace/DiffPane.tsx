@@ -75,7 +75,8 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
 
   let codeIdx = 0; // add/del/ctx 진행 인덱스 → tokens 매칭
   return (
-    <div className="nunopi-scroll h-full overflow-auto bg-white font-mono text-[11px] leading-[1.55] dark:bg-[#0b0c12]">
+    <div className="relative h-full bg-white dark:bg-[#0b0c12]">
+      <div className="nunopi-scroll h-full overflow-auto pr-2.5 font-mono text-[11px] leading-[1.55]">
       {lines.map((l, i) => {
         if (l.kind === "meta") return null; // diff/index/+++/--- 헤더 숨김(잡음)
         if (l.kind === "hunk") return (
@@ -99,6 +100,13 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
           </div>
         );
       })}
+      </div>
+      {/* 오른쪽 변경 오버뷰 룰러 — 파일 전체서 어디가 바뀌었는지(초록=추가·빨강=삭제) 미니맵. */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-2 border-l border-zinc-100 bg-zinc-50/40 dark:border-zinc-800 dark:bg-zinc-900/30">
+        {lines.map((l, i) => (l.kind === "add" || l.kind === "del") ? (
+          <div key={i} className={`absolute right-0 h-[2px] w-full ${l.kind === "add" ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${(i / Math.max(1, lines.length)) * 100}%` }} />
+        ) : null)}
+      </div>
     </div>
   );
 }

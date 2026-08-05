@@ -17,8 +17,8 @@ export async function POST(request: Request): Promise<Response> {
   const opts = { cwd: path, maxBuffer: 20_000_000, timeout: 8000 } as const;
   try {
     if (typeof file === "string" && file) {
-      // 이 커밋에서 이 파일의 diff(첫 부모 대비).
-      const { stdout } = await pexecFile("git", ["show", "--format=", "--no-color", hash, "--", file], opts);
+      // 이 커밋에서 이 파일의 diff(첫 부모 대비). -U100000 = 전체 컨텍스트(생략 없이 파일 전체 표시).
+      const { stdout } = await pexecFile("git", ["show", "--format=", "--no-color", "-U100000", hash, "--", file], opts);
       return Response.json({ ok: true, diff: stdout });
     }
     // 바뀐 파일 목록: "M\tpath" / "A\tpath" / "D\tpath" / "R100\told\tnew".
