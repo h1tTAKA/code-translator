@@ -2,10 +2,11 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useEffect, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconTerminal2, IconFileCode, IconMessageCircle, IconLoader2 } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconTerminal2, IconFileCode, IconLoader2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
+import WorkspaceChat from "@/components/workspace/WorkspaceChat";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -99,8 +100,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     return () => { cancelled = true; };
   }, [path]);
 
-  // providerId/providerSettings — 우측 챗룸(후속 커밋)서 사용.
-  void providerId; void providerSettings; void active;
+  void active;
 
   async function pick() {
     if (!desktop?.pickRepoFolder || picking) return;
@@ -180,7 +180,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         </section>
         <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 우: 챗룸 */}
-        <aside style={{ width: chatW }} className="shrink-0 border-l border-zinc-200 dark:border-zinc-800"><ZonePlaceholder Icon={IconMessageCircle} label={t("workspace.chat")} /></aside>
+        <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
+          <WorkspaceChat root={path} openFile={openFile} providerId={providerId} providerSettings={providerSettings} />
+        </aside>
       </div>
     </div>
   );
