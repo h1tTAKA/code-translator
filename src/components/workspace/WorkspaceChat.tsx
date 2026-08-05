@@ -262,10 +262,10 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     return [REPO_KEY, ...keys.filter((k) => k !== REPO_KEY)].filter((k) => sessions[k]).map((k) => sessions[k]);
   }, [sessions]);
 
-  // 서브 대화 제목 — 첫 유저 메시지 요약, 없으면 "대화 N".
+  // 서브 대화 제목 — 첫 유저 메시지 요약. 없으면 번호만("대화" 접두어는 자리 낭비).
   const subTitle = (sub: Sub, i: number) => {
     const first = sub.messages.find((m) => m.role === "user")?.content?.trim();
-    return first ? (first.length > 18 ? first.slice(0, 18) + "…" : first) : `${t("workspace.chatThread")} ${i + 1}`;
+    return first ? (first.length > 18 ? first.slice(0, 18) + "…" : first) : String(i + 1);
   };
 
   return (
