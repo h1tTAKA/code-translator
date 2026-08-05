@@ -2,9 +2,10 @@
 // 워크스페이스 우측 챗룸(#647, #653) — 코딩하다 바로 질문. 워크스페이스 전용 슬림 UI.
 // #653: 단일 스레드 → "무엇에 대한 대화인가"별 키드 세션 맵.
 //   repo(기본, 레포 전체) / file:<path>(그 파일) / diff:<hash>:<file>(커밋 변경) / branch:<name>(브랜치 작업).
-// 각 세션 = 독립 스레드 + kind별 컨텍스트. localStorage 영속. 상단 탭바로 전환.
+// 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
+// localStorage 영속. 상단 세션 탭바 + 그 아래 서브 대화 탭바.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconTrash, IconStack2, IconGitBranch, IconGitCommit, IconX } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconTrash, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { parseCardSuggestions } from "@/lib/cardSuggestion";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
@@ -13,10 +14,15 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
 type SessionKind = "repo" | "file" | "diff" | "branch";
-interface Session { key: string; kind: SessionKind; label: string; messages: ChatMessage[]; }
+interface Sub { id: string; messages: ChatMessage[]; } // 세션 안의 한 대화 스레드
+interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; }
 
 const REPO_KEY = "repo";
 const MAX_SESSIONS = 24; // 상한만(골격) — 초과 시 가장 오래된 비활성 세션 정리. 세밀 LRU는 후속.
+
+const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
+const freshSub = (): Sub => ({ id: genId(), messages: [] });
+const mkSession = (key: string, kind: SessionKind, label: string): Session => { const s = freshSub(); return { key, kind, label, subs: [s], activeSubId: s.id }; };
 
 // 세션 kind별 아이콘 — JSX 직접 반환(렌더 중 컴포넌트 변수 생성 회피: react-hooks/static-components).
 function kindGlyph(k: SessionKind, size: number, className?: string) {
@@ -37,7 +43,7 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
   const { locale } = useLocale();
   const store = `nunopi:ws-chat:${root}`;
 
-  const [sessions, setSessions] = useState<Record<string, Session>>({ [REPO_KEY]: { key: REPO_KEY, kind: "repo", label: t("workspace.chatRepo"), messages: [] } });
+  const [sessions, setSessions] = useState<Record<string, Session>>({ [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) });
   const [activeKey, setActiveKey] = useState<string>(REPO_KEY);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,18 +53,26 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
   const hydrated = useRef(false);
 
   const active = sessions[activeKey] ?? sessions[REPO_KEY];
-  const messages = active.messages;
+  const activeSub = active.subs.find((s) => s.id === active.activeSubId) ?? active.subs[0];
+  const messages = activeSub.messages;
 
-  // 루트 바뀌면 저장된 세션 복원(레포별 격리).
+  // 루트 바뀌면 저장된 세션 복원(레포별 격리). 구버전(messages[]) → subs[] 마이그레이션.
   useEffect(() => {
     hydrated.current = false;
-    let next: Record<string, Session> = { [REPO_KEY]: { key: REPO_KEY, kind: "repo", label: t("workspace.chatRepo"), messages: [] } };
+    let next: Record<string, Session> = { [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) };
     let act = REPO_KEY;
     try {
       const raw = localStorage.getItem(store);
       if (raw) {
-        const p = JSON.parse(raw) as { sessions?: Record<string, Session>; activeKey?: string };
-        if (p.sessions && p.sessions[REPO_KEY]) next = p.sessions;
+        const p = JSON.parse(raw) as { sessions?: Record<string, Partial<Session> & { messages?: ChatMessage[] }>; activeKey?: string };
+        if (p.sessions && p.sessions[REPO_KEY]) {
+          const migrated: Record<string, Session> = {};
+          for (const [k, s] of Object.entries(p.sessions)) {
+            const subs = Array.isArray(s.subs) && s.subs.length ? s.subs : [{ id: genId(), messages: Array.isArray(s.messages) ? s.messages : [] }];
+            migrated[k] = { key: k, kind: (s.kind ?? "file") as SessionKind, label: s.label ?? k, subs, activeSubId: s.activeSubId && subs.some((x) => x.id === s.activeSubId) ? s.activeSubId : subs[0].id };
+          }
+          next = migrated;
+        }
         if (p.activeKey && next[p.activeKey]) act = p.activeKey;
       }
     } catch { /* ignore */ }
@@ -74,14 +88,14 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     try { localStorage.setItem(store, JSON.stringify({ sessions, activeKey })); } catch { /* ignore */ }
   }, [sessions, activeKey, store]);
 
-  // 새 메시지·스트리밍·세션전환 시 하단으로.
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages, streaming, activeKey]);
+  // 새 메시지·스트리밍·세션/서브 전환 시 하단으로.
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages, streaming, activeKey, activeSub.id]);
 
   // 세션 ensure + 활성화(중복 방지, 상한 정리).
   function openSession(key: string, kind: SessionKind, label: string) {
     setSessions((prev) => {
       if (prev[key]) return prev;
-      const next = { ...prev, [key]: { key, kind, label, messages: [] } };
+      const next = { ...prev, [key]: mkSession(key, kind, label) };
       const closable = Object.keys(next).filter((k) => k !== REPO_KEY && k !== key);
       if (closable.length > MAX_SESSIONS - 1) delete next[closable[0]]; // 가장 오래된 것 정리
       return next;
@@ -111,8 +125,29 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     setActiveKey((cur) => cur === key ? REPO_KEY : cur);
   }
 
+  // 활성 세션의 활성 서브 메시지 갱신.
   function setMessages(msgs: ChatMessage[]) {
-    setSessions((prev) => ({ ...prev, [activeKey]: { ...prev[activeKey], messages: msgs } }));
+    setSessions((prev) => {
+      const s = prev[activeKey]; if (!s) return prev;
+      return { ...prev, [activeKey]: { ...s, subs: s.subs.map((su) => su.id === s.activeSubId ? { ...su, messages: msgs } : su) } };
+    });
+  }
+
+  // 서브 대화: 새로 / 전환 / 닫기.
+  function newSub() {
+    setSessions((prev) => { const s = prev[activeKey]; if (!s) return prev; const su = freshSub(); return { ...prev, [activeKey]: { ...s, subs: [...s.subs, su], activeSubId: su.id } }; });
+  }
+  function switchSub(id: string) {
+    setSessions((prev) => { const s = prev[activeKey]; if (!s) return prev; return { ...prev, [activeKey]: { ...s, activeSubId: id } }; });
+  }
+  function closeSub(id: string) {
+    setSessions((prev) => {
+      const s = prev[activeKey]; if (!s) return prev;
+      let subs = s.subs.filter((su) => su.id !== id);
+      if (!subs.length) subs = [freshSub()]; // 최소 1개 유지
+      const activeSubId = s.activeSubId === id ? subs[subs.length - 1].id : s.activeSubId;
+      return { ...prev, [activeKey]: { ...s, subs, activeSubId } };
+    });
   }
 
   // kind별 컨텍스트 빌드(세션키 캐시).
@@ -187,7 +222,7 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     if (!text || loading) return;
     setInput("");
     const s = active;
-    const thread: ChatMessage[] = [...s.messages, { role: "user", content: text }];
+    const thread: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages(thread);
     setLoading(true); setStreaming("");
     try {
@@ -227,9 +262,15 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
     return [REPO_KEY, ...keys.filter((k) => k !== REPO_KEY)].filter((k) => sessions[k]).map((k) => sessions[k]);
   }, [sessions]);
 
+  // 서브 대화 제목 — 첫 유저 메시지 요약, 없으면 "대화 N".
+  const subTitle = (sub: Sub, i: number) => {
+    const first = sub.messages.find((m) => m.role === "user")?.content?.trim();
+    return first ? (first.length > 18 ? first.slice(0, 18) + "…" : first) : `${t("workspace.chatThread")} ${i + 1}`;
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* 탭바 — 열린 세션들 */}
+      {/* 세션 탭바 — 열린 세션들(repo/file/diff/branch) */}
       <div className="nunopi-scroll flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200 px-1.5 py-1 dark:border-zinc-800">
         {tabs.map((s) => {
           const on = s.key === activeKey;
@@ -249,7 +290,7 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
         })}
       </div>
 
-      {/* 헤더 — 현재 세션 표시 + 지우기 */}
+      {/* 헤더 — 현재 세션 표시 */}
       <div className="flex items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
         {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
@@ -258,6 +299,30 @@ export default function WorkspaceChat({ root, files, openFile, openDiff, focused
             <IconTrash size={13} stroke={2} aria-hidden />
           </button>
         )}
+      </div>
+
+      {/* 서브 대화 탭바 — 이 세션 안의 여러 대화 스레드(질문 쌓이면 새 대화로 분리) */}
+      <div className="nunopi-scroll flex shrink-0 items-center gap-1 border-b border-zinc-100 bg-zinc-50/60 px-1.5 py-1 dark:border-zinc-800/60 dark:bg-zinc-900/40">
+        {active.subs.map((sub, i) => {
+          const on = sub.id === active.activeSubId;
+          return (
+            <button key={sub.id} type="button" onClick={() => switchSub(sub.id)} title={subTitle(sub, i)}
+              className={`group inline-flex min-w-0 shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition ${on ? "bg-white font-semibold text-zinc-700 shadow-sm dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-white/70 dark:text-zinc-500 dark:hover:bg-zinc-800"}`}>
+              <IconMessageCircle size={10} stroke={2} className="shrink-0" aria-hidden />
+              <span className="max-w-[100px] truncate">{subTitle(sub, i)}</span>
+              {active.subs.length > 1 && (
+                <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); closeSub(sub.id); }}
+                  className="ml-0.5 shrink-0 rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-600" aria-label="close thread">
+                  <IconX size={9} stroke={2.5} aria-hidden />
+                </span>
+              )}
+            </button>
+          );
+        })}
+        <button type="button" onClick={newSub} title={t("workspace.chatNewThread")}
+          className="shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-white hover:text-[#3B34E2] dark:hover:bg-zinc-700 dark:hover:text-[#8b86f5]">
+          <IconPlus size={12} stroke={2.5} aria-hidden />
+        </button>
       </div>
 
       {/* 메시지 */}
