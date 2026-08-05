@@ -89,6 +89,17 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
   if (status === "error" || !lines) return <div className="flex h-full items-center justify-center gap-1.5 text-[12px] text-amber-600 dark:text-amber-500"><IconAlertTriangle size={14} stroke={2} aria-hidden /> diff 실패</div>;
 
   let codeIdx = 0; // add/del/ctx 진행 인덱스 → tokens 매칭
+  // 오버뷰 룰러용: 연속 변경 줄을 한 블록으로 병합(줄마다 틱 찍으면 새파일서 바코드 벽). add 있으면 초록, 삭제만 빨강.
+  const total = Math.max(1, lines.length);
+  const blocks: { top: number; height: number; add: boolean }[] = [];
+  { let s = -1, hasAdd = false;
+    lines.forEach((l, i) => {
+      const ch = l.kind === "add" || l.kind === "del";
+      if (ch) { if (s < 0) { s = i; hasAdd = false; } if (l.kind === "add") hasAdd = true; }
+      else if (s >= 0) { blocks.push({ top: (s / total) * 100, height: Math.max(0.5, ((i - s) / total) * 100), add: hasAdd }); s = -1; }
+    });
+    if (s >= 0) blocks.push({ top: (s / total) * 100, height: Math.max(0.5, ((lines.length - s) / total) * 100), add: hasAdd });
+  }
   return (
     <div className="relative h-full bg-white dark:bg-[#0b0c12]">
       <div ref={scrollRef} onScroll={syncVp} className="h-full overflow-auto pr-3 font-mono text-[11px] leading-[1.55] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -116,13 +127,13 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
         );
       })}
       </div>
-      {/* 오른쪽 변경 오버뷰 룰러 — 변경 위치(초록=추가·빨강=삭제) + 현재 보이는 구간(뷰포트) 표시. 클릭=점프. */}
-      <div onMouseDown={jump} className="absolute inset-y-0 right-0 w-3 cursor-pointer border-l border-zinc-100 bg-zinc-50/50 dark:border-zinc-800 dark:bg-zinc-900/40">
-        {lines.map((l, i) => (l.kind === "add" || l.kind === "del") ? (
-          <div key={i} className={`pointer-events-none absolute right-0 h-[2px] w-full ${l.kind === "add" ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${(i / Math.max(1, lines.length)) * 100}%` }} />
-        ) : null)}
+      {/* 오른쪽 변경 오버뷰 — 변경 구간 블록(초록=추가·빨강=삭제) + 현재 보이는 구간(뷰포트). 클릭=점프. */}
+      <div onMouseDown={jump} className="absolute inset-y-0 right-0 w-1.5 cursor-pointer bg-transparent">
+        {blocks.map((b, k) => (
+          <div key={k} className={`pointer-events-none absolute inset-x-0 rounded-full ${b.add ? "bg-emerald-500/80" : "bg-rose-500/80"}`} style={{ top: `${b.top}%`, height: `${Math.max(0.6, b.height)}%`, minHeight: 3 }} />
+        ))}
         {/* 현재 뷰포트(지금 보고 있는 구간) */}
-        <div className="pointer-events-none absolute inset-x-0 rounded-sm border border-[#3B34E2]/50 bg-[#3B34E2]/15 dark:border-[#8b86f5]/50 dark:bg-[#8b86f5]/20" style={{ top: `${vp.top}%`, height: `${Math.max(4, vp.height)}%` }} />
+        <div className="pointer-events-none absolute inset-x-0 rounded-full border border-[#3B34E2]/40 bg-[#3B34E2]/10 dark:border-[#8b86f5]/40 dark:bg-[#8b86f5]/15" style={{ top: `${vp.top}%`, height: `${Math.max(5, vp.height)}%` }} />
       </div>
     </div>
   );
