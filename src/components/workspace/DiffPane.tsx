@@ -101,7 +101,7 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
           </div>
         );
         const tok = tokens[codeIdx++]; // 이 코드줄의 토큰
-        const bg = l.kind === "add" ? "bg-emerald-500/10" : l.kind === "del" ? "bg-rose-500/10" : "";
+        const bg = l.kind === "add" ? "bg-emerald-500/20" : l.kind === "del" ? "bg-rose-500/20" : "";
         const mark = l.kind === "add" ? "+" : l.kind === "del" ? "−" : " ";
         const markCls = l.kind === "add" ? "text-emerald-600 dark:text-emerald-500" : l.kind === "del" ? "text-rose-600 dark:text-rose-500" : "text-transparent";
         return (
