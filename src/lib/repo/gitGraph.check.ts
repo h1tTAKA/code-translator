@@ -32,6 +32,11 @@ assert.strictEqual(commits[0].subject, "feat: 세 번째", "subject");
 const det = parseGitLog("x|y|K|k@corp.com|9|HEAD|wip")[0];
 assert.strictEqual(det.isHead, true, "detached HEAD 감지");
 
+// origin/HEAD·bare HEAD 잡음 제거(HEAD는 현재 브랜치 배지로만).
+const noise = parseGitLog("z|y|K|k@x|9|HEAD -> main, origin/main, origin/HEAD, tag: v2|x")[0];
+assert.deepStrictEqual(noise.refs, ["main", "origin/main", "v2"], "origin/HEAD·HEAD 제거");
+assert.strictEqual(noise.isHead, true, "HEAD -> 여도 isHead");
+
 // 직선 히스토리 → 전부 레인 0.
 const lin = assignLanes(commits);
 assert.ok(lin.rows.every((r) => r.lane === 0), "직선=레인0");

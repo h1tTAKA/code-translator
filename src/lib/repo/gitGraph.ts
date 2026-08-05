@@ -41,11 +41,12 @@ export function parseGitLog(text: string): GitCommit[] {
   return out;
 }
 
-// "%D" (예: "HEAD -> main, origin/main, tag: v1") → ["main", "origin/main", "v1"].
+// "%D" (예: "HEAD -> main, origin/main, origin/HEAD, tag: v1") → ["main", "origin/main", "v1"].
+// bare "HEAD"·"origin/HEAD"(심볼릭 기본브랜치 포인터)는 잡음이라 제거 — HEAD는 현재 브랜치 배지로 표시.
 function parseRefs(decor: string): string[] {
   return decor.split(",").map((s) => s.trim()).filter(Boolean)
     .map((r) => r.replace(/^HEAD -> /, "").replace(/^tag: /, ""))
-    .filter((r) => r && r !== "HEAD");
+    .filter((r) => r && !/(^|\/)HEAD$/.test(r));
 }
 
 export interface GraphRow {
