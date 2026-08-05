@@ -2,11 +2,12 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useEffect, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconTerminal2, IconFileCode, IconLoader2 } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconLoader2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat from "@/components/workspace/WorkspaceChat";
+import Terminal from "@/components/workspace/Terminal";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -163,7 +164,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
         <section className="flex min-w-0 flex-1">
-          <div className="min-w-0 flex-1"><ZonePlaceholder Icon={IconTerminal2} label={t("workspace.terminal")} /></div>
+          <div className="min-w-0 flex-1"><Terminal cwd={path} /></div>
           {openFile && (
             <>
               <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />
