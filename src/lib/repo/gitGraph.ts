@@ -5,35 +5,48 @@ export interface GitCommit {
   hash: string;
   parents: string[];
   author: string;
+  email: string;   // 작성자 이메일(%ae) — GitHub 닉 파싱용(화면엔 원문 미표시)
   ts: number;      // author time (unix seconds)
   refs: string[];  // 브랜치/태그 라벨(정리됨)
   subject: string;
+  isHead: boolean; // 이 커밋이 HEAD인가(%D에 HEAD 토큰)
 }
 
-// git log --pretty=format:'%H|%P|%an|%at|%D|%s' 출력 → 커밋 배열(최신순).
+// GitHub noreply 이메일 → 로그인. "12345+login@users.noreply.github.com" / "login@users.noreply.github.com".
+// 아니면 null(호출측서 이름 폴백).
+export function githubLogin(email: string): string | null {
+  const m = /^(?:\d+\+)?([^@\s]+)@users\.noreply\.github\.com$/i.exec((email ?? "").trim());
+  return m ? m[1] : null;
+}
+
+// git log --pretty=format:'%H|%P|%an|%ae|%at|%D|%s' 출력 → 커밋 배열(최신순).
 export function parseGitLog(text: string): GitCommit[] {
   const out: GitCommit[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
-    const [hash, parents, author, at, decor, ...subj] = line.split("|");
+    const [hash, parents, author, email, at, decor, ...subj] = line.split("|");
     if (!hash) continue;
+    const d = decor ?? "";
     out.push({
       hash,
       parents: (parents ?? "").split(" ").filter(Boolean),
       author: author ?? "",
+      email: email ?? "",
       ts: Number(at) || 0,
-      refs: parseRefs(decor ?? ""),
+      refs: parseRefs(d),
       subject: subj.join("|"), // subject에 '|'가 있어도 보존
+      isHead: /(^|,)\s*HEAD\b/.test(d), // "HEAD -> main" 또는 detached "HEAD"
     });
   }
   return out;
 }
 
-// "%D" (예: "HEAD -> main, origin/main, tag: v1") → ["main", "origin/main", "v1"].
+// "%D" (예: "HEAD -> main, origin/main, origin/HEAD, tag: v1") → ["main", "origin/main", "v1"].
+// bare "HEAD"·"origin/HEAD"(심볼릭 기본브랜치 포인터)는 잡음이라 제거 — HEAD는 현재 브랜치 배지로 표시.
 function parseRefs(decor: string): string[] {
   return decor.split(",").map((s) => s.trim()).filter(Boolean)
     .map((r) => r.replace(/^HEAD -> /, "").replace(/^tag: /, ""))
-    .filter((r) => r && r !== "HEAD");
+    .filter((r) => r && !/(^|\/)HEAD$/.test(r));
 }
 
 export interface GraphRow {

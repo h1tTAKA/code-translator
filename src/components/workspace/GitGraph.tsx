@@ -2,9 +2,17 @@
 // 워크스페이스 깃 그래프(#649) — /api/repo/git-log → 파싱 → 레인 배정 → SVG(점·선) + 커밋행.
 // 커밋 클릭 → 바뀐 파일(M/A/D) 펼침, 파일 클릭 → onOpenDiff(diff 뷰).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconLoader2, IconRefresh, IconGitBranch, IconTag, IconChevronRight } from "@tabler/icons-react";
+import { IconLoader2, IconRefresh, IconGitBranch, IconTag, IconChevronRight, IconGitCommit } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
-import { parseGitLog, assignLanes, type GitGraphModel } from "@/lib/repo/gitGraph";
+import { parseGitLog, assignLanes, githubLogin, type GitGraphModel } from "@/lib/repo/gitGraph";
+
+// ref 배지 종류별 스타일 — 로컬 브랜치 / 원격(origin/*) / 태그 / 현재 HEAD 브랜치 구분(색 같으면 못 알아봄).
+function refBadge(ref: string, curBranch: string) {
+  if (ref === curBranch) return { cls: "bg-[#3B34E2] text-white dark:bg-[#8b86f5] dark:text-zinc-900", tag: false }; // 현재 브랜치 = 채움
+  if (/^v?\d/.test(ref)) return { cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400", tag: true }; // 태그
+  if (ref.includes("/")) return { cls: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400", tag: false };       // 원격(origin/…)
+  return { cls: "bg-[#3B34E2]/10 text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]", tag: false };                    // 로컬 브랜치
+}
 
 const ROW_H = 24, FILE_H = 20, LANE_W = 14;
 const LANE_COLORS = ["#3B34E2", "#e11d48", "#059669", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
@@ -16,6 +24,7 @@ export default function GitGraph({ root, onOpenDiff }: { root: string; onOpenDif
   const t = useT();
   const [model, setModel] = useState<GitGraphModel | null>(null);
   const [isGit, setIsGit] = useState(true);
+  const [branch, setBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filesByHash, setFilesByHash] = useState<Record<string, { status: string; path: string }[]>>({});
@@ -26,7 +35,7 @@ export default function GitGraph({ root, onOpenDiff }: { root: string; onOpenDif
     try {
       const r = await fetch("/api/repo/git-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root }) });
       const d = await r.json();
-      if (r.ok && d.isGit) { setIsGit(true); setModel(assignLanes(parseGitLog(d.log ?? ""))); }
+      if (r.ok && d.isGit) { setIsGit(true); setBranch(d.branch ?? ""); setModel(assignLanes(parseGitLog(d.log ?? ""))); }
       else { setIsGit(false); setModel(null); }
     } catch { setIsGit(false); setModel(null); }
     finally { setLoading(false); }
@@ -54,7 +63,13 @@ export default function GitGraph({ root, onOpenDiff }: { root: string; onOpenDif
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 dark:border-zinc-800">
         <IconGitBranch size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">git</span>
+        {isGit && branch ? (
+          <span className="inline-flex min-w-0 items-center gap-1 rounded bg-[#3B34E2]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]" title={t("workspace.gitOnBranch", { branch })}>
+            <span className="truncate">{branch}</span>
+          </span>
+        ) : (
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">git</span>
+        )}
         <button type="button" onClick={() => void load()} disabled={loading} className="ml-auto rounded p-0.5 text-zinc-400 transition hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800" title={t("workspace.gitRefresh")}>
           <IconRefresh size={12} stroke={2} className={loading ? "animate-spin" : ""} aria-hidden />
         </button>
@@ -86,13 +101,19 @@ export default function GitGraph({ root, onOpenDiff }: { root: string; onOpenDif
                   </svg>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
                   <span className="flex min-w-0 flex-1 items-baseline gap-1.5 pr-2 text-[11px]">
-                    {row.commit.refs.map((rf) => (
-                      <span key={rf} className="inline-flex shrink-0 items-center gap-0.5 rounded bg-[#3B34E2]/10 px-1 text-[9px] font-medium text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]">
-                        {/^v?\d/.test(rf) ? <IconTag size={8} stroke={2} aria-hidden /> : <IconGitBranch size={8} stroke={2} aria-hidden />}{rf}
-                      </span>
-                    ))}
+                    {row.commit.refs.map((rf) => {
+                      const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
+                      const b = refBadge(rf, branch);
+                      return (
+                        <span key={rf} className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls}`} title={isCur ? t("workspace.gitHeadHint") : undefined}>
+                          {isCur ? <IconGitCommit size={8} stroke={2.5} aria-hidden /> : b.tag ? <IconTag size={8} stroke={2} aria-hidden /> : <IconGitBranch size={8} stroke={2} aria-hidden />}
+                          {isCur && <span className="font-bold">HEAD</span>}{rf}
+                        </span>
+                      );
+                    })}
                     <span className="truncate text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-400 dark:text-zinc-500">{row.commit.hash.slice(0, 7)}</span>
+                    {(() => { const login = githubLogin(row.commit.email); return <span className="ml-auto shrink-0 truncate text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
+                    <span className="shrink-0 font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
                   </span>
                 </button>
                 {isOpen && (
