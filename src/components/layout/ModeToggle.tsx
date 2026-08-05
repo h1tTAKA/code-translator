@@ -1,6 +1,6 @@
 "use client";
 
-import { IconCode, IconFileText, IconBrain, IconMessage2, IconHome, IconSitemap } from "@tabler/icons-react";
+import { IconCode, IconFileText, IconBrain, IconMessage2, IconHome, IconLayoutColumns } from "@tabler/icons-react";
 import type { ViewMode } from "@/lib/viewMode";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -15,7 +15,7 @@ interface ModeToggleProps {
 const MODE_OPTIONS: { value: ViewMode; tKey: string; Icon: typeof IconCode }[] = [
   { value: "history", tKey: "mode.history", Icon: IconHome },
   { value: "ask", tKey: "mode.ask", Icon: IconMessage2 },
-  { value: "repo", tKey: "mode.repo", Icon: IconSitemap },
+  { value: "workspace", tKey: "mode.workspace", Icon: IconLayoutColumns },
   { value: "code", tKey: "mode.code", Icon: IconCode },
   { value: "text", tKey: "mode.text", Icon: IconFileText },
   { value: "memorize", tKey: "mode.memorize", Icon: IconBrain },

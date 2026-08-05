@@ -54,3 +54,28 @@ export function scanRepo(root: string): ScanResult {
   walk(root);
   return { root, files, capped };
 }
+
+// 전체 파일(확장자 무관) — 워크스페이스 파일트리용(#647). IGNORE_DIRS·숨김 폴더는 제외하되
+// 숨김 파일(.gitignore·.env 등)은 포함(에디터 트리 관례). MAX_FILES 상한.
+export function scanAllFiles(root: string): ScanResult {
+  const files: string[] = [];
+  let capped = false;
+  const walk = (dir: string) => {
+    if (capped) return;
+    let entries: Dirent[];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (capped) return;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (IGNORE_DIRS.has(e.name) || e.name.startsWith(".")) continue;
+        walk(full);
+      } else if (e.isFile()) {
+        files.push(relative(root, full).split(sep).join("/"));
+        if (files.length >= MAX_FILES) { capped = true; return; }
+      }
+    }
+  };
+  walk(root);
+  return { root, files, capped };
+}

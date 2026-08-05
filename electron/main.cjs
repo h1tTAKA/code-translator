@@ -10,6 +10,9 @@ const {
   resolveOpenCodeCli,
 } = require("@sna-sdk/core/electron");
 const { spawn } = require("node:child_process");
+// node-pty(네이티브) — 없거나 ABI 불일치면 터미널만 비활성(앱은 계속). npm rebuild 필요할 수 있음.
+let pty = null;
+try { pty = require("node-pty"); } catch (e) { console.warn("[electron] node-pty unavailable:", e?.message); }
 const { join } = require("node:path");
 const net = require("node:net");
 
@@ -226,6 +229,35 @@ ipcMain.handle("repo:pickFolder", async () => {
   return { canceled: false, path: res.filePaths[0] };
 });
 
+// ── 터미널(pty) — 레포 경로별 세션. detach(창 전환·언마운트)해도 안 죽여 세션 유지(#647 A안).
+// 재attach 시 scrollback buffer 재생. 앱 종료 시에만 정리.
+const ptys = new Map(); // cwd → { proc, buffer }
+const PTY_BUFFER_MAX = 200_000; // 재생용 스크롤백 상한(문자)
+const broadcast = (channel, payload) => { for (const w of BrowserWindow.getAllWindows()) { try { w.webContents.send(channel, payload); } catch { /* ignore */ } } };
+
+ipcMain.handle("terminal:ensure", (_e, { cwd, cols, rows }) => {
+  if (!pty) return { ok: false, reason: "node-pty unavailable" };
+  let s = ptys.get(cwd);
+  if (!s) {
+    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash");
+    let proc;
+    try {
+      proc = pty.spawn(shell, [], { name: "xterm-256color", cols: cols || 80, rows: rows || 24, cwd, env: process.env });
+    } catch (e) { return { ok: false, reason: String(e?.message || e) }; }
+    s = { proc, buffer: "" };
+    proc.onData((data) => {
+      s.buffer += data;
+      if (s.buffer.length > PTY_BUFFER_MAX) s.buffer = s.buffer.slice(-PTY_BUFFER_MAX);
+      broadcast("terminal:data", { cwd, data });
+    });
+    proc.onExit(() => { ptys.delete(cwd); broadcast("terminal:exit", { cwd }); });
+    ptys.set(cwd, s);
+  }
+  return { ok: true, buffer: s.buffer };
+});
+ipcMain.on("terminal:input", (_e, { cwd, data }) => { const s = ptys.get(cwd); if (s) { try { s.proc.write(data); } catch { /* ignore */ } } });
+ipcMain.on("terminal:resize", (_e, { cwd, cols, rows }) => { const s = ptys.get(cwd); if (s && cols > 0 && rows > 0) { try { s.proc.resize(cols, rows); } catch { /* ignore */ } } });
+
 // 단일 인스턴스.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -237,5 +269,6 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", () => {
     try { serverProc?.kill(); } catch { /* ignore */ }
     try { snaHandle?.stop(); } catch { /* ignore */ }
+    for (const s of ptys.values()) { try { s.proc.kill(); } catch { /* ignore */ } }
   });
 }
