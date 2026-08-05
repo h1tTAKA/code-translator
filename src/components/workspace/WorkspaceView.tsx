@@ -9,6 +9,7 @@ import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat from "@/components/workspace/WorkspaceChat";
 import Terminal from "@/components/workspace/Terminal";
 import GitGraph from "@/components/workspace/GitGraph";
+import DiffPane from "@/components/workspace/DiffPane";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -32,6 +33,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [files, setFiles] = useState<string[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [openFile, setOpenFile] = useState<string | null>(null); // 열린 파일(코드칸은 이게 있을 때만)
+  const [openDiff, setOpenDiff] = useState<{ hash: string; file: string } | null>(null); // 커밋 diff(있으면 코드칸=diff)
   // 패널 폭(px) — 드래그 리사이즈, localStorage 영속.
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
@@ -170,7 +172,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             {treeLoading ? (
               <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : files.length > 0 ? (
-              <FileTree files={files} selected={openFile} onSelect={setOpenFile} />
+              <FileTree files={files} selected={openFile} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); }} />
             ) : (
               <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
             )}
@@ -178,7 +180,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           {gitOpen && (
             <>
               <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} /></div>
+              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => setOpenDiff({ hash, file })} /></div>
             </>
           )}
           <button type="button" onClick={toggleGit} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
@@ -191,16 +193,22 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
         <section className="flex min-w-0 flex-1">
           <div className="min-w-0 flex-1"><Terminal cwd={path} /></div>
-          {openFile && (
+          {(openFile || openDiff) && (
             <>
               <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />
               <div style={{ width: codeW }} className="flex shrink-0 flex-col">
                 <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
                   <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
-                  <span className="truncate">{openFile}</span>
-                  <button type="button" onClick={() => setOpenFile(null)} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
+                  {openDiff ? (
+                    <span className="truncate">{openDiff.file} <span className="font-mono text-zinc-400 dark:text-zinc-500">@ {openDiff.hash.slice(0, 7)}</span></span>
+                  ) : (
+                    <span className="truncate">{openFile}</span>
+                  )}
+                  <button type="button" onClick={() => { setOpenDiff(null); setOpenFile(null); }} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
                 </div>
-                <div className="min-h-0 flex-1"><CodePane root={path} file={openFile} /></div>
+                <div className="min-h-0 flex-1">
+                  {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
+                </div>
               </div>
             </>
           )}
