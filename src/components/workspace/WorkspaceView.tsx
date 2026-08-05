@@ -1,7 +1,7 @@
 "use client";
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconFolderOpen, IconFiles, IconTerminal2, IconFileCode, IconMessageCircle, IconLoader2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
@@ -9,6 +9,7 @@ import CodePane from "@/components/workspace/CodePane";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 // 빈 존 자리표시 — 후속 커밋서 실제 트리/코드/챗/터미널로 교체.
 function ZonePlaceholder({ Icon, label }: { Icon: typeof IconFiles; label: string }) {
@@ -28,6 +29,12 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [files, setFiles] = useState<string[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [openFile, setOpenFile] = useState<string | null>(null); // 열린 파일(코드칸은 이게 있을 때만)
+  // 패널 폭(px) — 드래그 리사이즈, localStorage 영속.
+  const [treeW, setTreeW] = useState(240);
+  const [chatW, setChatW] = useState(320);
+  const [codeW, setCodeW] = useState(480);
+  const dragRef = useRef<{ kind: "tree" | "code" | "chat"; startX: number; startVal: number } | null>(null);
+  const wRef = useRef({ tree: 240, chat: 320, code: 480 }); // 최신 폭 미러(드래그 종료 시 영속용)
   const [mounted, setMounted] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
   useEffect(() => setMounted(true), []);
@@ -37,6 +44,44 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     if (!mounted) return;
     try { const s = localStorage.getItem(WS_PATH_KEY); if (s) setPath(s); } catch { /* ignore */ }
   }, [mounted]);
+
+  // 저장된 패널 폭 복원.
+  useEffect(() => {
+    if (!mounted) return;
+    try {
+      const t = Number(localStorage.getItem("nunopi:ws-tree-w")); if (t) { const v = clamp(t, 140, 560); setTreeW(v); wRef.current.tree = v; }
+      const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
+      const k = Number(localStorage.getItem("nunopi:ws-code-w")); if (k) { const v = clamp(k, 240, 900); setCodeW(v); wRef.current.code = v; }
+    } catch { /* ignore */ }
+  }, [mounted]);
+
+  // 드래그 리사이즈 — 전역 mousemove/up 리스너.
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      const d = dragRef.current; if (!d) return;
+      const dx = e.clientX - d.startX;
+      if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
+      else if (d.kind === "code") { const v = clamp(d.startVal - dx, 240, 900); setCodeW(v); wRef.current.code = v; }
+      else { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
+    };
+    const up = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null; document.body.style.cursor = ""; document.body.style.userSelect = "";
+      try {
+        localStorage.setItem("nunopi:ws-tree-w", String(wRef.current.tree));
+        localStorage.setItem("nunopi:ws-chat-w", String(wRef.current.chat));
+        localStorage.setItem("nunopi:ws-code-w", String(wRef.current.code));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+  }, []);
+
+  const startDrag = (kind: "tree" | "code" | "chat", startVal: number) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { kind, startX: e.clientX, startVal };
+    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
+  };
 
   // 폴더 정해지면 파일트리 로드.
   useEffect(() => {
@@ -106,7 +151,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       </header>
       <div className="flex min-h-0 flex-1">
         {/* 좌: 파일트리 */}
-        <aside className="w-60 shrink-0 border-r border-zinc-200 dark:border-zinc-800">
+        <aside style={{ width: treeW }} className="shrink-0 border-r border-zinc-200 dark:border-zinc-800">
           {treeLoading ? (
             <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
           ) : files.length > 0 ? (
@@ -115,22 +160,27 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
           )}
         </aside>
+        <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
         <section className="flex min-w-0 flex-1">
           <div className="min-w-0 flex-1"><ZonePlaceholder Icon={IconTerminal2} label={t("workspace.terminal")} /></div>
           {openFile && (
-            <div className="flex min-w-0 flex-1 flex-col border-l border-zinc-200 dark:border-zinc-800">
-              <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
-                <span className="truncate">{openFile}</span>
-                <button type="button" onClick={() => setOpenFile(null)} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
+            <>
+              <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />
+              <div style={{ width: codeW }} className="flex shrink-0 flex-col">
+                <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
+                  <span className="truncate">{openFile}</span>
+                  <button type="button" onClick={() => setOpenFile(null)} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
+                </div>
+                <div className="min-h-0 flex-1"><CodePane root={path} file={openFile} /></div>
               </div>
-              <div className="min-h-0 flex-1"><CodePane root={path} file={openFile} /></div>
-            </div>
+            </>
           )}
         </section>
+        <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 우: 챗룸 */}
-        <aside className="w-80 shrink-0 border-l border-zinc-200 dark:border-zinc-800"><ZonePlaceholder Icon={IconMessageCircle} label={t("workspace.chat")} /></aside>
+        <aside style={{ width: chatW }} className="shrink-0 border-l border-zinc-200 dark:border-zinc-800"><ZonePlaceholder Icon={IconMessageCircle} label={t("workspace.chat")} /></aside>
       </div>
     </div>
   );
