@@ -79,8 +79,9 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
       {lines.map((l, i) => {
         if (l.kind === "meta") return null; // diff/index/+++/--- 헤더 숨김(잡음)
         if (l.kind === "hunk") return (
-          <div key={i} className="flex items-center gap-2 border-y border-zinc-100 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-400 dark:border-zinc-800/60 dark:bg-zinc-900/40 dark:text-zinc-500">
-            <span className="select-none">⋯</span>{l.ctxLabel && <span className="truncate">{l.ctxLabel}</span>}
+          // 건너뛴(안 바뀐) 구간 표시만 — 얇은 구분선 + ⋯. 함수 컨텍스트는 title(호버)로.
+          <div key={i} className="flex select-none items-center gap-2 px-2 py-1 text-zinc-300 dark:text-zinc-700" title={l.ctxLabel || undefined}>
+            <span className="h-px flex-1 bg-zinc-100 dark:bg-zinc-800" /><span className="text-[10px]">⋯</span><span className="h-px flex-1 bg-zinc-100 dark:bg-zinc-800" />
           </div>
         );
         const tok = tokens[codeIdx++]; // 이 코드줄의 토큰
