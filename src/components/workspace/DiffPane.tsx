@@ -34,7 +34,7 @@ function parseDiff(diff: string): DLine[] {
   return out;
 }
 
-export default function DiffPane({ root, hash, file }: { root: string; hash: string; file: string }) {
+export default function DiffPane({ root, hash, file, worktree }: { root: string; hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" }) {
   const [lines, setLines] = useState<DLine[] | null>(null);
   const [tokens, setTokens] = useState<ThemedToken[][]>([]); // 코드줄(add/del/ctx) 순서별 하이라이트 토큰
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
@@ -53,7 +53,6 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
     const h = el.scrollHeight || 1;
     setVp({ top: (el.scrollTop / h) * 100, height: Math.min(100, (el.clientHeight / h) * 100) });
   };
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- 로드/키변경 후 썸 위치 초기화
   useEffect(() => { if (status === "ok") syncVp(); }, [status, lines]);
 
   const jumpToY = (clientY: number) => {
@@ -85,7 +84,10 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
     setStatus("loading"); setLines(null); setTokens([]);
     (async () => {
       try {
-        const r = await fetch("/api/repo/git-show", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, hash, file }) });
+        // 워킹트리(커밋 전) diff면 git-diff, 커밋 diff면 git-show.
+        const r = worktree
+          ? await fetch("/api/repo/git-diff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, file, kind: worktree }) })
+          : await fetch("/api/repo/git-show", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, hash, file }) });
         const d = await r.json();
         if (cancelled) return;
         if (!r.ok || !d.ok) { setStatus("error"); return; }
@@ -99,7 +101,7 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
       } catch { if (!cancelled) setStatus("error"); }
     })();
     return () => { cancelled = true; };
-  }, [root, hash, file, isDark]);
+  }, [root, hash, file, worktree, isDark]);
 
   if (status === "loading") return <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>;
   if (status === "error" || !lines) return <div className="flex h-full items-center justify-center gap-1.5 text-[12px] text-amber-600 dark:text-amber-500"><IconAlertTriangle size={14} stroke={2} aria-hidden /> diff 실패</div>;
