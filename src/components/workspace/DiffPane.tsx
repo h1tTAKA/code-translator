@@ -2,7 +2,8 @@
 // 워크스페이스 diff 뷰(#649) — 커밋+파일의 git diff. shiki 신택스 하이라이팅 + 빨강(−)/초록(+) 배경.
 import { useEffect, useRef, useState } from "react";
 import { codeToTokens, type ThemedToken, type BundledLanguage } from "shiki";
-import { IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconGitCompare } from "@tabler/icons-react";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 interface DLine { kind: "hunk" | "add" | "del" | "ctx" | "meta"; oldN: number | null; newN: number | null; text: string; ctxLabel?: string }
 
@@ -35,9 +36,10 @@ function parseDiff(diff: string): DLine[] {
 }
 
 export default function DiffPane({ root, hash, file, worktree }: { root: string; hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" }) {
+  const t = useT();
   const [lines, setLines] = useState<DLine[] | null>(null);
   const [tokens, setTokens] = useState<ThemedToken[][]>([]); // 코드줄(add/del/ctx) 순서별 하이라이트 토큰
-  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ok" | "error" | "empty">("loading");
   const [isDark, setIsDark] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -91,7 +93,10 @@ export default function DiffPane({ root, hash, file, worktree }: { root: string;
         const d = await r.json();
         if (cancelled) return;
         if (!r.ok || !d.ok) { setStatus("error"); return; }
-        const parsed = parseDiff(String(d.diff ?? ""));
+        const raw = String(d.diff ?? "");
+        // 변경 없음(이미 커밋됐거나 목록이 오래됨) → 빈 창 대신 안내.
+        if (!raw.trim()) { setStatus("empty"); return; }
+        const parsed = parseDiff(raw);
         // 코드줄만 모아 한 번에 하이라이트 → 줄별 토큰.
         const codeText = parsed.filter((l) => l.kind === "add" || l.kind === "del" || l.kind === "ctx").map((l) => l.text).join("\n");
         let toks: ThemedToken[][] = [];
@@ -104,6 +109,7 @@ export default function DiffPane({ root, hash, file, worktree }: { root: string;
   }, [root, hash, file, worktree, isDark]);
 
   if (status === "loading") return <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>;
+  if (status === "empty") return <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center text-[12px] text-zinc-400 dark:text-zinc-500"><IconGitCompare size={16} stroke={1.75} aria-hidden /><span>{t("workspace.diffEmpty")}</span></div>;
   if (status === "error" || !lines) return <div className="flex h-full items-center justify-center gap-1.5 text-[12px] text-amber-600 dark:text-amber-500"><IconAlertTriangle size={14} stroke={2} aria-hidden /> diff 실패</div>;
 
   let codeIdx = 0; // add/del/ctx 진행 인덱스 → tokens 매칭
