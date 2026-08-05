@@ -139,7 +139,7 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
       {/* 오른쪽 오버뷰 미니맵 스크롤바 — 트랙 + 변경 마크(초록/빨강) + 잡을 수 있는 뷰포트 썸. 드래그/클릭 이동. */}
       <div ref={rulerRef} onMouseDown={rulerDown} className="absolute inset-y-0 right-0 w-3.5 cursor-pointer border-l border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-zinc-800/40">
         {blocks.map((b, k) => (
-          <div key={k} className={`pointer-events-none absolute left-0 w-1.5 rounded-full ${b.add ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${b.top}%`, height: `${Math.max(0.6, b.height)}%`, minHeight: 3 }} />
+          <div key={k} className={`pointer-events-none absolute inset-x-0 ${b.add ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${b.top}%`, height: `${Math.max(0.6, b.height)}%`, minHeight: 3 }} />
         ))}
         {/* 뷰포트 썸(지금 보고 있는 구간) — 뚜렷하게. */}
         <div className="pointer-events-none absolute inset-x-0 rounded border border-zinc-400/60 bg-zinc-400/30 dark:border-zinc-500/60 dark:bg-zinc-500/30" style={{ top: `${vp.top}%`, height: `${Math.max(6, vp.height)}%`, minHeight: 18 }} />
