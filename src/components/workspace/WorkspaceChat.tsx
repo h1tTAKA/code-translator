@@ -101,15 +101,17 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
 
   // 세션 ensure(기존 데이터 보존) + 탭 열기 + 활성화.
   function openSession(key: string, kind: SessionKind, label: string) {
+    const dropped: string[] = [];
     setSessions((prev) => {
       if (prev[key]) return prev; // 이미 있으면 대화 그대로 보존
       const next = { ...prev, [key]: mkSession(key, kind, label) };
-      // 상한 정리 — 닫힌(openKeys에 없는) 세션 중 가장 오래된 것부터.
-      const closed = Object.keys(next).filter((k) => k !== REPO_KEY && k !== key && !openKeys.includes(k));
-      while (Object.keys(next).length > MAX_SESSIONS && closed.length) delete next[closed.shift()!];
+      // 상한 정리 — 닫힌 것 먼저, 그래도 넘치면 오래된 열린 것까지(활성·repo·방금 것 제외).
+      const closed = Object.keys(next).filter((k) => k !== REPO_KEY && k !== key && k !== activeKey && !openKeys.includes(k));
+      const open = Object.keys(next).filter((k) => k !== REPO_KEY && k !== key && k !== activeKey && openKeys.includes(k));
+      for (const k of [...closed, ...open]) { if (Object.keys(next).length <= MAX_SESSIONS) break; delete next[k]; dropped.push(k); }
       return next;
     });
-    setOpenKeys((prev) => prev.includes(key) ? prev : [...prev, key]);
+    setOpenKeys((prev) => { const p = prev.filter((k) => !dropped.includes(k)); return p.includes(key) ? p : [...p, key]; });
     setActiveKey(key);
   }
 
@@ -128,11 +130,11 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
     setActiveKey((cur) => cur === key ? REPO_KEY : cur);
   }
 
-  // 활성 세션의 활성 서브 메시지 갱신.
-  function setMessages(msgs: ChatMessage[]) {
+  // 특정 세션·서브의 메시지 갱신(키·subId 명시 — send 도중 탭/서브 전환돼도 원래 대화에 기록).
+  function writeSub(key: string, subId: string, msgs: ChatMessage[]) {
     setSessions((prev) => {
-      const s = prev[activeKey]; if (!s) return prev;
-      return { ...prev, [activeKey]: { ...s, subs: s.subs.map((su) => su.id === s.activeSubId ? { ...su, messages: msgs } : su) } };
+      const s = prev[key]; if (!s) return prev;
+      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, messages: msgs } : su) } };
     });
   }
 
@@ -171,6 +173,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         // 키: diff:<hash>:<file> — hash 뒤 첫 ':' 기준 분리(파일 경로 안전).
         const rest = s.key.slice("diff:".length);
         const ci = rest.indexOf(":");
+        if (ci < 0) return ""; // 방어: 정상 키는 항상 hash:file
         const hash = rest.slice(0, ci), file = rest.slice(ci + 1);
         const r = await fetch("/api/repo/git-show", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, hash, file }) });
         const d = await r.json();
@@ -227,8 +230,9 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
     if (!text || loading) return;
     setInput("");
     const s = active;
+    const sk = s.key, subId = s.activeSubId; // 이 대화의 목적지 고정(응답 대기 중 전환 대비)
     const thread: ChatMessage[] = [...messages, { role: "user", content: text }];
-    setMessages(thread);
+    writeSub(sk, subId, thread);
     setLoading(true); setStreaming("");
     try {
       const ctx = await buildContext(s);
@@ -236,7 +240,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId, request: { code: ctx, locale, providerId, mode: "chat", messages: thread, providerSettings } }),
       });
-      if (!res.ok || !res.body) { setMessages([...thread, { role: "assistant", content: "(응답 실패)" }]); return; }
+      if (!res.ok || !res.body) { writeSub(sk, subId, [...thread, { role: "assistant", content: "(응답 실패)" }]); return; }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "", answer = "";
@@ -253,9 +257,9 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         }
       }
       const clean = parseCardSuggestions(answer || "").text || answer || "(빈 응답)";
-      setMessages([...thread, { role: "assistant", content: clean }]);
+      writeSub(sk, subId, [...thread, { role: "assistant", content: clean }]);
     } catch {
-      setMessages([...thread, { role: "assistant", content: "(오류)" }]);
+      writeSub(sk, subId, [...thread, { role: "assistant", content: "(오류)" }]);
     } finally {
       setLoading(false); setStreaming(null);
     }
@@ -294,7 +298,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
         {messages.length > 0 && (
-          <button type="button" onClick={() => setMessages([])} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" title={t("workspace.chatClear")}>
+          <button type="button" onClick={() => writeSub(active.key, active.activeSubId, [])} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" title={t("workspace.chatClear")}>
             <IconTrash size={13} stroke={2} aria-hidden />
           </button>
         )}
