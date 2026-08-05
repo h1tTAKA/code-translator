@@ -40,20 +40,32 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [isDark, setIsDark] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [vp, setVp] = useState({ top: 0, height: 100 }); // 오버뷰 룰러 위 현재 보이는 구간(%)
+  const rulerRef = useRef<HTMLDivElement>(null);
+  const draggingRuler = useRef(false);
+  const [vp, setVp] = useState({ top: 0, height: 100 }); // 오버뷰 썸(현재 보이는 구간, %)
 
   const syncVp = () => {
     const el = scrollRef.current; if (!el) return;
     const h = el.scrollHeight || 1;
     setVp({ top: (el.scrollTop / h) * 100, height: Math.min(100, (el.clientHeight / h) * 100) });
   };
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 로드/키변경 후 썸 위치 초기화
   useEffect(() => { if (status === "ok") syncVp(); }, [status, lines]);
-  const jump = (e: React.MouseEvent<HTMLDivElement>) => {
-    const el = scrollRef.current; if (!el) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const frac = (e.clientY - rect.top) / rect.height;
-    el.scrollTop = frac * el.scrollHeight - el.clientHeight / 2;
+
+  const jumpToY = (clientY: number) => {
+    const el = scrollRef.current, ruler = rulerRef.current; if (!el || !ruler) return;
+    const rect = ruler.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    el.scrollTop = frac * (el.scrollHeight - el.clientHeight);
   };
+  // 룰러 드래그로 스크롤(썸 잡고 끌기).
+  useEffect(() => {
+    const mm = (e: MouseEvent) => { if (draggingRuler.current) jumpToY(e.clientY); };
+    const mu = () => { draggingRuler.current = false; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", mm); window.addEventListener("mouseup", mu);
+    return () => { window.removeEventListener("mousemove", mm); window.removeEventListener("mouseup", mu); };
+  }, []);
+  const rulerDown = (e: React.MouseEvent) => { draggingRuler.current = true; document.body.style.userSelect = "none"; jumpToY(e.clientY); };
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 테마 초기 감지(1회)
@@ -127,13 +139,13 @@ export default function DiffPane({ root, hash, file }: { root: string; hash: str
         );
       })}
       </div>
-      {/* 오른쪽 변경 오버뷰 — 변경 구간 블록(초록=추가·빨강=삭제) + 현재 보이는 구간(뷰포트). 클릭=점프. */}
-      <div onMouseDown={jump} className="absolute inset-y-0 right-0 w-1.5 cursor-pointer bg-transparent">
+      {/* 오른쪽 오버뷰 미니맵 스크롤바 — 트랙 + 변경 마크(초록/빨강) + 잡을 수 있는 뷰포트 썸. 드래그/클릭 이동. */}
+      <div ref={rulerRef} onMouseDown={rulerDown} className="absolute inset-y-0 right-0 w-3.5 cursor-pointer border-l border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-zinc-800/40">
         {blocks.map((b, k) => (
-          <div key={k} className={`pointer-events-none absolute inset-x-0 rounded-full ${b.add ? "bg-emerald-500/80" : "bg-rose-500/80"}`} style={{ top: `${b.top}%`, height: `${Math.max(0.6, b.height)}%`, minHeight: 3 }} />
+          <div key={k} className={`pointer-events-none absolute left-0 w-1.5 rounded-full ${b.add ? "bg-emerald-500" : "bg-rose-500"}`} style={{ top: `${b.top}%`, height: `${Math.max(0.6, b.height)}%`, minHeight: 3 }} />
         ))}
-        {/* 현재 뷰포트(지금 보고 있는 구간) */}
-        <div className="pointer-events-none absolute inset-x-0 rounded-full border border-[#3B34E2]/40 bg-[#3B34E2]/10 dark:border-[#8b86f5]/40 dark:bg-[#8b86f5]/15" style={{ top: `${vp.top}%`, height: `${Math.max(5, vp.height)}%` }} />
+        {/* 뷰포트 썸(지금 보고 있는 구간) — 뚜렷하게. */}
+        <div className="pointer-events-none absolute inset-x-0 rounded border border-zinc-400/60 bg-zinc-400/30 dark:border-zinc-500/60 dark:bg-zinc-500/30" style={{ top: `${vp.top}%`, height: `${Math.max(6, vp.height)}%`, minHeight: 18 }} />
       </div>
     </div>
   );
