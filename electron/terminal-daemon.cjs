@@ -1,0 +1,86 @@
+// 터미널 pty 데몬(#682) — node-pty를 소유하는 독립 프로세스. electron과 분리돼 앱 종료에도 생존.
+// electron이 fork(detached,unref)로 스폰, 유닉스 소켓(토큰 인증)으로 통신. 재실행 시 재접속해 live reattach.
+// 프로토콜: 개행 구분 JSON. 클라 → { t, ... }, 데몬 → { t, ... }.
+//   attach(id?) 인증 → ok. ensure{id,cwd,cols,rows} → ensured{id,ok,buffer}. input{id,data} / resize{id,cols,rows} / kill{id}.
+//   데몬 push: data{id,data} / exit{id}.
+const net = require("node:net");
+const fs = require("node:fs");
+
+const SOCK = process.env.NUNOPI_TERM_SOCK;   // 소켓 경로
+const TOKEN = process.env.NUNOPI_TERM_TOKEN; // 인증 토큰
+const IDLE_MS = 30 * 60 * 1000;              // ptys 0 && client 0 지속 시 자동 종료(잔존 방지)
+if (!SOCK || !TOKEN) { console.error("[term-daemon] SOCK/TOKEN 필요"); process.exit(1); }
+
+let pty;
+try { pty = require("node-pty"); } catch (e) { console.error("[term-daemon] node-pty 없음:", e && e.message); process.exit(1); }
+
+const PTY_BUFFER_MAX = 200_000;
+const ptys = new Map();        // id → { proc, buffer, cwd }
+const clients = new Set();     // 인증된 소켓들
+let idleTimer = null;
+
+function scheduleIdleReap() {
+  if (idleTimer) clearTimeout(idleTimer);
+  if (ptys.size === 0 && clients.size === 0) idleTimer = setTimeout(() => { if (ptys.size === 0 && clients.size === 0) shutdown(); }, IDLE_MS);
+}
+function shutdown() {
+  try { fs.unlinkSync(SOCK); } catch { /* ignore */ }
+  process.exit(0);
+}
+function send(sock, msg) { try { sock.write(JSON.stringify(msg) + "\n"); } catch { /* ignore */ } }
+function broadcast(msg) { for (const c of clients) send(c, msg); }
+
+function ensure({ id, cwd, cols, rows }) {
+  let s = ptys.get(id);
+  if (!s) {
+    const shell = process.env.NUNOPI_TERM_SHELL || process.env.SHELL || "/bin/bash";
+    const env = { ...process.env };
+    delete env.npm_config_prefix; delete env.NPM_CONFIG_PREFIX; // nvm 경고 방지(#674)
+    delete env.NUNOPI_TERM_SOCK; delete env.NUNOPI_TERM_TOKEN; delete env.NUNOPI_TERM_SHELL; // 데몬 내부 env 누출 방지
+    let proc;
+    try { proc = pty.spawn(shell, [], { name: "xterm-256color", cols: cols || 80, rows: rows || 24, cwd, env }); }
+    catch (e) { return { id, ok: false, reason: String((e && e.message) || e) }; }
+    s = { proc, buffer: "", cwd };
+    proc.onData((data) => {
+      s.buffer += data;
+      if (s.buffer.length > PTY_BUFFER_MAX) s.buffer = s.buffer.slice(-PTY_BUFFER_MAX);
+      broadcast({ t: "data", id, data });
+    });
+    proc.onExit(() => { ptys.delete(id); broadcast({ t: "exit", id }); scheduleIdleReap(); });
+    ptys.set(id, s);
+  }
+  return { id, ok: true, buffer: s.buffer };
+}
+
+const server = net.createServer((sock) => {
+  let authed = false;
+  let buf = "";
+  sock.on("data", (chunk) => {
+    buf += chunk.toString();
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+      if (!line.trim()) continue;
+      let m; try { m = JSON.parse(line); } catch { continue; }
+      if (!authed) { // 첫 메시지는 반드시 인증
+        if (m.t === "attach" && m.token === TOKEN) { authed = true; clients.add(sock); scheduleIdleReap(); send(sock, { t: "ready" }); }
+        else { sock.destroy(); }
+        continue;
+      }
+      if (m.t === "ensure") send(sock, { t: "ensured", ...ensure(m) });
+      else if (m.t === "input") { const s = ptys.get(m.id); if (s) { try { s.proc.write(m.data); } catch { /* ignore */ } } }
+      else if (m.t === "resize") { const s = ptys.get(m.id); if (s && m.cols > 0 && m.rows > 0) { try { s.proc.resize(m.cols, m.rows); } catch { /* ignore */ } } }
+      else if (m.t === "kill") { const s = ptys.get(m.id); if (s) { try { s.proc.kill(); } catch { /* ignore */ } ptys.delete(m.id); } scheduleIdleReap(); }
+    }
+  });
+  sock.on("close", () => { clients.delete(sock); scheduleIdleReap(); });
+  sock.on("error", () => { clients.delete(sock); });
+});
+
+// 앱 종료(SIGTERM)에 안 죽음 — 세션 생존 목적. 유휴 reap으로만 종료.
+process.on("SIGTERM", () => { /* ignore — 생존 */ });
+process.on("SIGINT", () => { /* ignore */ });
+
+try { fs.unlinkSync(SOCK); } catch { /* stale 소켓 정리 */ }
+server.listen(SOCK, () => { process.send && process.send({ type: "ready" }); scheduleIdleReap(); });
+server.on("error", (e) => { console.error("[term-daemon] listen 실패:", e && e.message); process.exit(1); });
