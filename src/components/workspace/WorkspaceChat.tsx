@@ -5,10 +5,12 @@
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus, IconCheck } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
-import { parseCardSuggestions, stripStreamingCardBlock } from "@/lib/cardSuggestion";
+import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
+import { createChatCard } from "@/lib/chatCard";
+import { bookmarkedTermExists } from "@/lib/bookmarkDetails";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
@@ -232,6 +234,18 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
     return parts.join("\n\n") + "\n";
   }
 
+  // 카드 제안 칩 액션 — 추가(저장) 또는 거절. 처리 후 해당 메시지에서 그 카드 블록 제거.
+  function cardAction(msgIndex: number, action: { add?: SuggestedCard; dismiss?: boolean }) {
+    if (action.add) {
+      const c = action.add;
+      const ok = createChatCard(c.kind ?? "term", c.term, c.definition, active.label, undefined, {});
+      toast(ok ? t("card.added", { term: c.term }) : t("card.exists"));
+      writeSub(active.key, active.activeSubId, messages.map((m, i) => i === msgIndex && m.role === "assistant" ? { ...m, content: removeSuggestedCard(m.content, c.term) } : m));
+    } else if (action.dismiss) {
+      writeSub(active.key, active.activeSubId, messages.map((m, i) => i === msgIndex && m.role === "assistant" ? { ...m, content: stripCardBlock(m.content) } : m));
+    }
+  }
+
   // 현재 대화를 마크다운으로 클립보드 복사(다른 챗룸과 동일).
   async function copyMd() {
     try { await navigator.clipboard.writeText(formatChatAsMarkdown(messages, t)); toast(t("chat.mdCopied")); } catch { /* clipboard 불가 — 무시 */ }
@@ -274,8 +288,8 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
           else if (ev.type === "result") answer = ev.response.summary;
         }
       }
-      const clean = parseCardSuggestions(answer || "").text || answer || "(빈 응답)";
-      writeSub(sk, subId, [...thread, { role: "assistant", content: clean }]);
+      // raw 저장(nunopi-cards 블록 보존) — 렌더 시 parseCardSuggestions로 본문/칩 분리.
+      writeSub(sk, subId, [...thread, { role: "assistant", content: answer || "(빈 응답)" }]);
     } catch {
       writeSub(sk, subId, [...thread, { role: "assistant", content: "(오류)" }]);
     } finally {
@@ -362,13 +376,37 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {messages.map((m, i) => m.role === "user" ? (
-              <div key={i} className="self-end max-w-[85%] rounded-2xl rounded-br-md bg-[#3B34E2] px-3 py-1.5 text-[12px] leading-relaxed text-white dark:bg-[#8b86f5] dark:text-zinc-900">{m.content}</div>
-            ) : (
-              <div key={i} className="max-w-full text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
-                <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{m.content}</Markdown></div>
-              </div>
-            ))}
+            {messages.map((m, i) => {
+              if (m.role === "user") return (
+                <div key={i} className="self-end max-w-[85%] rounded-2xl rounded-br-md bg-[#3B34E2] px-3 py-1.5 text-[12px] leading-relaxed text-white dark:bg-[#8b86f5] dark:text-zinc-900">{m.content}</div>
+              );
+              // 어시스턴트 — 본문 + nunopi-cards 칩(다른 챗룸과 동일).
+              const { text, cards } = parseCardSuggestions(m.content);
+              return (
+                <div key={i} className="flex max-w-full flex-col items-start gap-1.5 text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
+                  <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{text}</Markdown></div>
+                  {cards.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {cards.map((c) => bookmarkedTermExists(c.term) ? (
+                        <button key={c.term} type="button" onClick={() => toast(t("card.exists"))}
+                          className="inline-flex items-center gap-1 rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
+                          <IconCheck size={10} stroke={2.5} aria-hidden />{c.term} {t("chat.cardExists")}
+                        </button>
+                      ) : (
+                        <button key={c.term} type="button" onClick={() => cardAction(i, { add: c })}
+                          className="inline-flex items-center gap-1 rounded-full bg-[#3B34E2] px-2 py-0.5 text-[10px] font-medium text-white transition hover:bg-[#322bc9] dark:bg-[#8b86f5] dark:text-zinc-900">
+                          <IconPlus size={10} stroke={2.5} aria-hidden />{c.term} {t("chat.saveAsCard")}
+                        </button>
+                      ))}
+                      <button type="button" onClick={() => cardAction(i, { dismiss: true })}
+                        className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500 transition hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600">
+                        {t("chat.noThanks")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {/* 스트리밍 답변 — 어시스턴트 자리에 Markdown 진행(Ask 챗룸과 통일). 첫 토큰 전엔 "답변 작성 중…". */}
             {streaming != null && (
               <div className="max-w-full text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
