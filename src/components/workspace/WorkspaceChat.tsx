@@ -232,10 +232,11 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   async function copyMd() {
     try { await navigator.clipboard.writeText(formatChatAsMarkdown(messages, t)); toast(t("chat.mdCopied")); } catch { /* clipboard 불가 — 무시 */ }
   }
-  // 현재 대화 초기화(확인 모달 후).
+  // 현재 대화 초기화(확인 모달 후). 목적지를 모달 전에 고정(모달 중 탭 전환 대비).
   async function clearThread() {
+    const sk = active.key, subId = active.activeSubId;
     if (!(await confirm({ title: t("chat.clear"), message: t("chat.confirmClear"), confirmText: t("chat.clear"), danger: true }))) return;
-    writeSub(active.key, active.activeSubId, []);
+    writeSub(sk, subId, []);
   }
 
   async function send() {
