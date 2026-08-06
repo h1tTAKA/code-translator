@@ -247,7 +247,9 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
     const key = active.key, subId = active.activeSubId;
     if (action.add) {
       const c = action.add;
-      const ok = createChatCard(c.kind ?? "term", c.term, c.definition, active.label, undefined, {});
+      // 출처 = 세션 무관 레포 이름으로 통일: 워크스페이스 "<레포>" 레포지트리.
+      const repoName = root.split("/").filter(Boolean).pop() ?? root;
+      const ok = createChatCard(c.kind ?? "term", c.term, c.definition, t("card.workspaceSource", { repo: repoName }), undefined, {});
       toast(ok ? t("card.added", { term: c.term }) : t("card.exists"));
       editMessage(key, subId, msgIndex, (content) => removeSuggestedCard(content, c.term));
     } else if (action.dismiss) {
