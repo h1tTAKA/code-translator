@@ -5,7 +5,7 @@
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus, IconCheck } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus, IconCheck, IconHistory } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
@@ -80,6 +80,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   const [streaming, setStreaming] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
   const curStore = useRef(store); // 현재 로드된 store(폴더 변경 감지용)
@@ -315,6 +316,22 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   // 서브 대화 제목 — "질문 N"(세션 내 순번). 단순·예측가능.
   const subTitle = (i: number) => `${t("workspace.chatThread")} ${i + 1}`;
 
+  // 질문 이력 — 전 세션 × 서브 중 유저 질문이 있는 것만. 첫 유저 메시지 = 미리보기.
+  const history = useMemo(() => Object.values(sessions).flatMap((s) =>
+    s.subs.flatMap((sub) => {
+      const q = sub.messages.find((m) => m.role === "user")?.content?.trim();
+      return q ? [{ sessionKey: s.key, kind: s.kind, label: s.label, subId: sub.id, question: q, count: sub.messages.length }] : [];
+    })
+  ), [sessions]);
+
+  // 이력 항목 → 그 세션·서브 챗으로 이동(탭 없으면 열기 + 활성 서브 지정).
+  function goToSub(sessionKey: string, subId: string) {
+    setOpenKeys((prev) => prev.includes(sessionKey) ? prev : [...prev, sessionKey]);
+    setSessions((prev) => prev[sessionKey] ? { ...prev, [sessionKey]: { ...prev[sessionKey], activeSubId: subId } } : prev);
+    setActiveKey(sessionKey);
+    setHistoryOpen(false);
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 세션 탭바 — 열린 세션들(repo/file/diff/branch) */}
@@ -341,16 +358,23 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
       <div className="flex items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
         {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
-        {messages.length > 0 && (
-          <div className="ml-auto flex shrink-0 items-center gap-0.5">
-            <button type="button" onClick={() => void copyMd()} className="rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title={t("chat.copyMd")} aria-label={t("chat.copyMd")}>
-              <IconFileText size={13} stroke={2} aria-hidden />
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {history.length > 0 && (
+            <button type="button" onClick={() => setHistoryOpen((v) => !v)} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${historyOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("workspace.chatHistory")} aria-label={t("workspace.chatHistory")} aria-pressed={historyOpen}>
+              <IconHistory size={13} stroke={2} aria-hidden />
             </button>
-            <button type="button" onClick={() => void clearThread()} className="rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title={t("chat.clear")} aria-label={t("chat.clear")}>
-              <IconEraser size={13} stroke={2} aria-hidden />
-            </button>
-          </div>
-        )}
+          )}
+          {messages.length > 0 && (
+            <>
+              <button type="button" onClick={() => void copyMd()} className="rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title={t("chat.copyMd")} aria-label={t("chat.copyMd")}>
+                <IconFileText size={13} stroke={2} aria-hidden />
+              </button>
+              <button type="button" onClick={() => void clearThread()} className="rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title={t("chat.clear")} aria-label={t("chat.clear")}>
+                <IconEraser size={13} stroke={2} aria-hidden />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* 서브 대화 탭바 — 이 세션 안의 여러 대화 스레드. 탭은 가로 스크롤, +는 우측 고정 */}
@@ -379,8 +403,9 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         </button>
       </div>
 
-      {/* 메시지 */}
-      <div ref={scrollRef} className="nunopi-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      {/* 메시지 + (이력 오버레이) */}
+      <div className="relative min-h-0 flex-1">
+      <div ref={scrollRef} className="nunopi-scroll h-full overflow-y-auto px-3 py-3">
         {messages.length === 0 && !loading ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-zinc-300 dark:text-zinc-600">
             <IconMessageCircle size={24} stroke={1.5} aria-hidden />
@@ -429,6 +454,36 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
             )}
           </div>
         )}
+      </div>
+
+      {/* 질문 이력 오버레이 — 이 레포에서 한 모든 질문. 클릭 시 그 챗으로 이동. */}
+      {historyOpen && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-white dark:bg-[#0b0c12]">
+          <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
+            <IconHistory size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+            <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("workspace.chatHistory")}</span>
+            <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{history.length}</span>
+            <button type="button" onClick={() => setHistoryOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">
+              <IconX size={13} stroke={2} aria-hidden />
+            </button>
+          </div>
+          <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto py-1">
+            {history.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.chatHistoryEmpty")}</div>
+            ) : history.map((h) => (
+              <button key={`${h.sessionKey}:${h.subId}`} type="button" onClick={() => goToSub(h.sessionKey, h.subId)}
+                className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                <span className="mt-0.5 shrink-0">{kindGlyph(h.kind, 13, "text-zinc-400")}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">{h.label}</span>
+                  <span className="line-clamp-2 text-[12px] leading-snug text-zinc-700 dark:text-zinc-200">{h.question}</span>
+                </span>
+                <span className="mt-0.5 shrink-0 rounded bg-zinc-100 px-1 text-[9px] font-medium text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">{h.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
 
       {/* 입력 */}
