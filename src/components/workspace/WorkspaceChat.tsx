@@ -390,7 +390,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
           <div className="flex flex-col gap-3">
             {messages.map((m, i) => {
               if (m.role === "user") return (
-                <div key={i} className="self-end max-w-[85%] whitespace-pre-wrap rounded-2xl bg-zinc-100 px-3 py-1.5 text-[12px] leading-relaxed text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">{m.content}</div>
+                <div key={i} className="self-end max-w-[85%] whitespace-pre-wrap rounded-2xl bg-blue-600 px-3 py-1.5 text-[12px] leading-relaxed text-white">{m.content}</div>
               );
               // 어시스턴트 — 본문 + nunopi-cards 칩(다른 챗룸과 동일).
               const { text, cards } = parseCardSuggestions(m.content);
