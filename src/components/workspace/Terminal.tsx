@@ -1,6 +1,6 @@
 "use client";
-// 워크스페이스 터미널(#647) — xterm.js(WebGL) 프론트 + electron 메인의 node-pty 세션.
-// pty는 메인에 레포 경로별로 살아있어(A안), 언마운트해도 안 죽고 재마운트 시 scrollback 재생.
+// 워크스페이스 터미널(#647) — xterm.js(WebGL) 프론트 + detached pty 데몬 세션(#682).
+// pty는 앱과 분리된 데몬이 소유해 앱 종료에도 생존, 재마운트/재실행 시 scrollback 재생 + live reattach.
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { useT } from "@/lib/i18n/I18nProvider";
@@ -37,26 +37,32 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
       term.loadAddon(fit);
       term.open(host);
       try { term.loadAddon(new webgl.WebglAddon()); } catch { /* WebGL 미지원 → 기본 렌더 폴백 */ }
-      fit.fit();
 
-      try {
-        const r = await nd.terminal.ensure({ id, cwd, cols: term.cols, rows: term.rows });
+      // 한 프레임 미뤄 host 레이아웃이 확정된 뒤 fit → 정확한 cols 확보 후 재생.
+      // open 직후 fit은 tab mount 시점 host 폭이 0으로 측정돼 극소 cols가 잡히고,
+      // 그 폭으로 재생된 scrollback 줄바꿈이 굳어 위쪽이 세로로 깨진다(#682). live는 이후 resize로 정상.
+      requestAnimationFrame(async () => {
         if (disposed || !term) return;
-        if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
-        if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생
-        offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
-        // 셸 종료 시 빈 화면 방치 대신 안내(+로 새 터미널).
-        offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${tRef.current("workspace.terminalExited")}\x1b[0m\r\n`); });
-        term.onData((d) => nd.terminal.input({ id, data: d }));
-        ro = new ResizeObserver(() => {
-          if (!term) return;
-          try { fit.fit(); nd.terminal.resize({ id, cols: term.cols, rows: term.rows }); } catch { /* ignore */ }
-        });
-        ro.observe(host);
-      } catch {
-        // 핸들러 미등록(옛 메인) 등 — 크래시 대신 안내.
-        if (term && !disposed) term.write("\r\n[터미널 연결 실패 — electron:dev를 완전히 껐다 재시작해 주세요]\r\n");
-      }
+        try { fit.fit(); } catch { /* ignore */ }
+        try {
+          const r = await nd.terminal.ensure({ id, cwd, cols: term.cols, rows: term.rows });
+          if (disposed || !term) return;
+          if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
+          if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생(정확한 폭에서)
+          offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
+          // 셸 종료 시 빈 화면 방치 대신 안내(+로 새 터미널).
+          offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${tRef.current("workspace.terminalExited")}\x1b[0m\r\n`); });
+          term.onData((d) => nd.terminal.input({ id, data: d }));
+          ro = new ResizeObserver(() => {
+            if (!term) return;
+            try { fit.fit(); nd.terminal.resize({ id, cols: term.cols, rows: term.rows }); } catch { /* ignore */ }
+          });
+          ro.observe(host);
+        } catch {
+          // 핸들러 미등록(옛 메인) 등 — 크래시 대신 안내.
+          if (term && !disposed) term.write("\r\n[터미널 연결 실패 — electron:dev를 완전히 껐다 재시작해 주세요]\r\n");
+        }
+      });
     })();
 
     return () => { disposed = true; offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };

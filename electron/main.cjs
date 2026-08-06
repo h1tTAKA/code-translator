@@ -10,9 +10,7 @@ const {
   resolveOpenCodeCli,
 } = require("@sna-sdk/core/electron");
 const { spawn } = require("node:child_process");
-// node-pty(네이티브) — 없거나 ABI 불일치면 터미널만 비활성(앱은 계속). npm rebuild 필요할 수 있음.
-let pty = null;
-try { pty = require("node-pty"); } catch (e) { console.warn("[electron] node-pty unavailable:", e?.message); }
+const { createDaemonClient } = require("./daemon-client.cjs");
 const { join } = require("node:path");
 const net = require("node:net");
 
@@ -229,53 +227,66 @@ ipcMain.handle("repo:pickFolder", async () => {
   return { canceled: false, path: res.filePaths[0] };
 });
 
-// ── 터미널(pty) — 레포 경로별 세션. detach(창 전환·언마운트)해도 안 죽여 세션 유지(#647 A안).
-// 재attach 시 scrollback buffer 재생. 앱 종료 시에만 정리.
-const ptys = new Map(); // id → { proc, buffer, cwd }  — 멀티탭: 같은 cwd에도 여러 세션 공존(#678)
+// ── 터미널 — pty를 detached 데몬(terminal-daemon.cjs)이 소유(#682). 앱 종료에도 세션(프로세스) 생존.
+// 메인은 데몬에 소켓 프록시만. terminal:* IPC 계약(ensure/input/resize/kill/data/exit)은 그대로.
 const PTY_BUFFER_MAX = 200_000; // 재생용 스크롤백 상한(문자)
 const broadcast = (channel, payload) => { for (const w of BrowserWindow.getAllWindows()) { try { w.webContents.send(channel, payload); } catch { /* ignore */ } } };
 
-// 스크롤백 디스크 영속(#680) — 앱 재시작 후 이전 내용 재생용. { id: buffer }.
-// (돌던 프로세스 자체는 못 살림 — 텍스트만. tmux는 범위 밖.)
+// 데몬 스크립트 경로 — 패키지는 extraResources(커밋 4), dev는 electron 폴더.
+function daemonScriptPath() {
+  return app.isPackaged
+    ? join(process.resourcesPath, "electron", "terminal-daemon.cjs")
+    : join(__dirname, "terminal-daemon.cjs");
+}
+
+// 스크롤백 디스크 영속(#680) — 데몬이 유휴 reap된 뒤(콜드 스타트) 이전 내용 재생용. { id: buffer }.
+// 데몬이 살아있는 재접속(warm)이면 데몬 buffer가 진실이라 시드 안 함(중복 재생 방지).
 const bufFile = () => join(app.getPath("userData"), "terminal-buffers.json");
 let savedBuffers = {};
 try { savedBuffers = JSON.parse(readFileSync(bufFile(), "utf8")) || {}; } catch { savedBuffers = {}; }
+const liveBuffers = new Map(); // id → buffer  — 데몬 data 미러(디스크 영속용)
+
+// 데몬 소켓 클라이언트 — 죽어있으면 fork(detached,unref)로 스폰. data/exit는 렌더러로 브로드캐스트.
+// 소켓 주소 — Windows는 파일 경로 리슨 불가라 네임드 파이프(net이 자동 인식).
+// ponytail: 파이프명 고정(단일 유저 가정). 멀티유저 격리 필요 시 userData 해시 접미.
+const termSock = process.platform === "win32"
+  ? "\\\\.\\pipe\\nunopi-terminal-daemon"
+  : join(app.getPath("userData"), "terminal-daemon.sock");
+const termClient = createDaemonClient({
+  sock: termSock,
+  metaFile: join(app.getPath("userData"), "terminal-daemon.json"),
+  daemonScript: daemonScriptPath(),
+  // fork는 process.execPath(=electron)로 실행 → ELECTRON_RUN_AS_NODE로 순수 node처럼 데몬 구동.
+  spawnEnvExtra: { ELECTRON_RUN_AS_NODE: "1", NUNOPI_TERM_SHELL: process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash") },
+  onData: (id, data) => {
+    let b = (liveBuffers.get(id) || "") + data;
+    if (b.length > PTY_BUFFER_MAX) b = b.slice(-PTY_BUFFER_MAX);
+    liveBuffers.set(id, b);
+    broadcast("terminal:data", { id, data });
+  },
+  onExit: (id) => { liveBuffers.delete(id); delete savedBuffers[id]; broadcast("terminal:exit", { id }); },
+});
+
 function persistBuffers() {
-  const out = {};
-  for (const [id, s] of ptys) out[id] = s.buffer.slice(-PTY_BUFFER_MAX); // 살아있는 것만(닫힌 id는 자연 제외)
+  const out = { ...savedBuffers }; // 아직 재접속 안 한 id의 저장분 보존
+  for (const [id, b] of liveBuffers) out[id] = b.slice(-PTY_BUFFER_MAX);
   try { mkdirSync(app.getPath("userData"), { recursive: true }); writeFileSync(bufFile(), JSON.stringify(out)); } catch { /* ignore */ }
 }
 setInterval(persistBuffers, 5000); // 크래시 대비 주기 저장(before-quit은 아래 quit 훅서)
 
-ipcMain.handle("terminal:ensure", (_e, { id, cwd, cols, rows }) => {
-  if (!pty) return { ok: false, reason: "node-pty unavailable" };
-  let s = ptys.get(id);
-  if (!s) {
-    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash");
-    // nvm과 충돌하는 npm prefix 변수 제거 — 안 지우면 셸 nvm 초기화가 "npm_config_prefix" 경고를 뿜음.
-    const ptyEnv = { ...process.env };
-    delete ptyEnv.npm_config_prefix; delete ptyEnv.NPM_CONFIG_PREFIX;
-    let proc;
-    try {
-      proc = pty.spawn(shell, [], { name: "xterm-256color", cols: cols || 80, rows: rows || 24, cwd, env: ptyEnv });
-    } catch (e) { return { ok: false, reason: String(e?.message || e) }; }
-    // 재시작 후 첫 확보면 저장분을 시드해 이전 내용 재생(구분선 뒤에 새 셸 프롬프트).
-    const prev = savedBuffers[id];
-    delete savedBuffers[id]; // 재생 1회 소비(중복 방지)
-    s = { proc, buffer: prev ? prev + "\r\n\x1b[2m── 이전 세션 내용(재시작 전) ──\x1b[0m\r\n" : "", cwd };
-    proc.onData((data) => {
-      s.buffer += data;
-      if (s.buffer.length > PTY_BUFFER_MAX) s.buffer = s.buffer.slice(-PTY_BUFFER_MAX);
-      broadcast("terminal:data", { id, data });
-    });
-    proc.onExit(() => { ptys.delete(id); delete savedBuffers[id]; broadcast("terminal:exit", { id }); });
-    ptys.set(id, s);
-  }
-  return { ok: true, buffer: s.buffer };
+ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
+  const r = await termClient.ensure({ id, cwd, cols, rows });
+  if (!r.ok) return { ok: false, reason: r.reason || "daemon unavailable" };
+  let buffer = r.buffer || "";
+  // 콜드 스타트(데몬 buffer 빔)인데 디스크 저장분 있으면 이전 내용 재생 시드(#680). warm 재접속이면 skip.
+  if (!buffer && savedBuffers[id]) buffer = savedBuffers[id] + "\r\n\x1b[2m── 이전 세션 내용(재시작 전) ──\x1b[0m\r\n";
+  delete savedBuffers[id]; // 재생 1회 소비(중복 방지)
+  liveBuffers.set(id, buffer);
+  return { ok: true, buffer };
 });
-ipcMain.on("terminal:input", (_e, { id, data }) => { const s = ptys.get(id); if (s) { try { s.proc.write(data); } catch { /* ignore */ } } });
-ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => { const s = ptys.get(id); if (s && cols > 0 && rows > 0) { try { s.proc.resize(cols, rows); } catch { /* ignore */ } } });
-ipcMain.on("terminal:kill", (_e, { id }) => { const s = ptys.get(id); if (s) { try { s.proc.kill(); } catch { /* ignore */ } ptys.delete(id); } delete savedBuffers[id]; }); // 탭 닫기 시 pty·저장분 정리
+ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
+ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
+ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; }); // 탭 닫기 시 데몬 pty·저장분 정리
 
 // 단일 인스턴스.
 if (!app.requestSingleInstanceLock()) {
@@ -286,9 +297,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) boot(); });
   app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
   app.on("before-quit", () => {
-    try { persistBuffers(); } catch { /* ignore */ } // 터미널 스크롤백 저장(#680) — kill 전에
+    try { persistBuffers(); } catch { /* ignore */ } // 터미널 스크롤백 저장(#680)
     try { serverProc?.kill(); } catch { /* ignore */ }
     try { snaHandle?.stop(); } catch { /* ignore */ }
-    for (const s of ptys.values()) { try { s.proc.kill(); } catch { /* ignore */ } }
+    // 터미널 데몬은 안 죽임 — 세션(프로세스) 생존(#682). 유휴 reap로만 종료.
   });
 }
