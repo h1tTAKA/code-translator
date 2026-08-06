@@ -235,6 +235,18 @@ const ptys = new Map(); // id → { proc, buffer, cwd }  — 멀티탭: 같은 c
 const PTY_BUFFER_MAX = 200_000; // 재생용 스크롤백 상한(문자)
 const broadcast = (channel, payload) => { for (const w of BrowserWindow.getAllWindows()) { try { w.webContents.send(channel, payload); } catch { /* ignore */ } } };
 
+// 스크롤백 디스크 영속(#680) — 앱 재시작 후 이전 내용 재생용. { id: buffer }.
+// (돌던 프로세스 자체는 못 살림 — 텍스트만. tmux는 범위 밖.)
+const bufFile = () => join(app.getPath("userData"), "terminal-buffers.json");
+let savedBuffers = {};
+try { savedBuffers = JSON.parse(readFileSync(bufFile(), "utf8")) || {}; } catch { savedBuffers = {}; }
+function persistBuffers() {
+  const out = {};
+  for (const [id, s] of ptys) out[id] = s.buffer.slice(-PTY_BUFFER_MAX); // 살아있는 것만(닫힌 id는 자연 제외)
+  try { mkdirSync(app.getPath("userData"), { recursive: true }); writeFileSync(bufFile(), JSON.stringify(out)); } catch { /* ignore */ }
+}
+setInterval(persistBuffers, 5000); // 크래시 대비 주기 저장(before-quit은 아래 quit 훅서)
+
 ipcMain.handle("terminal:ensure", (_e, { id, cwd, cols, rows }) => {
   if (!pty) return { ok: false, reason: "node-pty unavailable" };
   let s = ptys.get(id);
@@ -247,20 +259,23 @@ ipcMain.handle("terminal:ensure", (_e, { id, cwd, cols, rows }) => {
     try {
       proc = pty.spawn(shell, [], { name: "xterm-256color", cols: cols || 80, rows: rows || 24, cwd, env: ptyEnv });
     } catch (e) { return { ok: false, reason: String(e?.message || e) }; }
-    s = { proc, buffer: "", cwd };
+    // 재시작 후 첫 확보면 저장분을 시드해 이전 내용 재생(구분선 뒤에 새 셸 프롬프트).
+    const prev = savedBuffers[id];
+    delete savedBuffers[id]; // 재생 1회 소비(중복 방지)
+    s = { proc, buffer: prev ? prev + "\r\n\x1b[2m── 이전 세션 내용(재시작 전) ──\x1b[0m\r\n" : "", cwd };
     proc.onData((data) => {
       s.buffer += data;
       if (s.buffer.length > PTY_BUFFER_MAX) s.buffer = s.buffer.slice(-PTY_BUFFER_MAX);
       broadcast("terminal:data", { id, data });
     });
-    proc.onExit(() => { ptys.delete(id); broadcast("terminal:exit", { id }); });
+    proc.onExit(() => { ptys.delete(id); delete savedBuffers[id]; broadcast("terminal:exit", { id }); });
     ptys.set(id, s);
   }
   return { ok: true, buffer: s.buffer };
 });
 ipcMain.on("terminal:input", (_e, { id, data }) => { const s = ptys.get(id); if (s) { try { s.proc.write(data); } catch { /* ignore */ } } });
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => { const s = ptys.get(id); if (s && cols > 0 && rows > 0) { try { s.proc.resize(cols, rows); } catch { /* ignore */ } } });
-ipcMain.on("terminal:kill", (_e, { id }) => { const s = ptys.get(id); if (s) { try { s.proc.kill(); } catch { /* ignore */ } ptys.delete(id); } }); // 탭 닫기 시 pty 정리
+ipcMain.on("terminal:kill", (_e, { id }) => { const s = ptys.get(id); if (s) { try { s.proc.kill(); } catch { /* ignore */ } ptys.delete(id); } delete savedBuffers[id]; }); // 탭 닫기 시 pty·저장분 정리
 
 // 단일 인스턴스.
 if (!app.requestSingleInstanceLock()) {
@@ -271,6 +286,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) boot(); });
   app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
   app.on("before-quit", () => {
+    try { persistBuffers(); } catch { /* ignore */ } // 터미널 스크롤백 저장(#680) — kill 전에
     try { serverProc?.kill(); } catch { /* ignore */ }
     try { snaHandle?.stop(); } catch { /* ignore */ }
     for (const s of ptys.values()) { try { s.proc.kill(); } catch { /* ignore */ } }
