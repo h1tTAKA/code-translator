@@ -3,8 +3,10 @@
 // pty는 메인에 레포 경로별로 살아있어(A안), 언마운트해도 안 죽고 재마운트 시 scrollback 재생.
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { useT } from "@/lib/i18n/I18nProvider";
 
 export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
+  const t = useT();
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -14,6 +16,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
     let disposed = false;
     let term: import("@xterm/xterm").Terminal | null = null;
     let offData: (() => void) | null = null;
+    let offExit: (() => void) | null = null;
     let ro: ResizeObserver | null = null;
 
     (async () => {
@@ -40,6 +43,8 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
         if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
         if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생
         offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
+        // 셸 종료 시 빈 화면 방치 대신 안내(+로 새 터미널).
+        offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${t("workspace.terminalExited")}\x1b[0m\r\n`); });
         term.onData((d) => nd.terminal.input({ id, data: d }));
         ro = new ResizeObserver(() => {
           if (!term) return;
@@ -52,7 +57,8 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
       }
     })();
 
-    return () => { disposed = true; offData?.(); ro?.disconnect(); term?.dispose(); term = null; };
+    return () => { disposed = true; offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- id/cwd 변경 시만 재마운트(t는 안정, 로케일 변경에 재마운트 방지)
   }, [id, cwd]);
 
   return <div ref={hostRef} className="h-full w-full overflow-hidden bg-white p-1.5 dark:bg-[#0b0c12]" />;
