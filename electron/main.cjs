@@ -247,8 +247,13 @@ try { savedBuffers = JSON.parse(readFileSync(bufFile(), "utf8")) || {}; } catch 
 const liveBuffers = new Map(); // id → buffer  — 데몬 data 미러(디스크 영속용)
 
 // 데몬 소켓 클라이언트 — 죽어있으면 fork(detached,unref)로 스폰. data/exit는 렌더러로 브로드캐스트.
+// 소켓 주소 — Windows는 파일 경로 리슨 불가라 네임드 파이프(net이 자동 인식).
+// ponytail: 파이프명 고정(단일 유저 가정). 멀티유저 격리 필요 시 userData 해시 접미.
+const termSock = process.platform === "win32"
+  ? "\\\\.\\pipe\\nunopi-terminal-daemon"
+  : join(app.getPath("userData"), "terminal-daemon.sock");
 const termClient = createDaemonClient({
-  sock: join(app.getPath("userData"), "terminal-daemon.sock"),
+  sock: termSock,
   metaFile: join(app.getPath("userData"), "terminal-daemon.json"),
   daemonScript: daemonScriptPath(),
   // fork는 process.execPath(=electron)로 실행 → ELECTRON_RUN_AS_NODE로 순수 node처럼 데몬 구동.

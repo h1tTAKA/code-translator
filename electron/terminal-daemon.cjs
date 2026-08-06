@@ -52,18 +52,24 @@ function ensure({ id, cwd, cols, rows }) {
   return { id, ok: true, buffer: s.buffer };
 }
 
+const AUTH_TIMEOUT_MS = 5000;      // 인증 없이 열려있는 소켓 방치 방지(FD 누수 차단)
+const PREAUTH_BUF_MAX = 4096;      // 미인증 상태 버퍼 상한 — 개행 없는 대량 전송으로 메모리 소모 차단
 const server = net.createServer((sock) => {
   let authed = false;
   let buf = "";
+  // 인증 지연/무응답 소켓은 타임아웃으로 강제 종료(로컬이라도 접속 스팸 → FD 고갈 방지).
+  const authTimer = setTimeout(() => { if (!authed) sock.destroy(); }, AUTH_TIMEOUT_MS);
   sock.on("data", (chunk) => {
     buf += chunk.toString();
+    if (!authed && buf.length > PREAUTH_BUF_MAX) { sock.destroy(); return; } // 미인증 폭주 차단
     let nl;
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
       if (!line.trim()) continue;
-      let m; try { m = JSON.parse(line); } catch { continue; }
+      // 미인증 상태에선 첫 줄이 반드시 유효한 attach여야 함 — 깨진 JSON이면 즉시 종료(방치 금지).
+      let m; try { m = JSON.parse(line); } catch { if (!authed) { sock.destroy(); return; } continue; }
       if (!authed) { // 첫 메시지는 반드시 인증
-        if (m.t === "attach" && m.token === TOKEN) { authed = true; clients.add(sock); scheduleIdleReap(); send(sock, { t: "ready" }); }
+        if (m.t === "attach" && m.token === TOKEN) { authed = true; clearTimeout(authTimer); clients.add(sock); scheduleIdleReap(); send(sock, { t: "ready" }); }
         else { sock.destroy(); }
         continue;
       }
@@ -73,8 +79,8 @@ const server = net.createServer((sock) => {
       else if (m.t === "kill") { const s = ptys.get(m.id); if (s) { try { s.proc.kill(); } catch { /* ignore */ } ptys.delete(m.id); } scheduleIdleReap(); }
     }
   });
-  sock.on("close", () => { clients.delete(sock); scheduleIdleReap(); });
-  sock.on("error", () => { clients.delete(sock); });
+  sock.on("close", () => { clearTimeout(authTimer); clients.delete(sock); scheduleIdleReap(); });
+  sock.on("error", () => { clearTimeout(authTimer); clients.delete(sock); });
 });
 
 // 앱 종료(SIGTERM)에 안 죽음 — 세션 생존 목적. 유휴 reap으로만 종료.
