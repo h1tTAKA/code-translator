@@ -5,11 +5,13 @@
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconTrash, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
+import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock } from "@/lib/cardSuggestion";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
@@ -43,6 +45,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   const t = useT();
   const { locale } = useLocale();
   const confirm = useConfirm();
+  const toast = useToast();
   const store = `nunopi:ws-chat:${root}`;
 
   const [sessions, setSessions] = useState<Record<string, Session>>({ [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) });
@@ -225,6 +228,16 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
     return parts.join("\n\n") + "\n";
   }
 
+  // 현재 대화를 마크다운으로 클립보드 복사(다른 챗룸과 동일).
+  async function copyMd() {
+    try { await navigator.clipboard.writeText(formatChatAsMarkdown(messages, t)); toast(t("chat.mdCopied")); } catch { /* clipboard 불가 — 무시 */ }
+  }
+  // 현재 대화 초기화(확인 모달 후).
+  async function clearThread() {
+    if (!(await confirm({ title: t("chat.clear"), message: t("chat.confirmClear"), confirmText: t("chat.clear"), danger: true }))) return;
+    writeSub(active.key, active.activeSubId, []);
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || loading) return;
@@ -298,9 +311,14 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
         {messages.length > 0 && (
-          <button type="button" onClick={() => writeSub(active.key, active.activeSubId, [])} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" title={t("workspace.chatClear")}>
-            <IconTrash size={13} stroke={2} aria-hidden />
-          </button>
+          <div className="ml-auto flex shrink-0 items-center gap-0.5">
+            <button type="button" onClick={() => void copyMd()} className="rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title={t("chat.copyMd")} aria-label={t("chat.copyMd")}>
+              <IconFileText size={13} stroke={2} aria-hidden />
+            </button>
+            <button type="button" onClick={() => void clearThread()} className="rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" title={t("chat.clear")} aria-label={t("chat.clear")}>
+              <IconEraser size={13} stroke={2} aria-hidden />
+            </button>
+          </div>
         )}
       </div>
 
