@@ -234,21 +234,31 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
     return parts.join("\n\n") + "\n";
   }
 
+  // 특정 세션·서브의 한 어시스턴트 메시지 본문만 함수형 갱신(prev 기준 — 클로저 배열 클로버 방지).
+  function editMessage(key: string, subId: string, msgIndex: number, mapContent: (c: string) => string) {
+    setSessions((prev) => {
+      const s = prev[key]; if (!s) return prev;
+      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id !== subId ? su : { ...su, messages: su.messages.map((m, i) => i === msgIndex && m.role === "assistant" ? { ...m, content: mapContent(m.content) } : m) }) } };
+    });
+  }
+
   // 카드 제안 칩 액션 — 추가(저장) 또는 거절. 처리 후 해당 메시지에서 그 카드 블록 제거.
   function cardAction(msgIndex: number, action: { add?: SuggestedCard; dismiss?: boolean }) {
+    const key = active.key, subId = active.activeSubId;
     if (action.add) {
       const c = action.add;
       const ok = createChatCard(c.kind ?? "term", c.term, c.definition, active.label, undefined, {});
       toast(ok ? t("card.added", { term: c.term }) : t("card.exists"));
-      writeSub(active.key, active.activeSubId, messages.map((m, i) => i === msgIndex && m.role === "assistant" ? { ...m, content: removeSuggestedCard(m.content, c.term) } : m));
+      editMessage(key, subId, msgIndex, (content) => removeSuggestedCard(content, c.term));
     } else if (action.dismiss) {
-      writeSub(active.key, active.activeSubId, messages.map((m, i) => i === msgIndex && m.role === "assistant" ? { ...m, content: stripCardBlock(m.content) } : m));
+      editMessage(key, subId, msgIndex, stripCardBlock);
     }
   }
 
-  // 현재 대화를 마크다운으로 클립보드 복사(다른 챗룸과 동일).
+  // 현재 대화를 마크다운으로 클립보드 복사(카드 블록 JSON 제외 — 사람이 읽을 본문만).
   async function copyMd() {
-    try { await navigator.clipboard.writeText(formatChatAsMarkdown(messages, t)); toast(t("chat.mdCopied")); } catch { /* clipboard 불가 — 무시 */ }
+    const clean = messages.map((m) => m.role === "assistant" ? { ...m, content: stripCardBlock(m.content) } : m);
+    try { await navigator.clipboard.writeText(formatChatAsMarkdown(clean, t)); toast(t("chat.mdCopied")); } catch { /* clipboard 불가 — 무시 */ }
   }
   // 현재 대화 초기화(확인 모달 후). 목적지를 모달 전에 고정(모달 중 탭 전환 대비).
   async function clearThread() {
