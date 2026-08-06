@@ -62,16 +62,22 @@ function createDaemonClient(opts) {
   }
 
   // 연결 확보 — 있으면 재사용, 없으면 데몬 스폰 후 재시도.
-  async function ensureConnected() {
-    if (socket && ready) return true;
-    token = token || loadOrMakeToken();
-    if (await connect()) return true;
-    spawnDaemon();
-    for (let i = 0; i < 40; i++) { // 최대 ~4s 재시도(데몬 리슨 대기)
-      await new Promise((r) => setTimeout(r, 100));
+  // single-flight: 동시 ensure가 몰려도 connect/spawn은 한 번만(중복 데몬 spawn·소켓 unlink 경쟁 방지).
+  let connecting = null;
+  function ensureConnected() {
+    if (socket && ready) return Promise.resolve(true);
+    if (connecting) return connecting;
+    connecting = (async () => {
+      token = token || loadOrMakeToken();
       if (await connect()) return true;
-    }
-    return false;
+      spawnDaemon();
+      for (let i = 0; i < 40; i++) { // 최대 ~4s 재시도(데몬 리슨 대기)
+        await new Promise((r) => setTimeout(r, 100));
+        if (await connect()) return true;
+      }
+      return false;
+    })().finally(() => { connecting = null; });
+    return connecting;
   }
 
   return {
