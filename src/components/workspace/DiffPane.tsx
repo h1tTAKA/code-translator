@@ -2,7 +2,7 @@
 // 워크스페이스 diff 뷰(#649) — 커밋+파일의 git diff. shiki 신택스 하이라이팅 + 빨강(−)/초록(+) 배경.
 import { Fragment, useEffect, useRef, useState } from "react";
 import { codeToTokens, type ThemedToken, type BundledLanguage } from "shiki";
-import { IconLoader2, IconAlertTriangle, IconGitCompare, IconSparkles } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconGitCompare, IconSparkles, IconRefresh } from "@tabler/icons-react";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
 import { parseCardSuggestions } from "@/lib/cardSuggestion";
@@ -244,6 +244,8 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
                   className="inline-flex items-center gap-1 rounded-md bg-[#3B34E2] px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-[#322bc9] disabled:opacity-60 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
                   {startNote?.status === "loading"
                     ? <><IconLoader2 size={11} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.hunkExplaining")}</>
+                    : startNote?.status === "done"
+                    ? <><IconRefresh size={11} stroke={2.5} aria-hidden />{t("workspace.hunkReexplain")}</>
                     : <><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkExplain")}</>}
                 </button>
               </div>
@@ -251,7 +253,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             {row}
             {/* 구간 끝: 아래에 노트(변경 코드 밑) */}
             {endNote?.status === "done" && (
-              <div className="my-1 ml-[4.75rem] mr-4 rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/5 px-3 py-2 font-sans dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/10">
+              <div className="sticky left-0 z-[5] my-1 ml-2 w-[30rem] max-w-[calc(100vw-4rem)] rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/10 px-3 py-2 font-sans backdrop-blur-sm dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/15">
                 <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
                 <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200 prose-headings:my-1 prose-headings:text-[12px] prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0"><Markdown>{endNote.text ?? ""}</Markdown></div>
               </div>
