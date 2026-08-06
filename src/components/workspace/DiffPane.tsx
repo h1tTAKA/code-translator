@@ -117,7 +117,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
     if (notes[key]?.status === "loading") return; // 중복 가드
     setNotes((p) => ({ ...p, [key]: { status: "loading" } }));
     try {
-      const prompt = "아래는 코드 변경(diff)입니다(- 삭제, + 추가). 이 변경을 설명해줘:\n1) 무엇을 바꿨는지 한 문장.\n2) 왜 이렇게 바꿨는지(의도·이유).\n3) 어떤 효과·영향이 있는지.\n주니어 개발자도 이해할 만큼 쉬운 말로, 그러나 정확하게. 짧고 명확하게. 카드는 만들지 마세요.";
+      const prompt = "아래는 코드 변경(diff)입니다(- 삭제, + 추가). 다음을 쉬운 말로, 그러나 정확하게 설명해줘:\n1) 무엇을 바꿨는지 한 문장.\n2) 바뀐(+ 표시된) 코드가 실제로 하는 일을 한 줄씩 또는 흐름으로 풀어서 읽어줘.\n3) 왜 이렇게 바꿨는지(의도·이유).\n4) 어떤 효과·영향이 있는지.\n주니어 개발자도 이해할 만큼 쉽게. 짧고 명확하게. '답변' 같은 제목·머리말 없이 바로 내용부터 시작하고, 큰 제목(#, ##)은 쓰지 마세요. 카드는 만들지 마세요.";
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId, request: { code: h.diffText, locale, providerId, mode: "chat", messages: [{ role: "user", content: prompt }], providerSettings } }),
@@ -253,7 +253,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             {endNote?.status === "done" && (
               <div className="my-1 ml-[4.75rem] mr-4 rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/5 px-3 py-2 font-sans dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/10">
                 <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
-                <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200"><Markdown>{endNote.text ?? ""}</Markdown></div>
+                <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200 prose-headings:my-1 prose-headings:text-[12px] prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0"><Markdown>{endNote.text ?? ""}</Markdown></div>
               </div>
             )}
             {endNote?.status === "error" && (
