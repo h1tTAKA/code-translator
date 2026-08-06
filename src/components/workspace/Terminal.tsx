@@ -7,6 +7,8 @@ import { useT } from "@/lib/i18n/I18nProvider";
 
 export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
   const t = useT();
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]); // 최신 t 유지 — locale 바뀌어도 터미널 remount 없이 exit 안내 언어 반영
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
         if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생
         offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
         // 셸 종료 시 빈 화면 방치 대신 안내(+로 새 터미널).
-        offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${t("workspace.terminalExited")}\x1b[0m\r\n`); });
+        offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${tRef.current("workspace.terminalExited")}\x1b[0m\r\n`); });
         term.onData((d) => nd.terminal.input({ id, data: d }));
         ro = new ResizeObserver(() => {
           if (!term) return;
@@ -58,7 +60,6 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
     })();
 
     return () => { disposed = true; offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- id/cwd 변경 시만 재마운트(t는 안정, 로케일 변경에 재마운트 방지)
   }, [id, cwd]);
 
   return <div ref={hostRef} className="h-full w-full overflow-hidden bg-white p-1.5 dark:bg-[#0b0c12]" />;
