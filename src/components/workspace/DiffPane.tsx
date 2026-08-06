@@ -74,8 +74,8 @@ function parseDiff(diff: string): DLine[] {
 export default function DiffPane({ root, hash, file, worktree, providerId, providerSettings }: { root: string; hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked"; providerId: AgentProviderKind; providerSettings: ProviderSettings }) {
   const t = useT();
   const { locale } = useLocale();
-  // 변경 구간별 에이전트 노트(로컬 — 이 diff 열려있는 동안만). key = hunk.id.
-  const [notes, setNotes] = useState<Record<number, { status: "loading" | "done" | "error"; text?: string }>>({});
+  // 변경 구간별 에이전트 노트. key = diffText 해시(구간 내용 기반 안정 키 → 같은 diff 재오픈 시 매칭).
+  const [notes, setNotes] = useState<Record<string, { status: "loading" | "done" | "error"; text?: string }>>({});
   const [lines, setLines] = useState<DLine[] | null>(null);
   const [tokens, setTokens] = useState<ThemedToken[][]>([]); // 코드줄(add/del/ctx) 순서별 하이라이트 토큰
   const [status, setStatus] = useState<"loading" | "ok" | "error" | "empty">("loading");
@@ -95,20 +95,34 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
     setVp({ top: (el.scrollTop / h) * 100, height: Math.min(100, (el.clientHeight / h) * 100) });
   };
   useEffect(() => { if (status === "ok") syncVp(); }, [status, lines]);
-  // diff(파일/커밋/워킹트리) 바뀌면 노트 초기화(stale 방지).
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- diff 키 변경 시 노트 리셋
-  useEffect(() => { setNotes({}); }, [root, hash, file, worktree]);
 
-  // 변경 구간 온디맨드 설명 — analyze mode:chat 재사용(서버 변경 0). 로딩→최종(카드 블록 제거).
+  // 노트 영속 — diff 신원별 localStorage. 재오픈 시 저장된 설명 복원.
+  const noteStore = `nunopi:hunk-notes:${root}:${hash ?? (worktree ? "wt:" + worktree : "")}:${file}`;
+  // 구간 내용(diffText) 기반 안정 키 — 인덱스가 아니라 내용이라 같은 diff 재오픈 시 매칭, 편집되면 자연 미스.
+  const hunkKey = (h: Hunk) => { let x = 0; for (let i = 0; i < h.diffText.length; i++) x = (Math.imul(x, 31) + h.diffText.charCodeAt(i)) | 0; return String(x); };
+  const persist = (map: Record<string, { status: "loading" | "done" | "error"; text?: string }>) => {
+    try { const done: Record<string, string> = {}; for (const k in map) if (map[k].status === "done" && map[k].text) done[k] = map[k].text!; localStorage.setItem(noteStore, JSON.stringify(done)); } catch { /* ignore */ }
+  };
+  // diff(파일/커밋/워킹트리) 바뀌면 저장된 노트 로드(없으면 빈).
+  useEffect(() => {
+    let loaded: Record<string, { status: "done"; text: string }> = {};
+    try { const raw = localStorage.getItem(noteStore); if (raw) { const m = JSON.parse(raw) as Record<string, string>; for (const k in m) loaded[k] = { status: "done", text: m[k] }; } } catch { loaded = {}; }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- diff 키 변경 시 저장 노트 복원
+    setNotes(loaded);
+  }, [noteStore]);
+
+  // 변경 구간 온디맨드 설명 — analyze mode:chat 재사용(서버 변경 0). 로딩→최종(카드 블록 제거) → 영속.
   async function explainHunk(h: Hunk) {
-    if (notes[h.id]?.status === "loading") return; // 중복 가드
-    setNotes((p) => ({ ...p, [h.id]: { status: "loading" } }));
+    const key = hunkKey(h);
+    if (notes[key]?.status === "loading") return; // 중복 가드
+    setNotes((p) => ({ ...p, [key]: { status: "loading" } }));
     try {
+      const prompt = "아래는 코드 변경(diff)입니다(- 삭제, + 추가). 이 변경을 설명해줘:\n1) 무엇을 바꿨는지 한 문장.\n2) 왜 이렇게 바꿨는지(의도·이유).\n3) 어떤 효과·영향이 있는지.\n주니어 개발자도 이해할 만큼 쉬운 말로, 그러나 정확하게. 짧고 명확하게. 카드는 만들지 마세요.";
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId, request: { code: h.diffText, locale, providerId, mode: "chat", messages: [{ role: "user", content: "아래는 코드 변경(diff)입니다. 무엇을 바꿨는지 2~3문장으로 요약하고 왜 이렇게 바꿨을지 근거를 설명해줘. 카드는 만들지 마세요." }], providerSettings } }),
+        body: JSON.stringify({ providerId, request: { code: h.diffText, locale, providerId, mode: "chat", messages: [{ role: "user", content: prompt }], providerSettings } }),
       });
-      if (!res.ok || !res.body) { setNotes((p) => ({ ...p, [h.id]: { status: "error" } })); return; }
+      if (!res.ok || !res.body) { setNotes((p) => ({ ...p, [key]: { status: "error" } })); return; }
       const reader = res.body.getReader(); const dec = new TextDecoder();
       let buf = "", answer = "";
       for (;;) {
@@ -117,8 +131,8 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
         for (const l of ls) { if (!l.trim()) continue; let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { continue; } if (ev.type === "result") answer = ev.response.summary; }
       }
       const clean = parseCardSuggestions(answer || "").text || answer || "(빈 응답)";
-      setNotes((p) => ({ ...p, [h.id]: { status: "done", text: clean } }));
-    } catch { setNotes((p) => ({ ...p, [h.id]: { status: "error" } })); }
+      setNotes((p) => { const n = { ...p, [key]: { status: "done" as const, text: clean } }; persist(n); return n; });
+    } catch { setNotes((p) => ({ ...p, [key]: { status: "error" } })); }
   }
 
   const jumpToY = (clientY: number) => {
@@ -190,8 +204,10 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
     });
     if (s >= 0) flush(lines.length);
   }
-  // 변경 구간 → 시작 줄 인덱스에 헤더(설명 버튼) 앵커.
-  const hunkStart = new Map(groupHunks(lines).map((h) => [h.startLine, h]));
+  // 변경 구간 → 시작 줄에 버튼(위), 끝 줄에 노트(아래) 앵커.
+  const allHunks = groupHunks(lines);
+  const hunkStart = new Map(allHunks.map((h) => [h.startLine, h]));
+  const hunkEnd = new Map(allHunks.map((h) => [h.endLine, h]));
   return (
     <div className="relative h-full bg-white dark:bg-[#0b0c12]"
       onMouseEnter={() => { if (hideTimer.current) clearTimeout(hideTimer.current); setShowRuler(true); }}
@@ -204,7 +220,8 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
         const bg = l.kind === "add" ? "bg-emerald-500/20" : l.kind === "del" ? "bg-rose-500/20" : "";
         const mark = l.kind === "add" ? "+" : l.kind === "del" ? "−" : " ";
         const markCls = l.kind === "add" ? "text-emerald-600 dark:text-emerald-500" : l.kind === "del" ? "text-rose-600 dark:text-rose-500" : "text-transparent";
-        const hunk = hunkStart.get(i); // 이 줄에서 변경 구간 시작 → 위에 설명 버튼
+        const startH = hunkStart.get(i); // 구간 시작 → 위에 설명 버튼
+        const endH = hunkEnd.get(i);     // 구간 끝 → 아래에 노트
         const row = (
           <div key={i} className={`flex w-max min-w-full ${bg}`}>
             <span className="w-9 shrink-0 select-none border-r border-zinc-100 px-1 text-right text-[10px] text-zinc-300 dark:border-zinc-800 dark:text-zinc-600">{l.oldN ?? ""}</span>
@@ -215,28 +232,33 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             </span>
           </div>
         );
-        if (!hunk) return row;
-        const note = notes[hunk.id];
+        if (!startH && !endH) return row;
+        const startNote = startH ? notes[hunkKey(startH)] : undefined;
+        const endNote = endH ? notes[hunkKey(endH)] : undefined;
         return (
           <Fragment key={`h-${i}`}>
-            <div className="flex items-center py-1 pl-[4.75rem]">
-              <button type="button" onClick={() => void explainHunk(hunk)} disabled={note?.status === "loading"}
-                className="inline-flex items-center gap-1 rounded-md bg-[#3B34E2] px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-[#322bc9] disabled:opacity-60 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
-                {note?.status === "loading"
-                  ? <><IconLoader2 size={11} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.hunkExplaining")}</>
-                  : <><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkExplain")}</>}
-              </button>
-            </div>
-            {note?.status === "done" && (
-              <div className="my-1 ml-[4.75rem] mr-4 rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/5 px-3 py-2 font-sans dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/10">
-                <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
-                <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200"><Markdown>{note.text ?? ""}</Markdown></div>
+            {/* 구간 시작: 위에 설명 버튼 */}
+            {startH && (
+              <div className="flex items-center py-1 pl-[4.75rem]">
+                <button type="button" onClick={() => void explainHunk(startH)} disabled={startNote?.status === "loading"}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#3B34E2] px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-[#322bc9] disabled:opacity-60 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
+                  {startNote?.status === "loading"
+                    ? <><IconLoader2 size={11} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.hunkExplaining")}</>
+                    : <><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkExplain")}</>}
+                </button>
               </div>
             )}
-            {note?.status === "error" && (
+            {row}
+            {/* 구간 끝: 아래에 노트(변경 코드 밑) */}
+            {endNote?.status === "done" && (
+              <div className="my-1 ml-[4.75rem] mr-4 rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/5 px-3 py-2 font-sans dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/10">
+                <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
+                <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200"><Markdown>{endNote.text ?? ""}</Markdown></div>
+              </div>
+            )}
+            {endNote?.status === "error" && (
               <div className="my-1 ml-[4.75rem] flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-500"><IconAlertTriangle size={12} stroke={2} aria-hidden />{t("workspace.hunkNoteError")}</div>
             )}
-            {row}
           </Fragment>
         );
       })}
