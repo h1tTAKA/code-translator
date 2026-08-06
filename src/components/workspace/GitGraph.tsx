@@ -99,17 +99,21 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
         </button>
       </div>
 
-      {/* 워킹트리 변경(커밋 전) 섹션 — 커밋 그래프 위. 변경 없으면 숨김. */}
-      {isGit && changes.length > 0 && (
-        <div className="shrink-0 border-b border-zinc-200 dark:border-zinc-800">
-          <button type="button" onClick={() => setChangesOpen((v) => !v)} className="flex w-full items-center gap-1 px-2.5 py-1 text-left text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/50">
-            {changesOpen ? <IconChevronDown size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden /> : <IconChevronRight size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />}
-            <span>{t("workspace.gitChanges")}</span>
-            <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{changes.length}</span>
-          </button>
-          {changesOpen && (
-            <div className="max-h-[35%] overflow-auto pb-1">
-              {changes.map((c) => {
+      {loading && !model ? (
+        <div className="flex flex-1 items-center justify-center text-zinc-400"><IconLoader2 size={15} stroke={2} className="animate-spin" aria-hidden /></div>
+      ) : !isGit ? (
+        <div className="flex flex-1 items-center justify-center px-3 text-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.gitNone")}</div>
+      ) : (
+        <div className="nunopi-scroll min-h-0 flex-1 overflow-auto">
+          {/* 워킹트리 변경(커밋 전) — 커밋 그래프와 같은 스크롤에 얹어 공간 다 쓰게(잘림 방지). */}
+          {changes.length > 0 && (
+            <div className="border-b border-zinc-200 dark:border-zinc-800">
+              <button type="button" onClick={() => setChangesOpen((v) => !v)} className="sticky top-0 z-10 flex w-full items-center gap-1 bg-white px-2.5 py-1 text-left text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50 dark:bg-[#0e0f16] dark:text-zinc-300 dark:hover:bg-zinc-800/50">
+                {changesOpen ? <IconChevronDown size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden /> : <IconChevronRight size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />}
+                <span>{t("workspace.gitChanges")}</span>
+                <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{changes.length}</span>
+              </button>
+              {changesOpen && changes.map((c) => {
                 const b = changeBadge(c);
                 const name = c.path.replace(/\/$/, "").split("/").pop() || c.path;
                 return (
@@ -127,15 +131,6 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {loading && !model ? (
-        <div className="flex flex-1 items-center justify-center text-zinc-400"><IconLoader2 size={15} stroke={2} className="animate-spin" aria-hidden /></div>
-      ) : !isGit ? (
-        <div className="flex flex-1 items-center justify-center px-3 text-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.gitNone")}</div>
-      ) : (
-        <div className="nunopi-scroll min-h-0 flex-1 overflow-auto">
           {model?.rows.map((row) => {
             const dotY = ROW_H / 2;
             const lines: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
