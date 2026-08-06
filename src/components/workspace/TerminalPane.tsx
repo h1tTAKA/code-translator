@@ -56,16 +56,15 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   }
   function closeTab(id: string) {
     try { window.nunopiDesktop?.terminal?.kill({ id }); } catch { /* ignore */ } // pty 정리(좀비 방지)
-    setTabs((prev) => {
-      const next = prev.filter((x) => x.id !== id);
-      if (!next.length) { const nid = genId(); return [{ id: nid, title: t("workspace.terminalTab", { n: 1 }) }]; } // 최소 1개
-      return next;
-    });
-    setActiveId((cur) => {
-      if (cur !== id) return cur;
-      const rest = tabs.filter((x) => x.id !== id);
-      return rest.length ? rest[rest.length - 1].id : cur; // 활성 닫으면 마지막으로
-    });
+    const next = tabs.filter((x) => x.id !== id);
+    if (!next.length) { // 마지막 탭 → 새 빈 탭으로 대체 + 그 탭 활성
+      seq.current += 1;
+      const nt = { id: genId(), title: t("workspace.terminalTab", { n: seq.current }) };
+      setTabs([nt]); setActiveId(nt.id);
+      return;
+    }
+    setTabs(next);
+    if (activeId === id) setActiveId(next[next.length - 1].id); // 활성 닫으면 마지막으로
   }
 
   const active = tabs.find((x) => x.id === activeId) ?? tabs[0];
