@@ -100,7 +100,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
   // 노트 영속 — diff 신원별 localStorage. 재오픈 시 저장된 설명 복원.
   const noteStore = `nunopi:hunk-notes:${root}:${hash ?? (worktree ? "wt:" + worktree : "")}:${file}`;
   // 구간 내용(diffText) 기반 안정 키 — 인덱스가 아니라 내용이라 같은 diff 재오픈 시 매칭, 편집되면 자연 미스.
-  const hunkKey = (h: Hunk) => { let x = 0; for (let i = 0; i < h.diffText.length; i++) x = (Math.imul(x, 31) + h.diffText.charCodeAt(i)) | 0; return String(x); };
+  const hunkKey = (h: Hunk) => h.diffText; // 구간 내용 자체를 키로(해시 충돌 원천 제거, 재오픈 매칭)
   const persist = (map: Record<string, { status: "loading" | "done" | "error"; text?: string }>) => {
     try { const done: Record<string, string> = {}; for (const k in map) if (map[k].status === "done" && map[k].text) done[k] = map[k].text!; localStorage.setItem(noteStore, JSON.stringify(done)); } catch { /* ignore */ }
   };
@@ -126,11 +126,13 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
       if (!res.ok || !res.body) { setNotes((p) => ({ ...p, [key]: { status: "error" } })); return; }
       const reader = res.body.getReader(); const dec = new TextDecoder();
       let buf = "", answer = "";
+      const take = (l: string) => { if (!l.trim()) return; let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { return; } if (ev.type === "result") answer = ev.response.summary; };
       for (;;) {
         const { done, value } = await reader.read(); if (done) break;
         buf += dec.decode(value, { stream: true }); const ls = buf.split("\n"); buf = ls.pop() ?? "";
-        for (const l of ls) { if (!l.trim()) continue; let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { continue; } if (ev.type === "result") answer = ev.response.summary; }
+        for (const l of ls) take(l);
       }
+      if (buf.trim()) take(buf); // 개행 없이 끝난 마지막 이벤트(result) 유실 방지
       const clean = parseCardSuggestions(answer || "").text || answer || "(빈 응답)";
       setNotes((p) => { const n = { ...p, [key]: { status: "done" as const, text: clean } }; persist(n); return n; });
     } catch { setNotes((p) => ({ ...p, [key]: { status: "error" } })); }
