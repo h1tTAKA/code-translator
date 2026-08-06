@@ -7,16 +7,22 @@ import { promisify } from "node:util";
 export const runtime = "nodejs";
 const pexecFile = promisify(execFile);
 
-// --numstat 출력("added\tdeleted\tpath\0") → path별 {added,deleted}. 바이너리는 "-" → 0.
+// --numstat -z 출력 → path별 {added,deleted}. 바이너리는 "-" → 0.
+// 일반: "added\tdeleted\tpath\0". rename/copy: "added\tdeleted\t\0old\0new"(경로가 다음 두 NUL 청크로 분리)
+// → new 경로로 키잉(porcelain의 new 경로와 정렬).
 function parseNumstat(z: string): Map<string, { added: number; deleted: number }> {
   const m = new Map<string, { added: number; deleted: number }>();
-  for (const rec of z.split("\0")) {
-    if (!rec.trim()) continue;
+  const chunks = z.split("\0");
+  for (let i = 0; i < chunks.length; i++) {
+    const rec = chunks[i];
+    if (!rec) continue;
     const t = rec.split("\t");
     if (t.length < 3) continue;
     const added = t[0] === "-" ? 0 : Number(t[0]) || 0;
     const deleted = t[1] === "-" ? 0 : Number(t[1]) || 0;
-    m.set(t[2], { added, deleted });
+    let path = t[2];
+    if (path === "") { const newp = chunks[i + 2]; i += 2; path = newp ?? ""; } // rename/copy: old·new 청크 소비, new 사용
+    if (path) m.set(path, { added, deleted });
   }
   return m;
 }
