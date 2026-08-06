@@ -386,20 +386,20 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
                 <div key={i} className="flex max-w-full flex-col items-start gap-1.5 text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
                   <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{text}</Markdown></div>
                   {cards.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {cards.map((c) => bookmarkedTermExists(c.term) ? (
                         <button key={c.term} type="button" onClick={() => toast(t("card.exists"))}
-                          className="inline-flex items-center gap-1 rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
-                          <IconCheck size={10} stroke={2.5} aria-hidden />{c.term} {t("chat.cardExists")}
+                          className="inline-flex items-center gap-1 rounded-full bg-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600">
+                          <IconCheck size={12} stroke={2.5} aria-hidden />{c.term} {t("chat.cardExists")}
                         </button>
                       ) : (
                         <button key={c.term} type="button" onClick={() => cardAction(i, { add: c })}
-                          className="inline-flex items-center gap-1 rounded-full bg-[#3B34E2] px-2 py-0.5 text-[10px] font-medium text-white transition hover:bg-[#322bc9] dark:bg-[#8b86f5] dark:text-zinc-900">
-                          <IconPlus size={10} stroke={2.5} aria-hidden />{c.term} {t("chat.saveAsCard")}
+                          className="inline-flex items-center gap-1 rounded-full bg-[#3B34E2] px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-[#322bc9]">
+                          <IconPlus size={12} stroke={2.5} aria-hidden />{c.term} {t("chat.saveAsCard")}
                         </button>
                       ))}
                       <button type="button" onClick={() => cardAction(i, { dismiss: true })}
-                        className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500 transition hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600">
+                        className="rounded-full bg-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600">
                         {t("chat.noThanks")}
                       </button>
                     </div>
