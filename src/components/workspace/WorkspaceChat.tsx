@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconTrash, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
-import { parseCardSuggestions } from "@/lib/cardSuggestion";
+import { parseCardSuggestions, stripStreamingCardBlock } from "@/lib/cardSuggestion";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
@@ -346,10 +346,12 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
                 <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{m.content}</Markdown></div>
               </div>
             ))}
-            {loading && (
-              <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500">
-                <IconLoader2 size={13} stroke={2} className="animate-spin" aria-hidden />
-                <span className="truncate">{streaming || "…"}</span>
+            {/* 스트리밍 답변 — 어시스턴트 자리에 Markdown 진행(Ask 챗룸과 통일). 첫 토큰 전엔 "답변 작성 중…". */}
+            {streaming != null && (
+              <div className="max-w-full text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
+                {streaming
+                  ? <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{stripStreamingCardBlock(streaming)}</Markdown></div>
+                  : <span className="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500"><IconLoader2 size={13} stroke={2} className="animate-spin" aria-hidden /> {t("chat.replying")}</span>}
               </div>
             )}
           </div>
