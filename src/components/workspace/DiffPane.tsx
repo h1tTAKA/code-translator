@@ -3,7 +3,12 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { codeToTokens, type ThemedToken, type BundledLanguage } from "shiki";
 import { IconLoader2, IconAlertTriangle, IconGitCompare, IconSparkles } from "@tabler/icons-react";
-import { useT } from "@/lib/i18n/I18nProvider";
+import { useLocale, useT } from "@/lib/i18n/I18nProvider";
+import Markdown from "@/components/learning/Markdown";
+import { parseCardSuggestions } from "@/lib/cardSuggestion";
+import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
+
+type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
 interface DLine { kind: "hunk" | "add" | "del" | "ctx" | "meta"; oldN: number | null; newN: number | null; text: string; ctxLabel?: string }
 
@@ -66,8 +71,11 @@ function parseDiff(diff: string): DLine[] {
   return out;
 }
 
-export default function DiffPane({ root, hash, file, worktree }: { root: string; hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" }) {
+export default function DiffPane({ root, hash, file, worktree, providerId, providerSettings }: { root: string; hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked"; providerId: AgentProviderKind; providerSettings: ProviderSettings }) {
   const t = useT();
+  const { locale } = useLocale();
+  // 변경 구간별 에이전트 노트(로컬 — 이 diff 열려있는 동안만). key = hunk.id.
+  const [notes, setNotes] = useState<Record<number, { status: "loading" | "done" | "error"; text?: string }>>({});
   const [lines, setLines] = useState<DLine[] | null>(null);
   const [tokens, setTokens] = useState<ThemedToken[][]>([]); // 코드줄(add/del/ctx) 순서별 하이라이트 토큰
   const [status, setStatus] = useState<"loading" | "ok" | "error" | "empty">("loading");
@@ -87,6 +95,31 @@ export default function DiffPane({ root, hash, file, worktree }: { root: string;
     setVp({ top: (el.scrollTop / h) * 100, height: Math.min(100, (el.clientHeight / h) * 100) });
   };
   useEffect(() => { if (status === "ok") syncVp(); }, [status, lines]);
+  // diff(파일/커밋/워킹트리) 바뀌면 노트 초기화(stale 방지).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- diff 키 변경 시 노트 리셋
+  useEffect(() => { setNotes({}); }, [root, hash, file, worktree]);
+
+  // 변경 구간 온디맨드 설명 — analyze mode:chat 재사용(서버 변경 0). 로딩→최종(카드 블록 제거).
+  async function explainHunk(h: Hunk) {
+    if (notes[h.id]?.status === "loading") return; // 중복 가드
+    setNotes((p) => ({ ...p, [h.id]: { status: "loading" } }));
+    try {
+      const res = await fetch("/api/agent/analyze", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerId, request: { code: h.diffText, locale, providerId, mode: "chat", messages: [{ role: "user", content: "아래는 코드 변경(diff)입니다. 무엇을 바꿨는지 2~3문장으로 요약하고 왜 이렇게 바꿨을지 근거를 설명해줘. 카드는 만들지 마세요." }], providerSettings } }),
+      });
+      if (!res.ok || !res.body) { setNotes((p) => ({ ...p, [h.id]: { status: "error" } })); return; }
+      const reader = res.body.getReader(); const dec = new TextDecoder();
+      let buf = "", answer = "";
+      for (;;) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true }); const ls = buf.split("\n"); buf = ls.pop() ?? "";
+        for (const l of ls) { if (!l.trim()) continue; let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { continue; } if (ev.type === "result") answer = ev.response.summary; }
+      }
+      const clean = parseCardSuggestions(answer || "").text || answer || "(빈 응답)";
+      setNotes((p) => ({ ...p, [h.id]: { status: "done", text: clean } }));
+    } catch { setNotes((p) => ({ ...p, [h.id]: { status: "error" } })); }
+  }
 
   const jumpToY = (clientY: number) => {
     const el = scrollRef.current, ruler = rulerRef.current; if (!el || !ruler) return;
@@ -183,14 +216,26 @@ export default function DiffPane({ root, hash, file, worktree }: { root: string;
           </div>
         );
         if (!hunk) return row;
+        const note = notes[hunk.id];
         return (
           <Fragment key={`h-${i}`}>
-            <div className="sticky left-0 flex w-full items-center py-0.5 pl-[4.75rem]">
-              <button type="button" onClick={() => {}}
-                className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 transition hover:border-[#3B34E2] hover:text-[#3B34E2] dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-400 dark:hover:border-[#8b86f5] dark:hover:text-[#8b86f5]">
-                <IconSparkles size={11} stroke={2} aria-hidden />{t("workspace.hunkExplain")}
+            <div className="flex items-center py-1 pl-[4.75rem]">
+              <button type="button" onClick={() => void explainHunk(hunk)} disabled={note?.status === "loading"}
+                className="inline-flex items-center gap-1 rounded-md bg-[#3B34E2] px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-[#322bc9] disabled:opacity-60 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
+                {note?.status === "loading"
+                  ? <><IconLoader2 size={11} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.hunkExplaining")}</>
+                  : <><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkExplain")}</>}
               </button>
             </div>
+            {note?.status === "done" && (
+              <div className="my-1 ml-[4.75rem] mr-4 rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/5 px-3 py-2 font-sans dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/10">
+                <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
+                <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200"><Markdown>{note.text ?? ""}</Markdown></div>
+              </div>
+            )}
+            {note?.status === "error" && (
+              <div className="my-1 ml-[4.75rem] flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-500"><IconAlertTriangle size={12} stroke={2} aria-hidden />{t("workspace.hunkNoteError")}</div>
+            )}
             {row}
           </Fragment>
         );

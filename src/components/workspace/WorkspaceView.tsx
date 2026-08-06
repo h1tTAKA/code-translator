@@ -212,7 +212,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
                   <button type="button" onClick={() => { setOpenDiff(null); setOpenFile(null); }} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
                 </div>
                 <div className="min-h-0 flex-1">
-                  {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} worktree={openDiff.worktree} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
+                  {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} worktree={openDiff.worktree} providerId={providerId} providerSettings={providerSettings} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
                 </div>
               </div>
             </>
