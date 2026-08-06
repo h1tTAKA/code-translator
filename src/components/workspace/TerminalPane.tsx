@@ -72,27 +72,29 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* 터미널 탭 바 */}
-      <div className="nunopi-scroll flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200 bg-zinc-50/60 px-1.5 py-1 dark:border-zinc-800 dark:bg-zinc-900/40">
+      {/* 터미널 탭 바 — 에디터 탭 느낌(활성 상단 강조선·구분선·닫기) */}
+      <div className="nunopi-scroll flex shrink-0 items-stretch overflow-x-auto border-b border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-[#15161d]">
         {tabs.map((tab) => {
           const on = tab.id === activeId;
           return (
-            <button key={tab.id} type="button" onClick={() => setActiveId(tab.id)}
-              className={`group inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition ${on ? "bg-white font-semibold text-zinc-700 shadow-sm dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-white/70 dark:text-zinc-500 dark:hover:bg-zinc-800"}`}>
-              <IconTerminal2 size={11} stroke={2} className="shrink-0" aria-hidden />
+            <div key={tab.id}
+              className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}
+              onClick={() => setActiveId(tab.id)}>
+              {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-[#3B34E2] dark:bg-[#8b86f5]" aria-hidden />}
+              <IconTerminal2 size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
               <span className="whitespace-nowrap">{tab.title}</span>
               {tabs.length > 1 && (
-                <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-                  className="ml-0.5 shrink-0 rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-600" aria-label={t("workspace.terminalClose")}>
-                  <IconX size={9} stroke={2.5} aria-hidden />
-                </span>
+                <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+                  className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`} aria-label={t("workspace.terminalClose")}>
+                  <IconX size={12} stroke={2.5} aria-hidden />
+                </button>
               )}
-            </button>
+            </div>
           );
         })}
-        <button type="button" onClick={addTab} title={t("workspace.terminalNew")}
-          className="shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-white hover:text-[#3B34E2] dark:hover:bg-zinc-700 dark:hover:text-[#8b86f5]">
-          <IconPlus size={12} stroke={2.5} aria-hidden />
+        <button type="button" onClick={addTab} title={t("workspace.terminalNew")} aria-label={t("workspace.terminalNew")}
+          className="flex shrink-0 items-center px-2.5 text-zinc-400 transition hover:bg-white hover:text-[#3B34E2] dark:hover:bg-zinc-800 dark:hover:text-[#8b86f5]">
+          <IconPlus size={15} stroke={2.5} aria-hidden />
         </button>
       </div>
       {/* 활성 터미널(id로 remount → 그 pty 재생) */}
