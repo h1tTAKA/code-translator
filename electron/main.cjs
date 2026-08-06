@@ -240,9 +240,12 @@ ipcMain.handle("terminal:ensure", (_e, { cwd, cols, rows }) => {
   let s = ptys.get(cwd);
   if (!s) {
     const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash");
+    // nvm과 충돌하는 npm prefix 변수 제거 — 안 지우면 셸 nvm 초기화가 "npm_config_prefix" 경고를 뿜음.
+    const ptyEnv = { ...process.env };
+    delete ptyEnv.npm_config_prefix; delete ptyEnv.NPM_CONFIG_PREFIX;
     let proc;
     try {
-      proc = pty.spawn(shell, [], { name: "xterm-256color", cols: cols || 80, rows: rows || 24, cwd, env: process.env });
+      proc = pty.spawn(shell, [], { name: "xterm-256color", cols: cols || 80, rows: rows || 24, cwd, env: ptyEnv });
     } catch (e) { return { ok: false, reason: String(e?.message || e) }; }
     s = { proc, buffer: "" };
     proc.onData((data) => {
