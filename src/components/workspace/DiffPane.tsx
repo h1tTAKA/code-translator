@@ -253,7 +253,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             {row}
             {/* 구간 끝: 아래에 노트(변경 코드 밑) */}
             {endNote?.status === "done" && (
-              <div className="sticky left-0 z-[5] my-1 ml-2 w-[30rem] max-w-[calc(100vw-4rem)] rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/10 px-3 py-2 font-sans backdrop-blur-sm dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/15">
+              <div className="sticky left-[4.75rem] z-[5] my-1 ml-[4.75rem] w-[28rem] max-w-[calc(100vw-6rem)] rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/10 px-3 py-2 font-sans backdrop-blur-sm dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/15">
                 <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
                 <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200 prose-headings:my-1 prose-headings:text-[12px] prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0"><Markdown>{endNote.text ?? ""}</Markdown></div>
               </div>
