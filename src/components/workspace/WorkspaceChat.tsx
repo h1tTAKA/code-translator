@@ -29,6 +29,28 @@ const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).s
 const freshSub = (): Sub => ({ id: genId(), messages: [] });
 const mkSession = (key: string, kind: SessionKind, label: string): Session => { const s = freshSub(); return { key, kind, label, subs: [s], activeSubId: s.id }; };
 
+// localStorage에서 세션 복원(마이그레이션 포함). SSR/미저장 시 기본(repo 세션 1개).
+// 마운트 시 동기 호출 → 하이드레이션 이펙트 레이스(빈 상태 덮어쓰기) 원천 제거.
+function loadStore(store: string, repoLabel: string): { sessions: Record<string, Session>; openKeys: string[]; activeKey: string } {
+  const fresh = () => ({ sessions: { [REPO_KEY]: mkSession(REPO_KEY, "repo", repoLabel) } as Record<string, Session>, openKeys: [REPO_KEY], activeKey: REPO_KEY });
+  if (typeof localStorage === "undefined") return fresh();
+  try {
+    const raw = localStorage.getItem(store);
+    if (!raw) return fresh();
+    const p = JSON.parse(raw) as { sessions?: Record<string, Partial<Session> & { messages?: ChatMessage[] }>; openKeys?: string[]; activeKey?: string };
+    if (!p.sessions || !p.sessions[REPO_KEY]) return fresh();
+    const sessions: Record<string, Session> = {};
+    for (const [k, s] of Object.entries(p.sessions)) {
+      const subs = Array.isArray(s.subs) && s.subs.length ? s.subs : [{ id: genId(), messages: Array.isArray(s.messages) ? s.messages : [] }];
+      sessions[k] = { key: k, kind: (s.kind ?? "file") as SessionKind, label: s.label ?? k, subs, activeSubId: s.activeSubId && subs.some((x) => x.id === s.activeSubId) ? s.activeSubId : subs[0].id };
+    }
+    let openKeys = Array.isArray(p.openKeys) && p.openKeys.length ? p.openKeys.filter((k) => sessions[k]) : Object.keys(sessions);
+    openKeys = [REPO_KEY, ...openKeys.filter((k) => k !== REPO_KEY)]; // repo 항상 맨 앞
+    const activeKey = p.activeKey && sessions[p.activeKey] && openKeys.includes(p.activeKey) ? p.activeKey : REPO_KEY;
+    return { sessions, openKeys, activeKey };
+  } catch { return fresh(); }
+}
+
 // 세션 kind별 아이콘 — JSX 직접 반환(렌더 중 컴포넌트 변수 생성 회피: react-hooks/static-components).
 function kindGlyph(k: SessionKind, size: number, className?: string) {
   const p = { size, stroke: 2, className, "aria-hidden": true } as const;
@@ -48,56 +70,38 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   const toast = useToast();
   const store = `nunopi:ws-chat:${root}`;
 
-  const [sessions, setSessions] = useState<Record<string, Session>>({ [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) });
-  const [openKeys, setOpenKeys] = useState<string[]>([REPO_KEY]); // 탭바에 보이는 세션들(닫으면 여기서만 빠짐, 데이터는 유지)
-  const [activeKey, setActiveKey] = useState<string>(REPO_KEY);
+  // 마운트 시 저장소에서 동기 복원(lazy init) — 새로고침/모드전환/재오픈 즉시 올바른 데이터로 시작.
+  const initial = useMemo(() => loadStore(store, t("workspace.chatRepo")), []); // eslint-disable-line react-hooks/exhaustive-deps -- 마운트 1회 복원(store 변경은 아래 이펙트가 처리)
+  const [sessions, setSessions] = useState<Record<string, Session>>(initial.sessions);
+  const [openKeys, setOpenKeys] = useState<string[]>(initial.openKeys); // 탭바에 보이는 세션들(닫으면 여기서만 빠짐, 데이터는 유지)
+  const [activeKey, setActiveKey] = useState<string>(initial.activeKey);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
-  const hydrated = useRef(false);
+  const curStore = useRef(store); // 현재 로드된 store(폴더 변경 감지용)
 
   const active = sessions[activeKey] ?? sessions[REPO_KEY];
   const activeSub = active.subs.find((s) => s.id === active.activeSubId) ?? active.subs[0];
   const messages = activeSub.messages;
 
-  // 루트 바뀌면 저장된 세션 복원(레포별 격리). 구버전(messages[])·openKeys 없던 것 마이그레이션.
+  // 폴더(store) 변경 시에만 재로드. 첫 마운트는 lazy init이 이미 처리했으므로 스킵.
   useEffect(() => {
-    hydrated.current = false;
-    let nextSessions: Record<string, Session> = { [REPO_KEY]: mkSession(REPO_KEY, "repo", t("workspace.chatRepo")) };
-    let nextOpen: string[] = [REPO_KEY];
-    let act = REPO_KEY;
-    try {
-      const raw = localStorage.getItem(store);
-      if (raw) {
-        const p = JSON.parse(raw) as { sessions?: Record<string, Partial<Session> & { messages?: ChatMessage[] }>; openKeys?: string[]; activeKey?: string };
-        if (p.sessions && p.sessions[REPO_KEY]) {
-          const migrated: Record<string, Session> = {};
-          for (const [k, s] of Object.entries(p.sessions)) {
-            const subs = Array.isArray(s.subs) && s.subs.length ? s.subs : [{ id: genId(), messages: Array.isArray(s.messages) ? s.messages : [] }];
-            migrated[k] = { key: k, kind: (s.kind ?? "file") as SessionKind, label: s.label ?? k, subs, activeSubId: s.activeSubId && subs.some((x) => x.id === s.activeSubId) ? s.activeSubId : subs[0].id };
-          }
-          nextSessions = migrated;
-          nextOpen = Array.isArray(p.openKeys) && p.openKeys.length ? p.openKeys.filter((k) => migrated[k]) : Object.keys(migrated);
-        }
-        if (p.activeKey && nextSessions[p.activeKey]) act = p.activeKey;
-      }
-    } catch { /* ignore */ }
-    if (!nextOpen.includes(REPO_KEY)) nextOpen = [REPO_KEY, ...nextOpen];
-    else nextOpen = [REPO_KEY, ...nextOpen.filter((k) => k !== REPO_KEY)]; // repo 항상 맨 앞
-    if (!nextOpen.includes(act)) act = REPO_KEY;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 루트 변경 시 세션 복원(1회)
-    setSessions(nextSessions); setOpenKeys(nextOpen); setActiveKey(act);
+    if (curStore.current === store) return;
+    curStore.current = store;
+    const d = loadStore(store, t("workspace.chatRepo"));
+    setSessions(d.sessions); setOpenKeys(d.openKeys); setActiveKey(d.activeKey);
     ctxCache.current.clear();
-    hydrated.current = true;
-  }, [store, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- store 변경만 감지(t는 안정)
+  }, [store]);
 
-  // 세션 변경 영속.
+  // 세션 변경 영속. deps에서 store 제외 — store 바뀐 렌더에 옛 sessions를 새 store 키에 쓰는 오염 방지.
+  // (store는 클로저 현재값으로 씀. 첫 실행은 loaded===loaded라 idempotent.)
   useEffect(() => {
-    if (!hydrated.current) return;
     try { localStorage.setItem(store, JSON.stringify({ sessions, openKeys, activeKey })); } catch { /* ignore */ }
-  }, [sessions, openKeys, activeKey, store]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 데이터 변경 시에만 저장(store 변경엔 반응 안 함)
+  }, [sessions, openKeys, activeKey]);
 
   // 새 메시지·스트리밍·세션/서브 전환 시 하단으로.
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages, streaming, activeKey, activeSub.id]);
