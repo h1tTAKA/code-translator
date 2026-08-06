@@ -1,11 +1,42 @@
 "use client";
 // 워크스페이스 diff 뷰(#649) — 커밋+파일의 git diff. shiki 신택스 하이라이팅 + 빨강(−)/초록(+) 배경.
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { codeToTokens, type ThemedToken, type BundledLanguage } from "shiki";
-import { IconLoader2, IconAlertTriangle, IconGitCompare } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconGitCompare, IconSparkles } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 
 interface DLine { kind: "hunk" | "add" | "del" | "ctx" | "meta"; oldN: number | null; newN: number | null; text: string; ctxLabel?: string }
+
+// 변경 구간(우리의 "hunk") — 연속 add/del 런. 사이 컨텍스트가 짧으면 한 구간으로 병합(주석 폭발 방지).
+// -U100000이라 파일당 @@가 1개뿐 → 표준 hunk 대신 실제 바뀐 블록을 단위로.
+interface Hunk { id: number; startLine: number; endLine: number; diffText: string }
+const MERGE_GAP = 3;   // 변경 사이 컨텍스트 줄이 이 이하면 같은 구간
+const CTX_LINES = 3;   // diffText에 실을 앞뒤 컨텍스트 줄 수
+const MAX_DIFF = 4000; // diffText 상한(토큰 방어)
+
+function groupHunks(lines: DLine[]): Hunk[] {
+  const hunks: Hunk[] = [];
+  let start = -1, lastChange = -1;
+  const flush = () => {
+    if (start < 0) return;
+    const from = Math.max(0, start - CTX_LINES);
+    const to = Math.min(lines.length - 1, lastChange + CTX_LINES);
+    const diffText = lines.slice(from, to + 1)
+      .filter((l) => l.kind === "add" || l.kind === "del" || l.kind === "ctx")
+      .map((l) => (l.kind === "add" ? "+ " : l.kind === "del" ? "- " : "  ") + l.text)
+      .join("\n").slice(0, MAX_DIFF);
+    hunks.push({ id: hunks.length, startLine: start, endLine: lastChange, diffText });
+    start = -1; lastChange = -1;
+  };
+  lines.forEach((l, i) => {
+    if (l.kind !== "add" && l.kind !== "del") return;
+    if (start >= 0 && i - lastChange - 1 > MERGE_GAP) flush(); // 컨텍스트 간격 크면 새 구간
+    if (start < 0) start = i;
+    lastChange = i;
+  });
+  flush();
+  return hunks;
+}
 
 const EXT_LANG: Record<string, string> = {
   ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx", mjs: "javascript", cjs: "javascript", json: "json",
@@ -126,6 +157,8 @@ export default function DiffPane({ root, hash, file, worktree }: { root: string;
     });
     if (s >= 0) flush(lines.length);
   }
+  // 변경 구간 → 시작 줄 인덱스에 헤더(설명 버튼) 앵커.
+  const hunkStart = new Map(groupHunks(lines).map((h) => [h.startLine, h]));
   return (
     <div className="relative h-full bg-white dark:bg-[#0b0c12]"
       onMouseEnter={() => { if (hideTimer.current) clearTimeout(hideTimer.current); setShowRuler(true); }}
@@ -138,7 +171,8 @@ export default function DiffPane({ root, hash, file, worktree }: { root: string;
         const bg = l.kind === "add" ? "bg-emerald-500/20" : l.kind === "del" ? "bg-rose-500/20" : "";
         const mark = l.kind === "add" ? "+" : l.kind === "del" ? "−" : " ";
         const markCls = l.kind === "add" ? "text-emerald-600 dark:text-emerald-500" : l.kind === "del" ? "text-rose-600 dark:text-rose-500" : "text-transparent";
-        return (
+        const hunk = hunkStart.get(i); // 이 줄에서 변경 구간 시작 → 위에 설명 버튼
+        const row = (
           <div key={i} className={`flex w-max min-w-full ${bg}`}>
             <span className="w-9 shrink-0 select-none border-r border-zinc-100 px-1 text-right text-[10px] text-zinc-300 dark:border-zinc-800 dark:text-zinc-600">{l.oldN ?? ""}</span>
             <span className="w-9 shrink-0 select-none border-r border-zinc-100 px-1 text-right text-[10px] text-zinc-300 dark:border-zinc-800 dark:text-zinc-600">{l.newN ?? ""}</span>
@@ -147,6 +181,18 @@ export default function DiffPane({ root, hash, file, worktree }: { root: string;
               {tok ? tok.map((tk, j) => <span key={j} style={{ color: tk.color }}>{tk.content}</span>) : <span className="text-zinc-700 dark:text-zinc-200">{l.text}</span>}
             </span>
           </div>
+        );
+        if (!hunk) return row;
+        return (
+          <Fragment key={`h-${i}`}>
+            <div className="sticky left-0 flex w-full items-center py-0.5 pl-[4.75rem]">
+              <button type="button" onClick={() => {}}
+                className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 transition hover:border-[#3B34E2] hover:text-[#3B34E2] dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-400 dark:hover:border-[#8b86f5] dark:hover:text-[#8b86f5]">
+                <IconSparkles size={11} stroke={2} aria-hidden />{t("workspace.hunkExplain")}
+              </button>
+            </div>
+            {row}
+          </Fragment>
         );
       })}
       </div>
