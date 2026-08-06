@@ -247,7 +247,9 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
     const key = active.key, subId = active.activeSubId;
     if (action.add) {
       const c = action.add;
-      const ok = createChatCard(c.kind ?? "term", c.term, c.definition, active.label, undefined, {});
+      // 출처 = 세션 무관 레포 이름으로 통일: 워크스페이스 "<레포>" 레포지트리.
+      const repoName = root.split("/").filter(Boolean).pop() ?? root;
+      const ok = createChatCard(c.kind ?? "term", c.term, c.definition, t("card.workspaceSource", { repo: repoName }), undefined, {});
       toast(ok ? t("card.added", { term: c.term }) : t("card.exists"));
       editMessage(key, subId, msgIndex, (content) => removeSuggestedCard(content, c.term));
     } else if (action.dismiss) {
@@ -388,7 +390,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
           <div className="flex flex-col gap-3">
             {messages.map((m, i) => {
               if (m.role === "user") return (
-                <div key={i} className="self-end max-w-[85%] rounded-2xl rounded-br-md bg-[#3B34E2] px-3 py-1.5 text-[12px] leading-relaxed text-white dark:bg-[#8b86f5] dark:text-zinc-900">{m.content}</div>
+                <div key={i} className="self-end max-w-[85%] whitespace-pre-wrap rounded-2xl bg-zinc-100 px-3 py-1.5 text-[12px] leading-relaxed text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100">{m.content}</div>
               );
               // 어시스턴트 — 본문 + nunopi-cards 칩(다른 챗룸과 동일).
               const { text, cards } = parseCardSuggestions(m.content);
