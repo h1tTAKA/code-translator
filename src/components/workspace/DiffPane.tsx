@@ -81,6 +81,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
   const [status, setStatus] = useState<"loading" | "ok" | "error" | "empty">("loading");
   const [isDark, setIsDark] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [paneW, setPaneW] = useState(0); // 보이는 패널 폭(px) — 노트가 패널 좁혀도 안 짤리게 동적 맞춤
   const rulerRef = useRef<HTMLDivElement>(null);
   const draggingRuler = useRef(false);
   const [vp, setVp] = useState({ top: 0, height: 100 }); // 오버뷰 썸(현재 보이는 구간, %)
@@ -149,6 +150,13 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
     return () => { window.removeEventListener("mousemove", mm); window.removeEventListener("mouseup", mu); };
   }, []);
   const rulerDown = (e: React.MouseEvent) => { draggingRuler.current = true; document.body.style.userSelect = "none"; jumpToY(e.clientY); };
+  // 스크롤 컨테이너의 보이는 폭 측정(패널 리사이즈 대응) — 노트 폭을 여기 맞춰 짤림 방지.
+  useEffect(() => {
+    const el = scrollRef.current; if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setPaneW(el.clientWidth));
+    ro.observe(el); setPaneW(el.clientWidth);
+    return () => ro.disconnect();
+  }, [status]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 테마 초기 감지(1회)
@@ -253,7 +261,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             {row}
             {/* 구간 끝: 아래에 노트(변경 코드 밑) */}
             {endNote?.status === "done" && (
-              <div className="sticky left-[4.75rem] z-[5] my-1 ml-[4.75rem] w-[28rem] max-w-[calc(100vw-6rem)] rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/10 px-3 py-2 font-sans backdrop-blur-sm dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/15">
+              <div style={{ width: paneW ? paneW - 20 : undefined }} className="sticky left-0 z-[5] my-1 ml-2.5 rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/10 px-3 py-2 font-sans backdrop-blur-sm dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/15">
                 <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
                 <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200 prose-headings:my-1 prose-headings:text-[12px] prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0"><Markdown>{endNote.text ?? ""}</Markdown></div>
               </div>
