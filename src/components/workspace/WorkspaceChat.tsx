@@ -326,6 +326,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
 
   // 이력 항목 → 그 세션·서브 챗으로 이동(탭 없으면 열기 + 활성 서브 지정).
   function goToSub(sessionKey: string, subId: string) {
+    if (!sessions[sessionKey]) { setHistoryOpen(false); return; } // 상한으로 사라진 세션이면 무시
     setOpenKeys((prev) => prev.includes(sessionKey) ? prev : [...prev, sessionKey]);
     setSessions((prev) => prev[sessionKey] ? { ...prev, [sessionKey]: { ...prev[sessionKey], activeSubId: subId } } : prev);
     setActiveKey(sessionKey);
@@ -463,7 +464,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
             <IconHistory size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
             <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("workspace.chatHistory")}</span>
             <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{history.length}</span>
-            <button type="button" onClick={() => setHistoryOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">
+            <button type="button" onClick={() => setHistoryOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>
               <IconX size={13} stroke={2} aria-hidden />
             </button>
           </div>
