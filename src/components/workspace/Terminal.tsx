@@ -4,7 +4,7 @@
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 
-export default function Terminal({ cwd }: { cwd: string }) {
+export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,15 +35,15 @@ export default function Terminal({ cwd }: { cwd: string }) {
       fit.fit();
 
       try {
-        const r = await nd.terminal.ensure({ cwd, cols: term.cols, rows: term.rows });
+        const r = await nd.terminal.ensure({ id, cwd, cols: term.cols, rows: term.rows });
         if (disposed || !term) return;
         if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
         if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생
-        offData = nd.terminal.onData(({ cwd: c, data }) => { if (c === cwd && term) term.write(data); });
-        term.onData((d) => nd.terminal.input({ cwd, data: d }));
+        offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
+        term.onData((d) => nd.terminal.input({ id, data: d }));
         ro = new ResizeObserver(() => {
           if (!term) return;
-          try { fit.fit(); nd.terminal.resize({ cwd, cols: term.cols, rows: term.rows }); } catch { /* ignore */ }
+          try { fit.fit(); nd.terminal.resize({ id, cols: term.cols, rows: term.rows }); } catch { /* ignore */ }
         });
         ro.observe(host);
       } catch {
@@ -53,7 +53,7 @@ export default function Terminal({ cwd }: { cwd: string }) {
     })();
 
     return () => { disposed = true; offData?.(); ro?.disconnect(); term?.dispose(); term = null; };
-  }, [cwd]);
+  }, [id, cwd]);
 
   return <div ref={hostRef} className="h-full w-full overflow-hidden bg-white p-1.5 dark:bg-[#0b0c12]" />;
 }

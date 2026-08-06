@@ -8,13 +8,14 @@ interface NunopiDesktopApi {
   notify(payload: { title: string; body?: string }): Promise<{ ok: boolean; reason?: string }>;
   // 레포 폴더 선택(OS 네이티브 창). 취소 시 { canceled: true }.
   pickRepoFolder(): Promise<{ canceled: boolean; path?: string }>;
-  // 터미널(pty) — 레포 경로별 세션(#647). ensure는 세션 확보 + 재생용 scrollback 반환.
+  // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {
-    ensure(opts: { cwd: string; cols: number; rows: number }): Promise<{ ok: boolean; buffer?: string; reason?: string }>;
-    input(payload: { cwd: string; data: string }): void;
-    resize(payload: { cwd: string; cols: number; rows: number }): void;
-    onData(cb: (p: { cwd: string; data: string }) => void): () => void;
-    onExit(cb: (p: { cwd: string }) => void): () => void;
+    ensure(opts: { id: string; cwd: string; cols: number; rows: number }): Promise<{ ok: boolean; buffer?: string; reason?: string }>;
+    input(payload: { id: string; data: string }): void;
+    resize(payload: { id: string; cols: number; rows: number }): void;
+    kill(payload: { id: string }): void;
+    onData(cb: (p: { id: string; data: string }) => void): () => void;
+    onExit(cb: (p: { id: string }) => void): () => void;
   };
 }
 

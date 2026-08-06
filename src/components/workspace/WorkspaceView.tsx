@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceChat";
-import Terminal from "@/components/workspace/Terminal";
+import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
@@ -197,7 +197,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
         <section className="flex min-w-0 flex-1">
-          <div className="min-w-0 flex-1"><Terminal cwd={path} /></div>
+          <div className="min-w-0 flex-1"><TerminalPane cwd={path} /></div>
           {(openFile || openDiff) && (
             <>
               <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />

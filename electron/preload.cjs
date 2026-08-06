@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     ensure: (opts) => ipcRenderer.invoke("terminal:ensure", opts),
     input: (payload) => ipcRenderer.send("terminal:input", payload),
     resize: (payload) => ipcRenderer.send("terminal:resize", payload),
+    kill: (payload) => ipcRenderer.send("terminal:kill", payload),
     onData: (cb) => { const h = (_e, p) => cb(p); ipcRenderer.on("terminal:data", h); return () => ipcRenderer.removeListener("terminal:data", h); },
     onExit: (cb) => { const h = (_e, p) => cb(p); ipcRenderer.on("terminal:exit", h); return () => ipcRenderer.removeListener("terminal:exit", h); },
   },
