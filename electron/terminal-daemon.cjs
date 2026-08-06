@@ -82,5 +82,6 @@ process.on("SIGTERM", () => { /* ignore — 생존 */ });
 process.on("SIGINT", () => { /* ignore */ });
 
 try { fs.unlinkSync(SOCK); } catch { /* stale 소켓 정리 */ }
-server.listen(SOCK, () => { process.send && process.send({ type: "ready" }); scheduleIdleReap(); });
+// readiness는 클라가 소켓 연결 성공으로 판단 — process.send는 disconnect 후 비동기 EPIPE 위험이라 안 씀.
+server.listen(SOCK, () => { scheduleIdleReap(); });
 server.on("error", (e) => { console.error("[term-daemon] listen 실패:", e && e.message); process.exit(1); });
