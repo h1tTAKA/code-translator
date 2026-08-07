@@ -91,6 +91,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
       const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
       const dvh = Number(localStorage.getItem("nunopi:ws-docview-h")); if (dvh) { const v = clamp(dvh, 120, 900); setDocViewH(v); wRef.current.docViewH = v; }
+      try { const p = JSON.parse(localStorage.getItem("nunopi:ws-doc-dock") || "null"); if (p && (p.region === "terminal" || p.region === "code") && (p.pos === "top" || p.pos === "bottom")) setDocDock(p); } catch { /* ignore */ } // 문서 dock 복원(#693)
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
     } catch { /* ignore */ }
   }, [mounted]);
@@ -249,13 +250,20 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       </div>
     </div>
   ) : null;
-  // 문서 노드 — 코드 영역에 dock된 경우만(터미널 dock은 커밋4). 코드/diff와 공존 시 pos 토글 노출.
-  const docInCode = docFile && docsRoot && docDock.region === "code";
-  const docNode = docInCode ? (
+  // 문서 뷰어 — dock된 region에 따라 코드/터미널 영역에 배치(#693).
+  const docOpen = !!(docFile && docsRoot);
+  const docInCode = docOpen && docDock.region === "code";
+  const docInTerminal = docOpen && docDock.region === "terminal";
+  // dock 변경은 토글에서만 → 여기서 바로 영속(마운트 시 write로 restore 덮어쓰는 것 방지).
+  const persistDock = (d: { region: "terminal" | "code"; pos: "top" | "bottom" }) => { try { localStorage.setItem("nunopi:ws-doc-dock", JSON.stringify(d)); } catch { /* ignore */ } };
+  const togglePos = () => setDocDock((d) => { const n = { ...d, pos: (d.pos === "top" ? "bottom" : "top") as "top" | "bottom" }; persistDock(n); return n; });
+  const toggleRegion = () => setDocDock((d) => { const n = { ...d, region: (d.region === "code" ? "terminal" : "code") as "terminal" | "code" }; persistDock(n); return n; });
+  // split=상하 공존(pos 토글 노출). region 토글은 항상.
+  const makeDoc = (split: boolean) => (
     <DocPane root={docsRoot!} file={docFile!} onClose={() => setDocFile(null)}
-      pos={codeNode ? docDock.pos : undefined}
-      onTogglePos={codeNode ? () => setDocDock((d) => ({ ...d, pos: d.pos === "top" ? "bottom" : "top" })) : undefined} />
-  ) : null;
+      pos={split ? docDock.pos : undefined} onTogglePos={split ? togglePos : undefined}
+      region={docDock.region} onToggleRegion={toggleRegion} />
+  );
   // 문서↔코드 경계(잡기 쉽게 8px 히트영역 + 가운데 그립). 좌측 문서 브라우저 핸들과 헷갈리지 않게 명확히.
   const rowDrag = (
     <div onMouseDown={startDrag("docViewH", docViewH)} className="group relative h-2 shrink-0 cursor-row-resize" title={t("workspace.docResize")}>
@@ -332,16 +340,35 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
         <section className="flex min-w-0 flex-1">
-          <div className="min-w-0 flex-1"><TerminalPane cwd={path} /></div>
-          {(codeNode || docNode) && (
+          <div className="flex min-w-0 flex-1 flex-col">
+            {docInTerminal ? (
+              // 문서를 터미널 영역과 상하 분할.
+              docDock.pos === "top" ? (
+                <>
+                  <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
+                  {rowDrag}
+                  <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
+                </>
+              ) : (
+                <>
+                  <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
+                  {rowDrag}
+                  <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
+                </>
+              )
+            ) : (
+              <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
+            )}
+          </div>
+          {(codeNode || docInCode) && (
             <>
               <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />
               <div style={{ width: codeW }} className="flex shrink-0 flex-col">
-                {codeNode && docNode ? (
+                {codeNode && docInCode ? (
                   // 코드/diff + 문서 상하 공존 — pos로 순서, docViewH로 문서 높이.
                   docDock.pos === "top" ? (
                     <>
-                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{docNode}</div>
+                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
                       {rowDrag}
                       <div className="min-h-0 flex-1">{codeNode}</div>
                     </>
@@ -349,12 +376,14 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
                     <>
                       <div className="min-h-0 flex-1">{codeNode}</div>
                       {rowDrag}
-                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{docNode}</div>
+                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
                     </>
                   )
+                ) : codeNode ? (
+                  <div className="min-h-0 flex-1">{codeNode}</div>
                 ) : (
-                  // 하나만: 그 열 전체.
-                  <div className="min-h-0 flex-1">{codeNode ?? docNode}</div>
+                  // 코드/diff 없이 문서만 코드 영역 → 그 열 전체.
+                  <div className="min-h-0 flex-1">{makeDoc(false)}</div>
                 )}
               </div>
             </>
