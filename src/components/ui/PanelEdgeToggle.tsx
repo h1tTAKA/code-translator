@@ -10,7 +10,7 @@ const ICON = { left: IconChevronLeft, right: IconChevronRight, up: IconChevronUp
 
 export default function PanelEdgeToggle({ collapsed, onToggle, collapsedDir, orientation = "vertical", title, className = "", style }: {
   collapsed: boolean;
-  onToggle: () => void;
+  onToggle?: () => void;      // 없으면 장식 버튼(부모가 클릭 처리, 예: AppShell separator의 클릭 판정).
   collapsedDir: Dir;          // 접힘 상태에서 "펴기" 화살표 방향(= 패널이 들어올 방향). 펼침이면 반대.
   orientation?: "vertical" | "horizontal"; // vertical=세로 탭(좌우 화살표), horizontal=가로 탭(상하)
   title?: string;

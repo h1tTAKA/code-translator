@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Header from "./Header";
-import { IconChevronLeft, IconChevronRight, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
+import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import { useT } from "@/lib/i18n/I18nProvider";
 
 interface AppShellProps {
@@ -185,28 +185,28 @@ export default function AppShell({ editor, learningPanel, modeToggle, onOpenSett
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           className={`relative shrink-0 transition-colors ${
-            isLandscape
-              ? `${hideEditorPane ? "w-4" : "w-1.5"} ${hideEditorPane ? "" : "cursor-col-resize"} border-x`
-              : `${hideEditorPane ? "h-4" : "h-1.5"} ${hideEditorPane ? "" : "cursor-row-resize"} border-y`
-          } border-zinc-200 dark:border-zinc-800 ${
-            dragging
-              ? "bg-blue-400/60"
-              : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"
+            // 접힘(hideEditorPane)이면 폭 0·투명 — 워크스페이스처럼 fat 바 없이 탭만 엣지에 뜨게(#697). 펼침이면 드래그 바.
+            hideEditorPane
+              ? (isLandscape ? "w-0" : "h-0")
+              : isLandscape
+                ? `w-1.5 cursor-col-resize border-x border-zinc-200 dark:border-zinc-800 ${dragging ? "bg-blue-400/60" : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"}`
+                : `h-1.5 cursor-row-resize border-y border-zinc-200 dark:border-zinc-800 ${dragging ? "bg-blue-400/60" : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"}`
           }`}
         >
           {onToggleEditorCollapsed && (
-            <button
-              type="button"
-              aria-label={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+            // 공통 엣지 탭(#697 통일). onToggle 없음 — 클릭 판정은 separator handlePointerUp(closest("button"))이 담당.
+            // 접힘: 엣지에 도킹(rounded 한쪽) — 워크스페이스 스타일. 펼침: 드래그 바 중앙.
+            <PanelEdgeToggle
+              collapsed={editorCollapsed}
+              collapsedDir={isLandscape ? "right" : "down"}
+              orientation={isLandscape ? "vertical" : "horizontal"}
               title={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-              className={`absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-400 shadow-sm  transition-colors hover:border-blue-400 hover:text-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500 dark:hover:border-blue-500 dark:hover:text-blue-400 ${
-                isLandscape ? "h-12 w-5 cursor-col-resize" : "h-5 w-12 cursor-row-resize"
+              className={`absolute border-zinc-200 dark:border-zinc-800 ${
+                hideEditorPane
+                  ? (isLandscape ? "left-0 top-1/2 -translate-y-1/2 rounded-r-md border-y border-r" : "top-0 left-1/2 -translate-x-1/2 rounded-b-md border-x border-b")
+                  : `left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border ${isLandscape ? "cursor-col-resize" : "cursor-row-resize"}`
               }`}
-            >
-              {isLandscape
-                ? (editorCollapsed ? <IconChevronRight size={14} stroke={2} aria-hidden /> : <IconChevronLeft size={14} stroke={2} aria-hidden />)
-                : (editorCollapsed ? <IconChevronDown size={14} stroke={2} aria-hidden /> : <IconChevronUp size={14} stroke={2} aria-hidden />)}
-            </button>
+            />
           )}
         </div>
 
