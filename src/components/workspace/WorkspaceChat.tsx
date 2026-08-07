@@ -1,11 +1,12 @@
 "use client";
 // 워크스페이스 우측 챗룸(#647, #653) — 코딩하다 바로 질문. 워크스페이스 전용 슬림 UI.
 // #653: 단일 스레드 → "무엇에 대한 대화인가"별 키드 세션 맵.
-//   repo(기본, 레포 전체) / file:<path>(그 파일) / diff:<hash>:<file>(커밋 변경) / branch:<name>(브랜치 작업).
+//   repo(기본, 레포 전체) / file:<path>(그 파일) / diff:<hash>:<file>(커밋 변경) / branch:<name>(브랜치 작업)
+//   / wt:<file>(커밋 전 워킹트리 변경 — 커밋되면 diff:<hash>:<file>로 승계, #689).
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus, IconCheck, IconHistory } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
@@ -18,9 +19,10 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
-type SessionKind = "repo" | "file" | "diff" | "branch";
+type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree";
 interface Sub { id: string; messages: ChatMessage[]; } // 세션 안의 한 대화 스레드
-interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; }
+// baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
+interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
 // WorkspaceView가 주는 포커스 신호 — n(nonce)로 같은 대상 재클릭도 매번 발화.
 export interface ChatFocus { key: string; kind: SessionKind; label: string; n: number; }
 
@@ -56,7 +58,7 @@ function loadStore(store: string, repoLabel: string): { sessions: Record<string,
 // 세션 kind별 아이콘 — JSX 직접 반환(렌더 중 컴포넌트 변수 생성 회피: react-hooks/static-components).
 function kindGlyph(k: SessionKind, size: number, className?: string) {
   const p = { size, stroke: 2, className, "aria-hidden": true } as const;
-  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : <IconFileCode {...p} />;
+  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : k === "worktree" ? <IconPencil {...p} /> : <IconFileCode {...p} />;
 }
 
 export default function WorkspaceChat({ root, files, focus, providerId, providerSettings }: {
