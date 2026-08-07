@@ -16,7 +16,8 @@ function refBadge(ref: string, curBranch: string) {
 
 const ROW_H = 24, FILE_H = 20, LANE_W = 14;
 const HOVER_DELAY_MS = 1000; // 커밋 호버 툴팁 dwell — 훑을 땐 안 뜨고 머물러야 뜸
-const LANE_COLORS = ["#3B34E2", "#e11d48", "#059669", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+// 조화로운 팔레트(#707) — 인디고(트렁크)에서 이웃색으로 흐름. 완전채도 원색(핏빨강 등) 회피, 라이트·다크 양쪽 대비 OK.
+const LANE_COLORS = ["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#84cc16", "#a855f7"];
 const laneColor = (l: number) => LANE_COLORS[((l % LANE_COLORS.length) + LANE_COLORS.length) % LANE_COLORS.length];
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
 // 레인 이동을 부드러운 S커브로(#707) — 같은 x면 직선, 다르면 제어점을 양 끝 x·중간 높이에 둬 수직 진입·이탈하는 cubic bezier.
@@ -194,7 +195,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                   className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
                   <svg width={graphW} height={ROW_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
                     {lines.map((l, k) => <path key={k} d={linkPath(l.x1, l.y1, l.x2, l.y2)} stroke={l.color} strokeWidth={2} fill="none" strokeLinecap="round" />)}
-                    <circle cx={cx(row.lane)} cy={dotY} r={3.5} fill={laneColor(row.lane)} />
+                    <circle cx={cx(row.lane)} cy={dotY} r={3} fill={laneColor(row.lane)} />
                   </svg>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
                   <span className="flex items-baseline gap-1.5 whitespace-nowrap pr-3 text-[11px]">
@@ -231,7 +232,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         <button key={f.path} type="button" onClick={() => onOpenDiff(row.commit.hash, f.path)} className="flex w-full items-center text-left hover:bg-zinc-100 dark:hover:bg-zinc-800" style={{ height: FILE_H }}>
                           {/* 그래프 열: 활성 레인 pass-through(연속성) */}
                           <svg width={graphW} height={FILE_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
-                            {row.after.map((h, i) => h == null ? null : <line key={i} x1={cx(i)} y1={0} x2={cx(i)} y2={FILE_H} stroke={laneColor(i)} strokeWidth={1.5} />)}
+                            {row.after.map((h, i) => h == null ? null : <line key={i} x1={cx(i)} y1={0} x2={cx(i)} y2={FILE_H} stroke={laneColor(i)} strokeWidth={2} />)}
                           </svg>
                           <span className="flex min-w-0 flex-1 items-baseline gap-1.5 pl-3 pr-2 text-[11px]">
                             <span className={`shrink-0 font-mono text-[9px] font-bold ${cls}`}>{badge}</span>
