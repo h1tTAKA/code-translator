@@ -25,7 +25,7 @@ export function githubLogin(email: string): string | null {
 export function parseGitLog(text: string): GitCommit[] {
   const out: GitCommit[] = [];
   for (const rec of text.split("\x1e")) {
-    const r = rec.replace(/^\n/, ""); // format:가 커밋 사이 넣는 개행 제거
+    const r = rec.replace(/^[\r\n]+/, ""); // format:가 커밋 사이 넣는 개행 제거(CRLF 포함)
     if (!r.trim()) continue;
     const [hash, parents, author, email, at, decor, subject, ...bodyParts] = r.split("\x1f");
     if (!hash) continue;
