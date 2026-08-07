@@ -23,10 +23,12 @@ const BRANCH_COLORS = ["#f59e0b", "#ec4899", "#14b8a6", "#a855f7", "#0ea5e9", "#
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
 // 점→부모점 연결선(#707). 대각 스윕(엉킴) 방지 위해 레인 따라 직진, "전환은 한 행만" 곡선.
 // roundApex(한 행 전환): 트렁크(안쪽) 끝은 "수평 접선"으로 뻗어 둥근 꼭지점, 브랜치 레인(바깥) 끝은 "수직 접선"으로 레인과 블렌드(orca식).
+// CURVE_F = 베지어 핸들 길이 비율. 낮을수록 굴곡이 더 가파르고(타이트) 높을수록 완만. (#707)
+const CURVE_F = 0.4;
 const roundApex = (x1: number, ya: number, x2: number, yb: number) =>
   x2 > x1
-    ? `C${(x1 + x2) / 2} ${ya} ${x2} ${(ya + yb) / 2} ${x2} ${yb}`   // 트렁크(안,x1)→바깥(x2): 시작 수평, 끝 수직
-    : `C${x1} ${(ya + yb) / 2} ${(x1 + x2) / 2} ${yb} ${x2} ${yb}`; // 바깥(x1)→트렁크(안,x2): 시작 수직, 끝 수평
+    ? `C${x1 + (x2 - x1) * CURVE_F} ${ya} ${x2} ${yb - (yb - ya) * CURVE_F} ${x2} ${yb}`   // 트렁크(안,x1)→바깥(x2): 시작 수평, 끝 수직
+    : `C${x1} ${ya + (yb - ya) * CURVE_F} ${x1 + (x2 - x1) * CURVE_F} ${yb} ${x2} ${yb}`; // 바깥(x1)→트렁크(안,x2): 시작 수직, 끝 수평
 const linkPath = (x1: number, y1: number, x2: number, y2: number) => {
   if (x1 === x2) return `M${x1} ${y1}L${x2} ${y2}`;
   if (y2 - y1 <= ROW_H * 1.5) return `M${x1} ${y1}${roundApex(x1, y1, x2, y2)}`;      // 인접 — 트렁크쪽 둥근 꼭지점
