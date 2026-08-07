@@ -414,7 +414,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <PanelEdgeToggle collapsed={!chatOpen} onToggle={toggleChat} collapsedDir="left" orientation="vertical"
           title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
           style={{ right: chatOpen ? chatW + 2 : 0 }}
-          className="absolute top-1/2 -translate-y-1/2 rounded-l-md border-y border-l border-zinc-200 dark:border-zinc-800" />
+          className="absolute top-1/2 -translate-y-1/2 rounded-l-md border-y border-l border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#0b0c12]" />
       </div>
     </div>
   );

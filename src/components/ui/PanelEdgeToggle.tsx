@@ -22,7 +22,7 @@ export default function PanelEdgeToggle({ collapsed, onToggle, collapsedDir, ori
   const size = orientation === "vertical" ? "h-11 w-3.5 hover:w-4" : "h-3.5 w-11 hover:h-4";
   return (
     <button type="button" onClick={onToggle} title={title} aria-label={title} style={style}
-      className={`z-30 flex items-center justify-center bg-zinc-100 text-zinc-500 transition hover:text-[#3B34E2] dark:bg-[#15161d] dark:text-zinc-400 dark:hover:text-[#8b86f5] ${size} ${className}`}>
+      className={`z-30 flex items-center justify-center text-zinc-500 transition hover:text-[#3B34E2] dark:text-zinc-400 dark:hover:text-[#8b86f5] ${size} ${className}`}>
       <Icon size={13} stroke={2.5} aria-hidden />
     </button>
   );
