@@ -33,6 +33,28 @@ const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).s
 const freshSub = (): Sub => ({ id: genId(), messages: [] });
 const mkSession = (key: string, kind: SessionKind, label: string): Session => { const s = freshSub(); return { key, kind, label, subs: [s], activeSubId: s.id }; };
 
+// DiffPane hunk 노트 버킷을 워킹트리→커밋 해시로 승계(#689). 키 스킴은 DiffPane.noteStore와 동일:
+//   nunopi:hunk-notes:<root>:<hash | "wt:"+kind>:<file>. hunk는 diffText로 키잉돼 내용 같으면 재부착.
+// 워킹트리 kind 3종(unstaged/staged/untracked)을 커밋 해시 버킷에 병합 후 원본 정리(중복 방지).
+function carryHunkNotes(root: string, file: string, hash: string): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const dstKey = `nunopi:hunk-notes:${root}:${hash}:${file}`;
+    const dst: Record<string, string> = JSON.parse(localStorage.getItem(dstKey) || "{}");
+    let touched = false;
+    for (const kind of ["unstaged", "staged", "untracked"] as const) {
+      const srcKey = `nunopi:hunk-notes:${root}:wt:${kind}:${file}`;
+      const raw = localStorage.getItem(srcKey);
+      if (!raw) continue;
+      const src = JSON.parse(raw) as Record<string, string>;
+      for (const k in src) if (!(k in dst)) dst[k] = src[k]; // 기존 커밋 노트 보존, 없는 것만 채움
+      localStorage.removeItem(srcKey);
+      touched = true;
+    }
+    if (touched) localStorage.setItem(dstKey, JSON.stringify(dst));
+  } catch { /* ignore */ }
+}
+
 // localStorage에서 세션 복원(마이그레이션 포함). SSR/미저장 시 기본(repo 세션 1개).
 // 마운트 시 동기 호출 → 하이드레이션 이펙트 레이스(빈 상태 덮어쓰기) 원천 제거.
 function loadStore(store: string, repoLabel: string): { sessions: Record<string, Session>; openKeys: string[]; activeKey: string } {
@@ -189,6 +211,7 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
         const d = await r.json();
         const hash = r.ok && d.ok && d.hash ? String(d.hash) : "";
         if (!hash) continue; // 커밋 아님(되돌림) → 방치
+        carryHunkNotes(root, file, hash); // DiffPane 에이전트 설명 노트도 커밋 diff로 승계(챗 세션과 무관하게)
         const newKey = `diff:${hash}:${file}`;
         if (sessions[newKey]) {
           // 타겟 커밋 세션이 이미 있음 — 대화 없는 빈 wt만 정리(대화 있으면 병합 위험이라 방치).
