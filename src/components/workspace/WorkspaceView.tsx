@@ -10,7 +10,7 @@ import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceC
 import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
-import DocPane from "@/components/workspace/DocPane";
+import DocViewer from "@/components/workspace/DocViewer";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -42,10 +42,11 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [files, setFiles] = useState<string[]>([]);
   const [fileStatus, setFileStatus] = useState<Record<string, "added" | "modified">>({}); // 변경 파일 도트(#687)
   const [treeLoading, setTreeLoading] = useState(false);
-  // 문서 뷰어(#693) — 레포와 별개 문서 폴더. docFile은 docsRoot 기준 상대경로.
+  // 문서 뷰어(#693) — 레포와 별개 문서 폴더. docTabs/activeDoc은 docsRoot 기준 상대경로.
   const [docsRoot, setDocsRoot] = useState<string | null>(null);
   const [docsFiles, setDocsFiles] = useState<string[]>([]);
-  const [docFile, setDocFile] = useState<string | null>(null);
+  const [docTabs, setDocTabs] = useState<string[]>([]); // 열린 문서 탭(rel 경로들, #693)
+  const [activeDoc, setActiveDoc] = useState<string | null>(null); // 활성 문서
   const [docsOpen, setDocsOpen] = useState(false); // 좌측 문서 섹션 열림
   // 문서 뷰어 dock(#693): region=어느 영역과 분할할지(터미널/코드), pos=위/아래. docViewH=문서 pane 높이(px).
   const [docDock, setDocDock] = useState<{ region: "terminal" | "code"; pos: "top" | "bottom" }>({ region: "code", pos: "bottom" });
@@ -206,6 +207,13 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     } catch { /* 무시 */ } finally { setPicking(false); }
   }
 
+  // 문서 탭 열기/닫기(#693) — 브라우저서 클릭해 열림(+ 버튼 없음).
+  function openDoc(id: string) { setDocTabs((prev) => (prev.includes(id) ? prev : [...prev, id])); setActiveDoc(id); }
+  function closeDocTab(id: string) {
+    setDocTabs((prev) => prev.filter((x) => x !== id));
+    setActiveDoc((cur) => { if (cur !== id) return cur; const rest = docTabs.filter((x) => x !== id); return rest.length ? rest[rest.length - 1] : null; });
+  }
+
   const folderName = path ? path.split("/").filter(Boolean).pop() ?? path : null;
 
   // 웹(비데스크톱): 터미널·폴더접근 불가 → 안내.
@@ -251,7 +259,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     </div>
   ) : null;
   // 문서 뷰어 — dock된 region에 따라 코드/터미널 영역에 배치(#693).
-  const docOpen = !!(docFile && docsRoot);
+  const docOpen = !!(docsRoot && activeDoc && docTabs.length);
   const docInCode = docOpen && docDock.region === "code";
   const docInTerminal = docOpen && docDock.region === "terminal";
   // dock 변경은 토글에서만 → 여기서 바로 영속(마운트 시 write로 restore 덮어쓰는 것 방지).
@@ -260,7 +268,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const toggleRegion = () => setDocDock((d) => { const n = { ...d, region: (d.region === "code" ? "terminal" : "code") as "terminal" | "code" }; persistDock(n); return n; });
   // split=상하 공존(pos 토글 노출). region 토글은 항상.
   const makeDoc = (split: boolean) => (
-    <DocPane root={docsRoot!} file={docFile!} onClose={() => setDocFile(null)}
+    <DocViewer root={docsRoot!} tabs={docTabs} activeDoc={activeDoc!} onActivate={setActiveDoc} onCloseTab={closeDocTab}
       pos={split ? docDock.pos : undefined} onTogglePos={split ? togglePos : undefined}
       region={docDock.region} onToggleRegion={toggleRegion} />
   );
@@ -318,7 +326,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
                     <button type="button" onClick={pickDocs} className="ml-auto shrink-0 rounded px-1 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800">{t("workspace.docsChangeFolder")}</button>
                   </div>
                   <div className="min-h-0 flex-1">
-                    <FileTree files={docsFiles} selected={docFile} onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) setDocFile(id); }} />
+                    <FileTree files={docsFiles} selected={activeDoc} onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) openDoc(id); }} />
                   </div>
                 </>
               ) : (
