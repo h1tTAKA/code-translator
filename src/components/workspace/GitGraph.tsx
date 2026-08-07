@@ -170,12 +170,13 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
           {model?.rows.map((row) => {
             const dotY = ROW_H / 2;
             const lines: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+            // 선 색 = 양 끝 레인 중 바깥(큰 인덱스=브랜치) 기준 → 한 bump이 나갈 때·돌아올 때 같은 색(#707). 트렁크(0→0)는 트렁크색 유지.
             row.before.forEach((h, i) => {
               if (h == null) return;
-              if (h === row.commit.hash) lines.push({ x1: cx(i), y1: 0, x2: cx(row.lane), y2: dotY, color: laneColor(i) });
-              else { const j = row.after.indexOf(h); if (j >= 0) lines.push({ x1: cx(i), y1: 0, x2: cx(j), y2: ROW_H, color: laneColor(i) }); }
+              if (h === row.commit.hash) lines.push({ x1: cx(i), y1: 0, x2: cx(row.lane), y2: dotY, color: laneColor(Math.max(i, row.lane)) });
+              else { const j = row.after.indexOf(h); if (j >= 0) lines.push({ x1: cx(i), y1: 0, x2: cx(j), y2: ROW_H, color: laneColor(Math.max(i, j)) }); }
             });
-            row.commit.parents.forEach((p) => { const j = row.after.indexOf(p); if (j >= 0) lines.push({ x1: cx(row.lane), y1: dotY, x2: cx(j), y2: ROW_H, color: laneColor(j) }); });
+            row.commit.parents.forEach((p) => { const j = row.after.indexOf(p); if (j >= 0) lines.push({ x1: cx(row.lane), y1: dotY, x2: cx(j), y2: ROW_H, color: laneColor(Math.max(row.lane, j)) }); });
             const isOpen = expanded.has(row.commit.hash);
             const files = filesByHash[row.commit.hash];
             return (
