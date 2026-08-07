@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -11,6 +11,7 @@ import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
+import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -409,12 +410,11 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             </aside>
           </>
         )}
-        {/* 단일 플로팅 엣지 탭 — 레이아웃 폭 안 먹음(absolute). 열림:챗 좌경계(right=chatW) / 접힘:우측 끝(right=0). */}
-        <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
+        {/* 단일 플로팅 엣지 탭(공통 PanelEdgeToggle) — 레이아웃 폭 안 먹음(absolute). 열림:챗 좌경계(right=chatW+2) / 접힘:우측 끝(right=0). */}
+        <PanelEdgeToggle collapsed={!chatOpen} onToggle={toggleChat} collapsedDir="left" orientation="vertical"
+          title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
           style={{ right: chatOpen ? chatW + 2 : 0 }}
-          className="absolute top-1/2 z-30 flex h-11 w-3.5 -translate-y-1/2 items-center justify-center rounded-l-md border-y border-l border-zinc-200 bg-white/90 text-zinc-400 backdrop-blur transition hover:w-4 hover:text-[#3B34E2] dark:border-zinc-800 dark:bg-[#15161d]/90 dark:hover:text-[#8b86f5]">
-          {chatOpen ? <IconChevronRight size={13} stroke={2.5} aria-hidden /> : <IconChevronLeft size={13} stroke={2.5} aria-hidden />}
-        </button>
+          className="absolute top-1/2 -translate-y-1/2 rounded-l-md border-y border-l border-zinc-200 dark:border-zinc-800" />
       </div>
     </div>
   );
