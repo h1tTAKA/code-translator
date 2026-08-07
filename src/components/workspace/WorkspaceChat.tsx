@@ -20,7 +20,7 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
 type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree";
-interface Sub { id: string; messages: ChatMessage[]; } // 세션 안의 한 대화 스레드
+interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). 레거시 저장분은 undefined.
 // baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
 interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
 // WorkspaceView가 주는 포커스 신호 — n(nonce)로 같은 대상 재클릭도 매번 발화.
@@ -30,7 +30,7 @@ const REPO_KEY = "repo";
 const MAX_SESSIONS = 40; // 닫힌 세션 포함 저장 상한 — 초과 시 가장 오래된 "닫힌" 세션부터 정리.
 
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
-const freshSub = (): Sub => ({ id: genId(), messages: [] });
+const freshSub = (): Sub => ({ id: genId(), messages: [], createdAt: Date.now() });
 const mkSession = (key: string, kind: SessionKind, label: string): Session => { const s = freshSub(); return { key, kind, label, subs: [s], activeSubId: s.id }; };
 
 // DiffPane hunk 노트 버킷을 워킹트리→커밋 해시로 승계(#689). 키 스킴은 DiffPane.noteStore와 동일:
@@ -248,7 +248,8 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   function writeSub(key: string, subId: string, msgs: ChatMessage[]) {
     setSessions((prev) => {
       const s = prev[key]; if (!s) return prev;
-      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, messages: msgs } : su) } };
+      // createdAt 없으면(레거시 서브 or 재사용) 첫 쓰기 시각으로 스탬프 — 새 질문이 '이전 기록'으로 빠지는 것 방지(#691).
+      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, messages: msgs, createdAt: su.createdAt ?? Date.now() } : su) } };
     });
   }
 
@@ -434,13 +435,39 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   // 서브 대화 제목 — "질문 N"(세션 내 순번). 단순·예측가능.
   const subTitle = (i: number) => `${t("workspace.chatThread")} ${i + 1}`;
 
-  // 질문 이력 — 전 세션 × 서브 중 유저 질문이 있는 것만. 첫 유저 메시지 = 미리보기.
+  // 질문 이력 — 전 세션 × 서브 중 유저 질문이 있는 것만. 첫 유저 메시지 = 미리보기. 최신순 정렬(#691).
   const history = useMemo(() => Object.values(sessions).flatMap((s) =>
     s.subs.flatMap((sub) => {
       const q = sub.messages.find((m) => m.role === "user")?.content?.trim();
-      return q ? [{ sessionKey: s.key, kind: s.kind, label: s.label, subId: sub.id, question: q, count: sub.messages.length }] : [];
+      return q ? [{ sessionKey: s.key, kind: s.kind, label: s.label, subId: sub.id, question: q, count: sub.messages.length, createdAt: sub.createdAt }] : [];
     })
-  ), [sessions]);
+  ).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)), [sessions]); // 최신 먼저(시각 없는 레거시는 0=뒤)
+
+  // 히스토리를 날짜 버킷으로 그룹(#691). 이미 최신순 정렬돼 있어 그룹도 최신 날짜 먼저,
+  // 시각 없는 레거시("이전 기록")는 맨 뒤로 모임.
+  // todayStart를 메모 밖에서(매 렌더 계산, 값은 로컬 자정에만 변함) → deps에 넣어 페이지 열어둔 채
+  // 자정 넘어가도 다음 렌더에 재그룹(어제 것이 '오늘'로 stuck 방지, 리뷰 🔴).
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const historyGroups = useMemo(() => {
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const DAY = 86_400_000;
+    const groups: { key: string; label: string; items: typeof history }[] = [];
+    for (const h of history) {
+      let key: string, label: string;
+      if (!h.createdAt) { key = "older"; label = t("workspace.chatHistoryOlder"); }
+      else {
+        const ds = startOfDay(new Date(h.createdAt));
+        const diff = Math.round((todayStart - ds) / DAY);
+        key = String(ds);
+        label = diff === 0 ? t("workspace.chatToday") : diff === 1 ? t("workspace.chatYesterday")
+          : new Date(h.createdAt).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
+      }
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.items.push(h); else groups.push({ key, label, items: [h] });
+    }
+    return groups;
+  }, [history, locale, t, todayStart]);
 
   // 이력 항목 → 그 세션·서브 챗으로 이동(탭 없으면 열기 + 활성 서브 지정).
   function goToSub(sessionKey: string, subId: string) {
@@ -589,16 +616,22 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
           <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto py-1">
             {history.length === 0 ? (
               <div className="flex h-full items-center justify-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.chatHistoryEmpty")}</div>
-            ) : history.map((h) => (
-              <button key={`${h.sessionKey}:${h.subId}`} type="button" onClick={() => goToSub(h.sessionKey, h.subId)}
-                className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                <span className="mt-0.5 shrink-0">{kindGlyph(h.kind, 13, "text-zinc-400")}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">{h.label}</span>
-                  <span className="line-clamp-2 text-[12px] leading-snug text-zinc-700 dark:text-zinc-200">{h.question}</span>
-                </span>
-                <span className="mt-0.5 shrink-0 rounded bg-zinc-100 px-1 text-[9px] font-medium text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">{h.count}</span>
-              </button>
+            ) : historyGroups.map((group) => (
+              <div key={group.key}>
+                {/* 날짜 헤더 — 스크롤 시 상단 고정 */}
+                <div className="sticky top-0 z-[1] bg-white/95 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 backdrop-blur dark:bg-[#0b0c12]/95 dark:text-zinc-500">{group.label}</div>
+                {group.items.map((h) => (
+                  <button key={`${h.sessionKey}:${h.subId}`} type="button" onClick={() => goToSub(h.sessionKey, h.subId)}
+                    className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                    <span className="mt-0.5 shrink-0">{kindGlyph(h.kind, 13, "text-zinc-400")}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">{h.label}</span>
+                      <span className="line-clamp-2 text-[12px] leading-snug text-zinc-700 dark:text-zinc-200">{h.question}</span>
+                    </span>
+                    <span className="mt-0.5 shrink-0 rounded bg-zinc-100 px-1 text-[9px] font-medium text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">{h.count}</span>
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         </div>
