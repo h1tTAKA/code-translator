@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -64,6 +64,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
   const [codeW, setCodeW] = useState(480);
+  const [chatOpen, setChatOpen] = useState(true);  // 우측 챗 패널 열림(#695)
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
@@ -94,6 +95,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const dvh = Number(localStorage.getItem("nunopi:ws-docview-h")); if (dvh) { const v = clamp(dvh, 120, 900); setDocViewH(v); wRef.current.docViewH = v; }
       try { const p = JSON.parse(localStorage.getItem("nunopi:ws-doc-dock") || "null"); if (p && (p.region === "terminal" || p.region === "code") && (p.pos === "top" || p.pos === "bottom")) setDocDock(p); } catch { /* ignore */ } // 문서 dock 복원(#693)
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
+      setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
     } catch { /* ignore */ }
   }, [mounted]);
 
@@ -136,6 +138,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   };
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
 
   // 워킹트리 변경 상태맵 로드(#687 도트 + #689 챗 승계 트리거). 경로 로드·깃 새로고침 시 호출.
   const loadGitStatus = useCallback(async (p: string) => {
@@ -290,7 +293,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           <IconFolderOpen size={14} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
         </button>
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
         <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -397,11 +400,21 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             </>
           )}
         </section>
-        <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-        {/* 우: 챗룸 */}
-        <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-          <WorkspaceChat root={path} files={files} focus={chatFocus} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
-        </aside>
+        {/* 우: 챗룸(접기/펴기 #695) — 접힘 시 aside·divider 미렌더(폭 0). 토글은 아래 플로팅 엣지 탭. */}
+        {chatOpen && (
+          <>
+            <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
+            <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
+              <WorkspaceChat root={path} files={files} focus={chatFocus} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
+            </aside>
+          </>
+        )}
+        {/* 단일 플로팅 엣지 탭 — 레이아웃 폭 안 먹음(absolute). 열림:챗 좌경계(right=chatW) / 접힘:우측 끝(right=0). */}
+        <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
+          style={{ right: chatOpen ? chatW + 2 : 0 }}
+          className="absolute top-1/2 z-30 flex h-11 w-3.5 -translate-y-1/2 items-center justify-center rounded-l-md border-y border-l border-zinc-200 bg-white/90 text-zinc-400 backdrop-blur transition hover:w-4 hover:text-[#3B34E2] dark:border-zinc-800 dark:bg-[#15161d]/90 dark:hover:text-[#8b86f5]">
+          {chatOpen ? <IconChevronRight size={13} stroke={2.5} aria-hidden /> : <IconChevronLeft size={13} stroke={2.5} aria-hidden />}
+        </button>
       </div>
     </div>
   );
