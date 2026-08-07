@@ -97,14 +97,38 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
 
   const graphW = useMemo(() => (model ? Math.max(1, model.laneCount) * LANE_W : LANE_W), [model]);
 
-  // 커밋별 색(#707) — lane0=트렁크 색, 그 외는 브랜치 순번대로 accent 순환. 해시로 조회.
+  // 브랜치 색(#707) — "브랜치 정체성" 기준. 첫 tip(HEAD 계열)=트렁크 색, 첫 부모로 이어지는 커밋은 같은 색 승계 → 한 브랜치=한 색.
+  // 새 tip(위에서 아무도 안 기다리던 커밋)이 나올 때마다 accent 순환. 레인 재사용해도 브랜치마다 다른 색.
   const colorByHash = useMemo(() => {
     const m: Record<string, string> = {};
+    const inherit = new Map<string, string>(); // 이 해시가 등장하면 이어받을 색(첫 부모 승계)
     let bi = 0;
-    model?.rows.forEach((r) => { m[r.commit.hash] = r.lane === 0 ? TRUNK_COLOR : BRANCH_COLORS[bi++ % BRANCH_COLORS.length]; });
+    model?.rows.forEach((r) => {
+      const h = r.commit.hash;
+      let color = inherit.get(h);
+      if (color == null) { color = bi === 0 ? TRUNK_COLOR : BRANCH_COLORS[(bi - 1) % BRANCH_COLORS.length]; bi++; }
+      m[h] = color;
+      const p0 = r.commit.parents[0];
+      if (p0 && !inherit.has(p0)) inherit.set(p0, color); // 첫 부모가 이 브랜치를 이어감 = 같은 색
+    });
     return m;
   }, [model]);
   const colorOf = (hash: string) => colorByHash[hash] ?? TRUNK_COLOR; // 윈도우 밖 부모 등은 트렁크 색 폴백
+
+  // 커밋 해시 → 행 인덱스, 그리고 각 행의 누적 top Y(펼친 파일 높이 반영) — 점-대-점 곡선의 세로 거리 계산용(#707).
+  const { rowIndexByHash, rowTop } = useMemo(() => {
+    const idxMap = new Map<string, number>();
+    const tops: number[] = [];
+    let y = 0;
+    (model?.rows ?? []).forEach((r, i) => {
+      idxMap.set(r.commit.hash, i);
+      tops.push(y);
+      const files = filesByHash[r.commit.hash];
+      const filesH = expanded.has(r.commit.hash) ? (files ? files.length * FILE_H : FILE_H) : 0; // 로딩 중엔 1줄
+      y += ROW_H + filesH;
+    });
+    return { rowIndexByHash: idxMap, rowTop: tops };
+  }, [model, expanded, filesByHash]);
 
   // 추적 변경 vs 미추적(untracked) 분리 — 미추적은 접이식 하위그룹(#699).
   const tracked = useMemo(() => changes.filter((c) => changeKind(c) !== "untracked"), [changes]);
@@ -180,15 +204,18 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
           <div className="nunopi-scroll min-h-0 flex-1 overflow-auto">
           {model?.rows.map((row) => {
             const dotY = ROW_H / 2;
-            const lines: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
-            // 선 색 = 그 선이 속한 커밋(브랜치)의 색(#707). 한 브랜치 bump은 나갈 때·돌아올 때 같은 색.
-            row.before.forEach((h, i) => {
-              if (h == null) return;
-              if (h === row.commit.hash) lines.push({ x1: cx(i), y1: 0, x2: cx(row.lane), y2: dotY, color: colorOf(row.commit.hash) });
-              else { const j = row.after.indexOf(h); if (j >= 0) lines.push({ x1: cx(i), y1: 0, x2: cx(j), y2: ROW_H, color: colorOf(h) }); }
+            const idx = rowIndexByHash.get(row.commit.hash) ?? 0;
+            // 각 부모로 향하는 선을 "점→점" 곡선으로(#707) — 반행 stub 없이 점에서 점까지 한 번에 부드럽게(orca식).
+            // 세로거리는 누적 top(rowTop)으로 재 펼친 파일 높이까지 반영. 같은 레인이면 직선, 아니면 부드러운 S곡선.
+            const edges = row.commit.parents.map((p) => {
+              const x1 = cx(row.lane);
+              const ip = rowIndexByHash.get(p);
+              if (ip == null) return { x1, y1: dotY, x2: x1, y2: ROW_H, color: colorOf(row.commit.hash) }; // 윈도우 밖 부모 = 아래로 이어짐만 표시
+              const pLane = model!.rows[ip].lane;
+              const y2 = dotY + (rowTop[ip] - rowTop[idx]);
+              // 분기(부모가 더 바깥 레인)면 그 부모(새 브랜치) 색, 아니면 이 커밋(브랜치) 색.
+              return { x1, y1: dotY, x2: cx(pLane), y2, color: pLane > row.lane ? colorOf(p) : colorOf(row.commit.hash) };
             });
-            // 부모로 가는 선: 분기(바깥 레인으로)면 그 부모(새 브랜치) 색, 아니면 이 커밋 색.
-            row.commit.parents.forEach((p) => { const j = row.after.indexOf(p); if (j >= 0) lines.push({ x1: cx(row.lane), y1: dotY, x2: cx(j), y2: ROW_H, color: j > row.lane ? colorOf(p) : colorOf(row.commit.hash) }); });
             const isOpen = expanded.has(row.commit.hash);
             const files = filesByHash[row.commit.hash];
             return (
@@ -204,8 +231,9 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                   }}
                   onMouseLeave={clearHover}
                   className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
-                  <svg width={graphW} height={ROW_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
-                    {lines.map((l, k) => <path key={k} d={linkPath(l.x1, l.y1, l.x2, l.y2)} stroke={l.color} strokeWidth={2} fill="none" strokeLinecap="round" />)}
+                  {/* overflow visible — 점→점 곡선이 이 행 아래(부모 행)까지 뻗어도 잘리지 않게. 레이아웃은 ROW_H만 차지. */}
+                  <svg width={graphW} height={ROW_H} className="shrink-0" style={{ minWidth: graphW, overflow: "visible" }} aria-hidden>
+                    {edges.map((l, k) => <path key={k} d={linkPath(l.x1, l.y1, l.x2, l.y2)} stroke={l.color} strokeWidth={2} fill="none" strokeLinecap="round" />)}
                     {row.lane === 0
                       ? <circle cx={cx(row.lane)} cy={dotY} r={4} className="fill-white dark:fill-[#0b0c12]" stroke={colorOf(row.commit.hash)} strokeWidth={2} />
                       : <circle cx={cx(row.lane)} cy={dotY} r={3.5} fill={colorOf(row.commit.hash)} />}
@@ -243,10 +271,8 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                       const [badge, cls] = STATUS[f.status as keyof typeof STATUS] ?? ["?", "text-zinc-400"];
                       return (
                         <button key={f.path} type="button" onClick={() => onOpenDiff(row.commit.hash, f.path)} className="flex w-full items-center text-left hover:bg-zinc-100 dark:hover:bg-zinc-800" style={{ height: FILE_H }}>
-                          {/* 그래프 열: 활성 레인 pass-through(연속성) */}
-                          <svg width={graphW} height={FILE_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
-                            {row.after.map((h, i) => h == null ? null : <line key={i} x1={cx(i)} y1={0} x2={cx(i)} y2={FILE_H} stroke={colorOf(h)} strokeWidth={2} />)}
-                          </svg>
+                          {/* 그래프 열 스페이서 — 선은 위 커밋의 점→점 곡선이 이 구간을 가로질러 지나가므로 여기선 자리만 확보(#707). */}
+                          <span style={{ width: graphW }} className="shrink-0" aria-hidden />
                           <span className="flex min-w-0 flex-1 items-baseline gap-1.5 pl-3 pr-2 text-[11px]">
                             <span className={`shrink-0 font-mono text-[9px] font-bold ${cls}`}>{badge}</span>
                             <span className="truncate text-zinc-600 dark:text-zinc-300">{f.path.split("/").pop()}</span>
