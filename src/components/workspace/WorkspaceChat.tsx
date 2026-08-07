@@ -248,7 +248,8 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   function writeSub(key: string, subId: string, msgs: ChatMessage[]) {
     setSessions((prev) => {
       const s = prev[key]; if (!s) return prev;
-      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, messages: msgs } : su) } };
+      // createdAt 없으면(레거시 서브 or 재사용) 첫 쓰기 시각으로 스탬프 — 새 질문이 '이전 기록'으로 빠지는 것 방지(#691).
+      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, messages: msgs, createdAt: su.createdAt ?? Date.now() } : su) } };
     });
   }
 
