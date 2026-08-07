@@ -47,6 +47,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   const [filesByHash, setFilesByHash] = useState<Record<string, { status: string; path: string }[]>>({});
   const [changes, setChanges] = useState<Change[]>([]);
   const [changesOpen, setChangesOpen] = useState(true);
+  const [untrackedOpen, setUntrackedOpen] = useState(false); // 미추적 하위그룹(기본 접힘, #699)
   // 커밋 호버 팝오버(#685) — 전체 메세지(제목+본문). fixed라 스크롤 컨테이너 잘림 회피.
   // dwell 지연: 그래프를 훑으며 지나갈 땐 안 뜨고, 머물러야(HOVER_DELAY_MS) 뜬다(orca식).
   const [hover, setHover] = useState<{ subject: string; body: string; left: number; top: number; above: boolean } | null>(null);
@@ -90,6 +91,10 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   };
 
   const graphW = useMemo(() => (model ? Math.max(1, model.laneCount) * LANE_W : LANE_W), [model]);
+
+  // 추적 변경 vs 미추적(untracked) 분리 — 미추적은 접이식 하위그룹(#699).
+  const tracked = useMemo(() => changes.filter((c) => changeKind(c) !== "untracked"), [changes]);
+  const untracked = useMemo(() => changes.filter((c) => changeKind(c) === "untracked"), [changes]);
 
   // 변경 파일 한 행(tracked·untracked 공용, #699).
   const changeRow = (c: Change) => {
@@ -137,9 +142,24 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
               <button type="button" onClick={() => setChangesOpen((v) => !v)} className="flex w-full shrink-0 items-center gap-1 bg-white px-2.5 py-1 text-left text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50 dark:bg-[#0e0f16] dark:text-zinc-300 dark:hover:bg-zinc-800/50">
                 {changesOpen ? <IconChevronDown size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden /> : <IconChevronRight size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />}
                 <span>{t("workspace.gitChanges")}</span>
-                <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{changes.length}</span>
+                <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{tracked.length}</span>
               </button>
-              {changesOpen && <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto">{changes.map(changeRow)}</div>}
+              {changesOpen && (
+                <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto">
+                  {tracked.map(changeRow)}
+                  {untracked.length > 0 && (
+                    <>
+                      {/* 미추적(gitignore 아님·git이 처음 보는) 파일 — 도배 방지 위해 기본 접힘(orca식). */}
+                      <button type="button" onClick={() => setUntrackedOpen((v) => !v)} className="flex w-full items-center gap-1 py-0.5 pl-6 pr-2 text-left text-[10px] font-medium text-zinc-400 transition hover:bg-zinc-100 dark:text-zinc-500 dark:hover:bg-zinc-800">
+                        {untrackedOpen ? <IconChevronDown size={11} stroke={2} className="shrink-0" aria-hidden /> : <IconChevronRight size={11} stroke={2} className="shrink-0" aria-hidden />}
+                        <span>{t("workspace.gitUntracked")}</span>
+                        <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{untracked.length}</span>
+                      </button>
+                      {untrackedOpen && untracked.map(changeRow)}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {/* 커밋 그래프 — 나머지 공간, 자체 스크롤 */}
