@@ -201,7 +201,7 @@ export default function AppShell({ editor, learningPanel, modeToggle, onOpenSett
               collapsedDir={isLandscape ? "right" : "down"}
               orientation={isLandscape ? "vertical" : "horizontal"}
               title={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-              className={`absolute border-zinc-200 dark:border-zinc-800 ${
+              className={`absolute bg-zinc-100 dark:bg-[#15161d] border-zinc-200 dark:border-zinc-800 ${
                 hideEditorPane
                   ? (isLandscape ? "left-0 top-1/2 -translate-y-1/2 rounded-r-md border-y border-r" : "top-0 left-1/2 -translate-x-1/2 rounded-b-md border-x border-b")
                   : `left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border ${isLandscape ? "cursor-col-resize" : "cursor-row-resize"}`
