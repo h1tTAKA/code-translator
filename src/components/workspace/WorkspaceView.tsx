@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -13,6 +13,7 @@ import DiffPane from "@/components/workspace/DiffPane";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
+const WS_DOCS_KEY = "nunopi:ws-docs-path"; // 문서 폴더(#693)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 // git status 문자(index,work) → 파일 트리 도트 종류. 삭제(D)는 트리에 행이 없어 스킵(#687).
@@ -40,6 +41,11 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [files, setFiles] = useState<string[]>([]);
   const [fileStatus, setFileStatus] = useState<Record<string, "added" | "modified">>({}); // 변경 파일 도트(#687)
   const [treeLoading, setTreeLoading] = useState(false);
+  // 문서 뷰어(#693) — 레포와 별개 문서 폴더. docFile은 docsRoot 기준 상대경로.
+  const [docsRoot, setDocsRoot] = useState<string | null>(null);
+  const [docsFiles, setDocsFiles] = useState<string[]>([]);
+  const [docFile, setDocFile] = useState<string | null>(null);
+  const [docsOpen, setDocsOpen] = useState(false); // 좌측 문서 섹션 열림
   const [openFile, setOpenFile] = useState<string | null>(null); // 열린 파일(코드칸은 이게 있을 때만)
   // 커밋 diff(hash) 또는 워킹트리 diff(worktree). 있으면 코드칸=diff.
   const [openDiff, setOpenDiff] = useState<{ hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" } | null>(null);
@@ -64,6 +70,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     if (!mounted) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 경로 복원(1회)
     try { const s = localStorage.getItem(WS_PATH_KEY); if (s) setPath(s); } catch { /* ignore */ }
+    try { const ds = localStorage.getItem(WS_DOCS_KEY); if (ds) setDocsRoot(ds); } catch { /* ignore */ } // 문서 폴더 복원(#693)
   }, [mounted]);
 
   // 저장된 패널 폭 복원.
@@ -146,6 +153,21 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     return () => { cancelled = true; };
   }, [path, loadGitStatus]);
 
+  // 문서 폴더 파일 목록 로드(#693) — /api/repo/tree 재사용(root=docsRoot).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 문서 폴더 변경 시 재로드
+    if (!docsRoot) { setDocsFiles([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: docsRoot }) });
+        const d = await r.json();
+        if (!cancelled) setDocsFiles(r.ok && Array.isArray(d.files) ? d.files : []);
+      } catch { if (!cancelled) setDocsFiles([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [docsRoot]);
+
   void active;
 
   async function pick() {
@@ -154,6 +176,16 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     try {
       const r = await desktop.pickRepoFolder();
       if (!r.canceled && r.path) { setPath(r.path); try { localStorage.setItem(WS_PATH_KEY, r.path); } catch { /* ignore */ } }
+    } catch { /* 무시 */ } finally { setPicking(false); }
+  }
+
+  // 문서 폴더 선택(#693) — 범용 폴더 선택기 재사용.
+  async function pickDocs() {
+    if (!desktop?.pickRepoFolder || picking) return;
+    setPicking(true);
+    try {
+      const r = await desktop.pickRepoFolder();
+      if (!r.canceled && r.path) { setDocsRoot(r.path); try { localStorage.setItem(WS_DOCS_KEY, r.path); } catch { /* ignore */ } }
     } catch { /* 무시 */ } finally { setPicking(false); }
   }
 
@@ -217,6 +249,34 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             <IconGitBranch size={12} stroke={2} aria-hidden />
             <span>git</span>
             {gitOpen ? <IconChevronDown size={12} stroke={2} className="ml-auto" aria-hidden /> : <IconChevronUp size={12} stroke={2} className="ml-auto" aria-hidden />}
+          </button>
+          {/* 문서 폴더 브라우저(#693) — .md/.txt 클릭 시 뷰어에 표시(뷰어는 커밋2). */}
+          {docsOpen && (
+            <div style={{ height: 220 }} className="flex shrink-0 flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800">
+              {docsRoot ? (
+                <>
+                  <div className="flex shrink-0 items-center gap-1 border-b border-zinc-200 px-2.5 py-1 text-[10px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+                    <IconFolderOpen size={11} stroke={2} className="shrink-0" aria-hidden />
+                    <span className="truncate">{docsRoot.split("/").filter(Boolean).pop()}</span>
+                    <button type="button" onClick={pickDocs} className="ml-auto shrink-0 rounded px-1 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800">{t("workspace.docsChangeFolder")}</button>
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    <FileTree files={docsFiles} selected={docFile} onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) setDocFile(id); }} />
+                  </div>
+                </>
+              ) : (
+                <div className="flex h-full items-center justify-center p-3">
+                  <button type="button" onClick={pickDocs} className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
+                    <IconFolderOpen size={13} stroke={2} aria-hidden /> {t("workspace.docsOpenFolder")}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <button type="button" onClick={() => setDocsOpen((v) => !v)} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
+            <IconFileText size={12} stroke={2} aria-hidden />
+            <span>{t("workspace.docs")}</span>
+            {docsOpen ? <IconChevronDown size={12} stroke={2} className="ml-auto" aria-hidden /> : <IconChevronUp size={12} stroke={2} className="ml-auto" aria-hidden />}
           </button>
         </aside>
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
