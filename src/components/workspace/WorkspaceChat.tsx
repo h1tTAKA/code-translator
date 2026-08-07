@@ -172,7 +172,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   // kind별 컨텍스트 빌드(세션키 캐시).
   async function buildContext(s: Session): Promise<string> {
     const cached = ctxCache.current.get(s.key);
-    if (cached != null) return cached;
+    if (s.kind !== "worktree" && cached != null) return cached; // worktree는 편집 시 변하니 캐시 무시
     let ctx = "";
     try {
       if (s.kind === "file") {
@@ -191,6 +191,20 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         const d = await r.json();
         const diff = r.ok && d.ok ? String(d.diff ?? "") : "";
         ctx = diff ? `# 커밋 ${hash.slice(0, 7)}에서 ${file}의 변경(diff, before/after)\n\`\`\`diff\n${diff}\n\`\`\`\n` : "";
+      } else if (s.kind === "worktree") {
+        // wt:<file> — 그 파일의 커밋 전 diff. unstaged+staged 우선(둘 다 비면 untracked 새 파일).
+        // 추적 파일에 untracked(--no-index)를 헛돌리면 전체를 신규로 오인하므로 마지막에만.
+        const file = s.key.slice("wt:".length);
+        const getDiff = async (kind: "unstaged" | "staged" | "untracked") => {
+          try {
+            const r = await fetch("/api/repo/git-diff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, file, kind }) });
+            const d = await r.json();
+            return r.ok && d.ok ? String(d.diff ?? "") : "";
+          } catch { return ""; }
+        };
+        let diff = [await getDiff("unstaged"), await getDiff("staged")].filter(Boolean).join("\n");
+        if (!diff) diff = await getDiff("untracked");
+        ctx = diff ? `# ${file}의 커밋 전 변경(워킹트리 diff, before/after)\n\`\`\`diff\n${diff}\n\`\`\`\n` : `# ${file}: 현재 커밋 전 변경 없음\n`;
       } else if (s.kind === "branch") {
         const branch = s.key.slice("branch:".length);
         const r = await fetch("/api/repo/git-branch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, branch }) });
@@ -205,7 +219,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         ctx = await repoContext();
       }
     } catch { ctx = ""; }
-    ctxCache.current.set(s.key, ctx);
+    if (s.kind !== "worktree") ctxCache.current.set(s.key, ctx); // worktree는 캐시 안 함(매번 최신 diff)
     return ctx;
   }
 
