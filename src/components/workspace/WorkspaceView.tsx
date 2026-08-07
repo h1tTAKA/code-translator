@@ -411,7 +411,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         )}
         {/* 단일 플로팅 엣지 탭 — 레이아웃 폭 안 먹음(absolute). 열림:챗 좌경계(right=chatW) / 접힘:우측 끝(right=0). */}
         <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
-          style={{ right: chatOpen ? chatW : 0 }}
+          style={{ right: chatOpen ? chatW + 2 : 0 }}
           className="absolute top-1/2 z-30 flex h-11 w-3.5 -translate-y-1/2 items-center justify-center rounded-l-md border-y border-l border-zinc-200 bg-white/90 text-zinc-400 backdrop-blur transition hover:w-4 hover:text-[#3B34E2] dark:border-zinc-800 dark:bg-[#15161d]/90 dark:hover:text-[#8b86f5]">
           {chatOpen ? <IconChevronRight size={13} stroke={2.5} aria-hidden /> : <IconChevronLeft size={13} stroke={2.5} aria-hidden />}
         </button>
