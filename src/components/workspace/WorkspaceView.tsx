@@ -10,6 +10,7 @@ import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceC
 import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
+import DocPane from "@/components/workspace/DocPane";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
@@ -59,8 +60,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [codeW, setCodeW] = useState(480);
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
-  const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH"; startX: number; startY: number; startVal: number } | null>(null);
-  const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
+  const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
+  const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH" | "docsH"; startX: number; startY: number; startVal: number } | null>(null);
+  const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220, docsH: 220 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
   const [mounted, setMounted] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
   useEffect(() => setMounted(true), []);
@@ -82,6 +84,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
       const k = Number(localStorage.getItem("nunopi:ws-code-w")); if (k) { const v = clamp(k, 240, 900); setCodeW(v); wRef.current.code = v; }
       const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
+      const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
     } catch { /* ignore */ }
   }, [mounted]);
@@ -94,7 +97,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
       else if (d.kind === "code") { const v = clamp(d.startVal - dx, 240, 900); setCodeW(v); wRef.current.code = v; }
       else if (d.kind === "chat") { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
-      else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // gitH: 세로
+      else if (d.kind === "gitH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // 세로
+      else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setDocsH(v); wRef.current.docsH = v; } // docsH: 세로
     };
     const up = () => {
       if (!dragRef.current) return;
@@ -104,17 +108,18 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         localStorage.setItem("nunopi:ws-chat-w", String(wRef.current.chat));
         localStorage.setItem("nunopi:ws-code-w", String(wRef.current.code));
         localStorage.setItem("nunopi:ws-git-h", String(wRef.current.gitH));
+        localStorage.setItem("nunopi:ws-docs-h", String(wRef.current.docsH));
       } catch { /* ignore */ }
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, []);
 
-  const startDrag = (kind: "tree" | "code" | "chat" | "gitH", startVal: number) => (e: React.MouseEvent) => {
+  const startDrag = (kind: "tree" | "code" | "chat" | "gitH" | "docsH", startVal: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     // eslint-disable-next-line react-hooks/refs -- 이벤트 핸들러 내 ref 쓰기(렌더 중 아님)
     dragRef.current = { kind, startX: e.clientX, startY: e.clientY, startVal };
-    document.body.style.cursor = kind === "gitH" ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
+    document.body.style.cursor = (kind === "gitH" || kind === "docsH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
   };
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
@@ -252,7 +257,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           </button>
           {/* 문서 폴더 브라우저(#693) — .md/.txt 클릭 시 뷰어에 표시(뷰어는 커밋2). */}
           {docsOpen && (
-            <div style={{ height: 220 }} className="flex shrink-0 flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800">
+            <>
+            <div onMouseDown={startDrag("docsH", docsH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
+            <div style={{ height: docsH }} className="flex shrink-0 flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800">
               {docsRoot ? (
                 <>
                   <div className="flex shrink-0 items-center gap-1 border-b border-zinc-200 px-2.5 py-1 text-[10px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
@@ -272,6 +279,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
                 </div>
               )}
             </div>
+            </>
           )}
           <button type="button" onClick={() => setDocsOpen((v) => !v)} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
             <IconFileText size={12} stroke={2} aria-hidden />
@@ -283,22 +291,29 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
         <section className="flex min-w-0 flex-1">
           <div className="min-w-0 flex-1"><TerminalPane cwd={path} /></div>
-          {(openFile || openDiff) && (
+          {(openFile || openDiff || (docFile && docsRoot)) && (
             <>
               <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />
               <div style={{ width: codeW }} className="flex shrink-0 flex-col">
-                <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                  <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
-                  {openDiff ? (
-                    <span className="truncate">{openDiff.file} <span className="font-mono text-zinc-400 dark:text-zinc-500">{openDiff.hash ? `@ ${openDiff.hash.slice(0, 7)}` : `· ${openDiff.worktree}`}</span></span>
-                  ) : (
-                    <span className="truncate">{openFile}</span>
-                  )}
-                  <button type="button" onClick={() => { setOpenDiff(null); setOpenFile(null); }} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
-                </div>
-                <div className="min-h-0 flex-1">
-                  {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} worktree={openDiff.worktree} providerId={providerId} providerSettings={providerSettings} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
-                </div>
+                {(openFile || openDiff) ? (
+                  <>
+                    <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                      <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
+                      {openDiff ? (
+                        <span className="truncate">{openDiff.file} <span className="font-mono text-zinc-400 dark:text-zinc-500">{openDiff.hash ? `@ ${openDiff.hash.slice(0, 7)}` : `· ${openDiff.worktree}`}</span></span>
+                      ) : (
+                        <span className="truncate">{openFile}</span>
+                      )}
+                      <button type="button" onClick={() => { setOpenDiff(null); setOpenFile(null); }} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
+                    </div>
+                    <div className="min-h-0 flex-1">
+                      {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} worktree={openDiff.worktree} providerId={providerId} providerSettings={providerSettings} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
+                    </div>
+                  </>
+                ) : (docFile && docsRoot) ? (
+                  // 코드/diff 없을 때만 문서 전체 표시(코드/diff와 상하 공존은 커밋3).
+                  <DocPane root={docsRoot} file={docFile} onClose={() => setDocFile(null)} />
+                ) : null}
               </div>
             </>
           )}
