@@ -445,9 +445,12 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
 
   // 히스토리를 날짜 버킷으로 그룹(#691). 이미 최신순 정렬돼 있어 그룹도 최신 날짜 먼저,
   // 시각 없는 레거시("이전 기록")는 맨 뒤로 모임.
+  // todayStart를 메모 밖에서(매 렌더 계산, 값은 로컬 자정에만 변함) → deps에 넣어 페이지 열어둔 채
+  // 자정 넘어가도 다음 렌더에 재그룹(어제 것이 '오늘'로 stuck 방지, 리뷰 🔴).
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const historyGroups = useMemo(() => {
     const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const todayStart = startOfDay(new Date());
     const DAY = 86_400_000;
     const groups: { key: string; label: string; items: typeof history }[] = [];
     for (const h of history) {
@@ -464,7 +467,7 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
       if (last && last.key === key) last.items.push(h); else groups.push({ key, label, items: [h] });
     }
     return groups;
-  }, [history, locale, t]);
+  }, [history, locale, t, todayStart]);
 
   // 이력 항목 → 그 세션·서브 챗으로 이동(탭 없으면 열기 + 활성 서브 지정).
   function goToSub(sessionKey: string, subId: string) {
