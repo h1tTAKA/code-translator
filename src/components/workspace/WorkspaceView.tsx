@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -10,9 +10,11 @@ import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceC
 import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
+import DocViewer from "@/components/workspace/DocViewer";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path";
+const WS_DOCS_KEY = "nunopi:ws-docs-path"; // 문서 폴더(#693)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 // git status 문자(index,work) → 파일 트리 도트 종류. 삭제(D)는 트리에 행이 없어 스킵(#687).
@@ -40,6 +42,17 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [files, setFiles] = useState<string[]>([]);
   const [fileStatus, setFileStatus] = useState<Record<string, "added" | "modified">>({}); // 변경 파일 도트(#687)
   const [treeLoading, setTreeLoading] = useState(false);
+  // 문서 뷰어(#693) — 레포와 별개 문서 폴더. docTabs/activeDoc은 docsRoot 기준 상대경로.
+  const [docsRoot, setDocsRoot] = useState<string | null>(null);
+  const [docsFiles, setDocsFiles] = useState<string[]>([]);
+  const [docTabs, setDocTabs] = useState<string[]>([]); // 열린 문서 탭(rel 경로들, #693)
+  const [activeDoc, setActiveDoc] = useState<string | null>(null); // 활성 문서
+  const [docsOpen, setDocsOpen] = useState(false); // 좌측 문서 섹션 열림
+  // 문서 뷰어 dock(#693): region=어느 영역과 분할할지(터미널/코드), pos=위/아래. docViewH=문서 pane 높이(px).
+  const [docDock, setDocDock] = useState<{ region: "terminal" | "code"; pos: "top" | "bottom" }>({ region: "code", pos: "bottom" });
+  const [docViewH, setDocViewH] = useState(300);
+  const docDockRef = useRef(docDock); // 드래그 move 핸들러(stale 클로저)서 최신 pos 읽기용
+  useEffect(() => { docDockRef.current = docDock; });
   const [openFile, setOpenFile] = useState<string | null>(null); // 열린 파일(코드칸은 이게 있을 때만)
   // 커밋 diff(hash) 또는 워킹트리 diff(worktree). 있으면 코드칸=diff.
   const [openDiff, setOpenDiff] = useState<{ hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" } | null>(null);
@@ -53,8 +66,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [codeW, setCodeW] = useState(480);
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
-  const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH"; startX: number; startY: number; startVal: number } | null>(null);
-  const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
+  const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
+  const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH" | "docsH" | "docViewH"; startX: number; startY: number; startVal: number } | null>(null);
+  const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220, docsH: 220, docViewH: 300 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
   const [mounted, setMounted] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
   useEffect(() => setMounted(true), []);
@@ -64,6 +78,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     if (!mounted) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 경로 복원(1회)
     try { const s = localStorage.getItem(WS_PATH_KEY); if (s) setPath(s); } catch { /* ignore */ }
+    try { const ds = localStorage.getItem(WS_DOCS_KEY); if (ds) setDocsRoot(ds); } catch { /* ignore */ } // 문서 폴더 복원(#693)
   }, [mounted]);
 
   // 저장된 패널 폭 복원.
@@ -75,6 +90,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
       const k = Number(localStorage.getItem("nunopi:ws-code-w")); if (k) { const v = clamp(k, 240, 900); setCodeW(v); wRef.current.code = v; }
       const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
+      const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
+      const dvh = Number(localStorage.getItem("nunopi:ws-docview-h")); if (dvh) { const v = clamp(dvh, 120, 900); setDocViewH(v); wRef.current.docViewH = v; }
+      try { const p = JSON.parse(localStorage.getItem("nunopi:ws-doc-dock") || "null"); if (p && (p.region === "terminal" || p.region === "code") && (p.pos === "top" || p.pos === "bottom")) setDocDock(p); } catch { /* ignore */ } // 문서 dock 복원(#693)
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
     } catch { /* ignore */ }
   }, [mounted]);
@@ -87,7 +105,12 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
       else if (d.kind === "code") { const v = clamp(d.startVal - dx, 240, 900); setCodeW(v); wRef.current.code = v; }
       else if (d.kind === "chat") { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
-      else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // gitH: 세로
+      else if (d.kind === "gitH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // 세로
+      else if (d.kind === "docsH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setDocsH(v); wRef.current.docsH = v; } // docsH: 세로
+      else { // docViewH: 문서 pane 높이. pos=top이면 아래로 드래그=커짐(+), bottom이면 반대(-).
+        const dy = e.clientY - d.startY; const sign = docDockRef.current.pos === "top" ? 1 : -1;
+        const v = clamp(d.startVal + sign * dy, 120, 900); setDocViewH(v); wRef.current.docViewH = v;
+      }
     };
     const up = () => {
       if (!dragRef.current) return;
@@ -97,17 +120,19 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         localStorage.setItem("nunopi:ws-chat-w", String(wRef.current.chat));
         localStorage.setItem("nunopi:ws-code-w", String(wRef.current.code));
         localStorage.setItem("nunopi:ws-git-h", String(wRef.current.gitH));
+        localStorage.setItem("nunopi:ws-docs-h", String(wRef.current.docsH));
+        localStorage.setItem("nunopi:ws-docview-h", String(wRef.current.docViewH));
       } catch { /* ignore */ }
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, []);
 
-  const startDrag = (kind: "tree" | "code" | "chat" | "gitH", startVal: number) => (e: React.MouseEvent) => {
+  const startDrag = (kind: "tree" | "code" | "chat" | "gitH" | "docsH" | "docViewH", startVal: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     // eslint-disable-next-line react-hooks/refs -- 이벤트 핸들러 내 ref 쓰기(렌더 중 아님)
     dragRef.current = { kind, startX: e.clientX, startY: e.clientY, startVal };
-    document.body.style.cursor = kind === "gitH" ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
+    document.body.style.cursor = (kind === "gitH" || kind === "docsH" || kind === "docViewH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
   };
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
@@ -146,6 +171,21 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     return () => { cancelled = true; };
   }, [path, loadGitStatus]);
 
+  // 문서 폴더 파일 목록 로드(#693) — /api/repo/tree 재사용(root=docsRoot).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 문서 폴더 변경 시 재로드
+    if (!docsRoot) { setDocsFiles([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: docsRoot }) });
+        const d = await r.json();
+        if (!cancelled) setDocsFiles(r.ok && Array.isArray(d.files) ? d.files : []);
+      } catch { if (!cancelled) setDocsFiles([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [docsRoot]);
+
   void active;
 
   async function pick() {
@@ -155,6 +195,23 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const r = await desktop.pickRepoFolder();
       if (!r.canceled && r.path) { setPath(r.path); try { localStorage.setItem(WS_PATH_KEY, r.path); } catch { /* ignore */ } }
     } catch { /* 무시 */ } finally { setPicking(false); }
+  }
+
+  // 문서 폴더 선택(#693) — 범용 폴더 선택기 재사용.
+  async function pickDocs() {
+    if (!desktop?.pickRepoFolder || picking) return;
+    setPicking(true);
+    try {
+      const r = await desktop.pickRepoFolder();
+      if (!r.canceled && r.path) { setDocsRoot(r.path); try { localStorage.setItem(WS_DOCS_KEY, r.path); } catch { /* ignore */ } }
+    } catch { /* 무시 */ } finally { setPicking(false); }
+  }
+
+  // 문서 탭 열기/닫기(#693) — 브라우저서 클릭해 열림(+ 버튼 없음).
+  function openDoc(id: string) { setDocTabs((prev) => (prev.includes(id) ? prev : [...prev, id])); setActiveDoc(id); }
+  function closeDocTab(id: string) {
+    setDocTabs((prev) => prev.filter((x) => x !== id));
+    setActiveDoc((cur) => { if (cur !== id) return cur; const rest = docTabs.filter((x) => x !== id); return rest.length ? rest[rest.length - 1] : null; });
   }
 
   const folderName = path ? path.split("/").filter(Boolean).pop() ?? path : null;
@@ -183,6 +240,44 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       </div>
     );
   }
+
+  // 코드/diff 노드(자체 헤더 포함) & 문서 노드 — 코드 영역 분할 배치에 재사용(#693).
+  const codeNode = (openFile || openDiff) ? (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
+        {openDiff ? (
+          <span className="truncate">{openDiff.file} <span className="font-mono text-zinc-400 dark:text-zinc-500">{openDiff.hash ? `@ ${openDiff.hash.slice(0, 7)}` : `· ${openDiff.worktree}`}</span></span>
+        ) : (
+          <span className="truncate">{openFile}</span>
+        )}
+        <button type="button" onClick={() => { setOpenDiff(null); setOpenFile(null); }} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} worktree={openDiff.worktree} providerId={providerId} providerSettings={providerSettings} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
+      </div>
+    </div>
+  ) : null;
+  // 문서 뷰어 — dock된 region에 따라 코드/터미널 영역에 배치(#693).
+  const docOpen = !!(docsRoot && activeDoc && docTabs.length);
+  const docInCode = docOpen && docDock.region === "code";
+  const docInTerminal = docOpen && docDock.region === "terminal";
+  // dock 변경은 토글에서만 → 여기서 바로 영속(마운트 시 write로 restore 덮어쓰는 것 방지).
+  const persistDock = (d: { region: "terminal" | "code"; pos: "top" | "bottom" }) => { try { localStorage.setItem("nunopi:ws-doc-dock", JSON.stringify(d)); } catch { /* ignore */ } };
+  const togglePos = () => setDocDock((d) => { const n = { ...d, pos: (d.pos === "top" ? "bottom" : "top") as "top" | "bottom" }; persistDock(n); return n; });
+  const toggleRegion = () => setDocDock((d) => { const n = { ...d, region: (d.region === "code" ? "terminal" : "code") as "terminal" | "code" }; persistDock(n); return n; });
+  // split=상하 공존(pos 토글 노출). region 토글은 항상.
+  const makeDoc = (split: boolean) => (
+    <DocViewer root={docsRoot!} tabs={docTabs} activeDoc={activeDoc!} onActivate={setActiveDoc} onCloseTab={closeDocTab}
+      pos={split ? docDock.pos : undefined} onTogglePos={split ? togglePos : undefined}
+      region={docDock.region} onToggleRegion={toggleRegion} />
+  );
+  // 문서↔코드 경계(잡기 쉽게 8px 히트영역 + 가운데 그립). 좌측 문서 브라우저 핸들과 헷갈리지 않게 명확히.
+  const rowDrag = (
+    <div onMouseDown={startDrag("docViewH", docViewH)} className="group relative h-2 shrink-0 cursor-row-resize" title={t("workspace.docResize")}>
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-zinc-200 transition group-hover:bg-[#3B34E2]/60 dark:bg-zinc-800 dark:group-hover:bg-[#8b86f5]/60" />
+    </div>
+  );
 
   // 4존 셸.
   return (
@@ -218,27 +313,86 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             <span>git</span>
             {gitOpen ? <IconChevronDown size={12} stroke={2} className="ml-auto" aria-hidden /> : <IconChevronUp size={12} stroke={2} className="ml-auto" aria-hidden />}
           </button>
+          {/* 문서 폴더 브라우저(#693) — .md/.txt 클릭 시 뷰어에 표시(뷰어는 커밋2). */}
+          {docsOpen && (
+            <>
+            <div onMouseDown={startDrag("docsH", docsH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
+            <div style={{ height: docsH }} className="flex shrink-0 flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800">
+              {docsRoot ? (
+                <>
+                  <div className="flex shrink-0 items-center gap-1 border-b border-zinc-200 px-2.5 py-1 text-[10px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+                    <IconFolderOpen size={11} stroke={2} className="shrink-0" aria-hidden />
+                    <span className="truncate">{docsRoot.split("/").filter(Boolean).pop()}</span>
+                    <button type="button" onClick={pickDocs} className="ml-auto shrink-0 rounded px-1 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800">{t("workspace.docsChangeFolder")}</button>
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    <FileTree files={docsFiles} selected={activeDoc} onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) openDoc(id); }} />
+                  </div>
+                </>
+              ) : (
+                <div className="flex h-full items-center justify-center p-3">
+                  <button type="button" onClick={pickDocs} className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
+                    <IconFolderOpen size={13} stroke={2} aria-hidden /> {t("workspace.docsOpenFolder")}
+                  </button>
+                </div>
+              )}
+            </div>
+            </>
+          )}
+          <button type="button" onClick={() => setDocsOpen((v) => !v)} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
+            <IconFileText size={12} stroke={2} aria-hidden />
+            <span>{t("workspace.docs")}</span>
+            {docsOpen ? <IconChevronDown size={12} stroke={2} className="ml-auto" aria-hidden /> : <IconChevronUp size={12} stroke={2} className="ml-auto" aria-hidden />}
+          </button>
         </aside>
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 가운데: 터미널 | (파일 열면) 코드 */}
         <section className="flex min-w-0 flex-1">
-          <div className="min-w-0 flex-1"><TerminalPane cwd={path} /></div>
-          {(openFile || openDiff) && (
+          <div className="flex min-w-0 flex-1 flex-col">
+            {docInTerminal ? (
+              // 문서를 터미널 영역과 상하 분할.
+              docDock.pos === "top" ? (
+                <>
+                  <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
+                  {rowDrag}
+                  <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
+                </>
+              ) : (
+                <>
+                  <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
+                  {rowDrag}
+                  <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
+                </>
+              )
+            ) : (
+              <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
+            )}
+          </div>
+          {(codeNode || docInCode) && (
             <>
               <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />
               <div style={{ width: codeW }} className="flex shrink-0 flex-col">
-                <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                  <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
-                  {openDiff ? (
-                    <span className="truncate">{openDiff.file} <span className="font-mono text-zinc-400 dark:text-zinc-500">{openDiff.hash ? `@ ${openDiff.hash.slice(0, 7)}` : `· ${openDiff.worktree}`}</span></span>
+                {codeNode && docInCode ? (
+                  // 코드/diff + 문서 상하 공존 — pos로 순서, docViewH로 문서 높이.
+                  docDock.pos === "top" ? (
+                    <>
+                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
+                      {rowDrag}
+                      <div className="min-h-0 flex-1">{codeNode}</div>
+                    </>
                   ) : (
-                    <span className="truncate">{openFile}</span>
-                  )}
-                  <button type="button" onClick={() => { setOpenDiff(null); setOpenFile(null); }} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
-                </div>
-                <div className="min-h-0 flex-1">
-                  {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} worktree={openDiff.worktree} providerId={providerId} providerSettings={providerSettings} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
-                </div>
+                    <>
+                      <div className="min-h-0 flex-1">{codeNode}</div>
+                      {rowDrag}
+                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
+                    </>
+                  )
+                ) : codeNode ? (
+                  <div className="min-h-0 flex-1">{codeNode}</div>
+                ) : (
+                  // 코드/diff 없이 문서만 코드 영역 → 그 열 전체.
+                  <div className="min-h-0 flex-1">{makeDoc(false)}</div>
+                )}
               </div>
             </>
           )}
