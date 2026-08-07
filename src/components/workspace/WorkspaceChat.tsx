@@ -20,7 +20,7 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
 type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree";
-interface Sub { id: string; messages: ChatMessage[]; } // 세션 안의 한 대화 스레드
+interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). 레거시 저장분은 undefined.
 // baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
 interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
 // WorkspaceView가 주는 포커스 신호 — n(nonce)로 같은 대상 재클릭도 매번 발화.
@@ -30,7 +30,7 @@ const REPO_KEY = "repo";
 const MAX_SESSIONS = 40; // 닫힌 세션 포함 저장 상한 — 초과 시 가장 오래된 "닫힌" 세션부터 정리.
 
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
-const freshSub = (): Sub => ({ id: genId(), messages: [] });
+const freshSub = (): Sub => ({ id: genId(), messages: [], createdAt: Date.now() });
 const mkSession = (key: string, kind: SessionKind, label: string): Session => { const s = freshSub(); return { key, kind, label, subs: [s], activeSubId: s.id }; };
 
 // DiffPane hunk 노트 버킷을 워킹트리→커밋 해시로 승계(#689). 키 스킴은 DiffPane.noteStore와 동일:
@@ -434,13 +434,13 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   // 서브 대화 제목 — "질문 N"(세션 내 순번). 단순·예측가능.
   const subTitle = (i: number) => `${t("workspace.chatThread")} ${i + 1}`;
 
-  // 질문 이력 — 전 세션 × 서브 중 유저 질문이 있는 것만. 첫 유저 메시지 = 미리보기.
+  // 질문 이력 — 전 세션 × 서브 중 유저 질문이 있는 것만. 첫 유저 메시지 = 미리보기. 최신순 정렬(#691).
   const history = useMemo(() => Object.values(sessions).flatMap((s) =>
     s.subs.flatMap((sub) => {
       const q = sub.messages.find((m) => m.role === "user")?.content?.trim();
-      return q ? [{ sessionKey: s.key, kind: s.kind, label: s.label, subId: sub.id, question: q, count: sub.messages.length }] : [];
+      return q ? [{ sessionKey: s.key, kind: s.kind, label: s.label, subId: sub.id, question: q, count: sub.messages.length, createdAt: sub.createdAt }] : [];
     })
-  ), [sessions]);
+  ).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)), [sessions]); // 최신 먼저(시각 없는 레거시는 0=뒤)
 
   // 이력 항목 → 그 세션·서브 챗으로 이동(탭 없으면 열기 + 활성 서브 지정).
   function goToSub(sessionKey: string, subId: string) {
