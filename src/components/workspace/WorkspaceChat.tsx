@@ -442,6 +442,29 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
     })
   ).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)), [sessions]); // 최신 먼저(시각 없는 레거시는 0=뒤)
 
+  // 히스토리를 날짜 버킷으로 그룹(#691). 이미 최신순 정렬돼 있어 그룹도 최신 날짜 먼저,
+  // 시각 없는 레거시("이전 기록")는 맨 뒤로 모임.
+  const historyGroups = useMemo(() => {
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const todayStart = startOfDay(new Date());
+    const DAY = 86_400_000;
+    const groups: { key: string; label: string; items: typeof history }[] = [];
+    for (const h of history) {
+      let key: string, label: string;
+      if (!h.createdAt) { key = "older"; label = t("workspace.chatHistoryOlder"); }
+      else {
+        const ds = startOfDay(new Date(h.createdAt));
+        const diff = Math.round((todayStart - ds) / DAY);
+        key = String(ds);
+        label = diff === 0 ? t("workspace.chatToday") : diff === 1 ? t("workspace.chatYesterday")
+          : new Date(h.createdAt).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
+      }
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.items.push(h); else groups.push({ key, label, items: [h] });
+    }
+    return groups;
+  }, [history, locale, t]);
+
   // 이력 항목 → 그 세션·서브 챗으로 이동(탭 없으면 열기 + 활성 서브 지정).
   function goToSub(sessionKey: string, subId: string) {
     if (!sessions[sessionKey]) { setHistoryOpen(false); return; } // 상한으로 사라진 세션이면 무시
@@ -589,16 +612,22 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
           <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto py-1">
             {history.length === 0 ? (
               <div className="flex h-full items-center justify-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.chatHistoryEmpty")}</div>
-            ) : history.map((h) => (
-              <button key={`${h.sessionKey}:${h.subId}`} type="button" onClick={() => goToSub(h.sessionKey, h.subId)}
-                className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                <span className="mt-0.5 shrink-0">{kindGlyph(h.kind, 13, "text-zinc-400")}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">{h.label}</span>
-                  <span className="line-clamp-2 text-[12px] leading-snug text-zinc-700 dark:text-zinc-200">{h.question}</span>
-                </span>
-                <span className="mt-0.5 shrink-0 rounded bg-zinc-100 px-1 text-[9px] font-medium text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">{h.count}</span>
-              </button>
+            ) : historyGroups.map((group) => (
+              <div key={group.key}>
+                {/* 날짜 헤더 — 스크롤 시 상단 고정 */}
+                <div className="sticky top-0 z-[1] bg-white/95 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 backdrop-blur dark:bg-[#0b0c12]/95 dark:text-zinc-500">{group.label}</div>
+                {group.items.map((h) => (
+                  <button key={`${h.sessionKey}:${h.subId}`} type="button" onClick={() => goToSub(h.sessionKey, h.subId)}
+                    className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                    <span className="mt-0.5 shrink-0">{kindGlyph(h.kind, 13, "text-zinc-400")}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">{h.label}</span>
+                      <span className="line-clamp-2 text-[12px] leading-snug text-zinc-700 dark:text-zinc-200">{h.question}</span>
+                    </span>
+                    <span className="mt-0.5 shrink-0 rounded bg-zinc-100 px-1 text-[9px] font-medium text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">{h.count}</span>
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         </div>
