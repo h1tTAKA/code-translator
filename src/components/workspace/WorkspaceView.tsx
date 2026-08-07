@@ -131,7 +131,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         const ds = await rs.json();
         if (!cancelled) {
           const map: Record<string, "added" | "modified"> = {};
-          if (rs.ok && ds.isGit && Array.isArray(ds.files)) for (const f of ds.files) { const k = statusKind(f.index ?? "", f.work ?? ""); if (k) map[f.path] = k; }
+          // 키는 트리(scan)와 같은 repo-relative POSIX. git porcelain은 항상 "/"지만 방어적 정규화.
+          if (rs.ok && ds.isGit && Array.isArray(ds.files)) for (const f of ds.files) { const k = statusKind(f.index ?? "", f.work ?? ""); if (k && typeof f.path === "string") map[f.path.replace(/\\/g, "/")] = k; }
           setFileStatus(map);
         }
       } catch { if (!cancelled) setFileStatus({}); }
