@@ -14,23 +14,16 @@ function refBadge(ref: string, curBranch: string) {
   return { cls: "bg-[#3B34E2]/10 text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]", tag: false };                    // 로컬 브랜치
 }
 
-const ROW_H = 24, FILE_H = 20, LANE_W = 18;
+const ROW_H = 24, FILE_H = 20, LANE_W = 20;
 const HOVER_DELAY_MS = 1000; // 커밋 호버 툴팁 dwell — 훑을 땐 안 뜨고 머물러야 뜸
-// 조화로운 팔레트(#707) — 인디고(트렁크)에서 이웃색으로 흐름. 완전채도 원색(핏빨강 등) 회피, 라이트·다크 양쪽 대비 OK.
-const LANE_COLORS = ["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#84cc16", "#a855f7"];
-const laneColor = (l: number) => LANE_COLORS[((l % LANE_COLORS.length) + LANE_COLORS.length) % LANE_COLORS.length];
+// 색(#707, orca식) — 트렁크(lane 0)는 브랜드 인디고 고정, 브랜치는 커밋마다 다른 accent 순환.
+// 레인이 아니라 "커밋별"로 색을 매김 → 같은 레인(1)을 재사용하는 단발 브랜치들도 서로 다른 색(무지개).
+const TRUNK_COLOR = "#6366f1";
+const BRANCH_COLORS = ["#f59e0b", "#ec4899", "#14b8a6", "#a855f7", "#0ea5e9", "#f43f5e", "#84cc16", "#f97316"];
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
-// 레인 이동 연결선(#707) — 같은 레인이면 직선. 레인 바뀌면 "둥근 직교" 라우팅:
-// 수직 → 둥근 코너 → 중간 높이 수평 → 둥근 코너 → 수직. 가파른 대각선의 각을 없애 매끄럽게.
-const CORNER_R = 6; // 코너 반경(레인폭·행높이보다 작게 clamp됨)
-const linkPath = (x1: number, y1: number, x2: number, y2: number) => {
-  if (x1 === x2) return `M${x1} ${y1}L${x2} ${y2}`;
-  const my = (y1 + y2) / 2;
-  const r = Math.min(CORNER_R, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2);
-  const dx = x2 > x1 ? r : -r; // 수평 진행 방향
-  const dy = y2 > y1 ? r : -r; // 수직 진행 방향(항상 아래로)
-  return `M${x1} ${y1}L${x1} ${my - dy}Q${x1} ${my} ${x1 + dx} ${my}L${x2 - dx} ${my}Q${x2} ${my} ${x2} ${my + dy}L${x2} ${y2}`;
-};
+// 레인 이동 연결선(#707) — 같은 레인이면 직선, 다르면 양 끝에서 수직으로 진입·이탈하는 부드러운 S곡선(cubic bezier, orca식).
+const linkPath = (x1: number, y1: number, x2: number, y2: number) =>
+  x1 === x2 ? `M${x1} ${y1}L${x2} ${y2}` : `M${x1} ${y1}C${x1} ${(y1 + y2) / 2} ${x2} ${(y1 + y2) / 2} ${x2} ${y2}`;
 const STATUS = { M: ["M", "text-amber-600 dark:text-amber-500"], A: ["A", "text-emerald-600 dark:text-emerald-500"], D: ["D", "text-rose-600 dark:text-rose-500"], R: ["R", "text-sky-600 dark:text-sky-500"], C: ["C", "text-sky-600 dark:text-sky-500"] } as const;
 
 // 워킹트리 변경 파일 한 건.
@@ -103,6 +96,15 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   };
 
   const graphW = useMemo(() => (model ? Math.max(1, model.laneCount) * LANE_W : LANE_W), [model]);
+
+  // 커밋별 색(#707) — lane0=트렁크 색, 그 외는 브랜치 순번대로 accent 순환. 해시로 조회.
+  const colorByHash = useMemo(() => {
+    const m: Record<string, string> = {};
+    let bi = 0;
+    model?.rows.forEach((r) => { m[r.commit.hash] = r.lane === 0 ? TRUNK_COLOR : BRANCH_COLORS[bi++ % BRANCH_COLORS.length]; });
+    return m;
+  }, [model]);
+  const colorOf = (hash: string) => colorByHash[hash] ?? TRUNK_COLOR; // 윈도우 밖 부모 등은 트렁크 색 폴백
 
   // 추적 변경 vs 미추적(untracked) 분리 — 미추적은 접이식 하위그룹(#699).
   const tracked = useMemo(() => changes.filter((c) => changeKind(c) !== "untracked"), [changes]);
@@ -179,13 +181,14 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
           {model?.rows.map((row) => {
             const dotY = ROW_H / 2;
             const lines: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
-            // 선 색 = 양 끝 레인 중 바깥(큰 인덱스=브랜치) 기준 → 한 bump이 나갈 때·돌아올 때 같은 색(#707). 트렁크(0→0)는 트렁크색 유지.
+            // 선 색 = 그 선이 속한 커밋(브랜치)의 색(#707). 한 브랜치 bump은 나갈 때·돌아올 때 같은 색.
             row.before.forEach((h, i) => {
               if (h == null) return;
-              if (h === row.commit.hash) lines.push({ x1: cx(i), y1: 0, x2: cx(row.lane), y2: dotY, color: laneColor(Math.max(i, row.lane)) });
-              else { const j = row.after.indexOf(h); if (j >= 0) lines.push({ x1: cx(i), y1: 0, x2: cx(j), y2: ROW_H, color: laneColor(Math.max(i, j)) }); }
+              if (h === row.commit.hash) lines.push({ x1: cx(i), y1: 0, x2: cx(row.lane), y2: dotY, color: colorOf(row.commit.hash) });
+              else { const j = row.after.indexOf(h); if (j >= 0) lines.push({ x1: cx(i), y1: 0, x2: cx(j), y2: ROW_H, color: colorOf(h) }); }
             });
-            row.commit.parents.forEach((p) => { const j = row.after.indexOf(p); if (j >= 0) lines.push({ x1: cx(row.lane), y1: dotY, x2: cx(j), y2: ROW_H, color: laneColor(Math.max(row.lane, j)) }); });
+            // 부모로 가는 선: 분기(바깥 레인으로)면 그 부모(새 브랜치) 색, 아니면 이 커밋 색.
+            row.commit.parents.forEach((p) => { const j = row.after.indexOf(p); if (j >= 0) lines.push({ x1: cx(row.lane), y1: dotY, x2: cx(j), y2: ROW_H, color: j > row.lane ? colorOf(p) : colorOf(row.commit.hash) }); });
             const isOpen = expanded.has(row.commit.hash);
             const files = filesByHash[row.commit.hash];
             return (
@@ -203,7 +206,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                   className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
                   <svg width={graphW} height={ROW_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
                     {lines.map((l, k) => <path key={k} d={linkPath(l.x1, l.y1, l.x2, l.y2)} stroke={l.color} strokeWidth={2} fill="none" strokeLinecap="round" />)}
-                    <circle cx={cx(row.lane)} cy={dotY} r={3} fill={laneColor(row.lane)} />
+                    <circle cx={cx(row.lane)} cy={dotY} r={3} fill={colorOf(row.commit.hash)} />
                   </svg>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
                   <span className="flex items-baseline gap-1.5 whitespace-nowrap pr-3 text-[11px]">
@@ -240,7 +243,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         <button key={f.path} type="button" onClick={() => onOpenDiff(row.commit.hash, f.path)} className="flex w-full items-center text-left hover:bg-zinc-100 dark:hover:bg-zinc-800" style={{ height: FILE_H }}>
                           {/* 그래프 열: 활성 레인 pass-through(연속성) */}
                           <svg width={graphW} height={FILE_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
-                            {row.after.map((h, i) => h == null ? null : <line key={i} x1={cx(i)} y1={0} x2={cx(i)} y2={FILE_H} stroke={laneColor(i)} strokeWidth={2} />)}
+                            {row.after.map((h, i) => h == null ? null : <line key={i} x1={cx(i)} y1={0} x2={cx(i)} y2={FILE_H} stroke={colorOf(h)} strokeWidth={2} />)}
                           </svg>
                           <span className="flex min-w-0 flex-1 items-baseline gap-1.5 pl-3 pr-2 text-[11px]">
                             <span className={`shrink-0 font-mono text-[9px] font-bold ${cls}`}>{badge}</span>
