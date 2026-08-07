@@ -2,11 +2,12 @@
 // 워크스페이스 문서 뷰어(#693) — 문서 폴더의 .md/.txt를 읽어 렌더. .md는 Markdown(읽기용),
 // 그 외는 평문(pre). /api/repo/file 재사용(root=docsRoot 스코프). 헤더에 파일명 + 닫기(dock 컨트롤은 커밋3~4).
 import { useEffect, useState } from "react";
-import { IconLoader2, IconFileText } from "@tabler/icons-react";
+import { IconLoader2, IconFileText, IconLayoutNavbar, IconLayoutBottombar } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { useT } from "@/lib/i18n/I18nProvider";
 
-export default function DocPane({ root, file, onClose }: { root: string; file: string; onClose: () => void }) {
+// pos/onTogglePos: 코드·터미널 영역과 상하 분할 시 위/아래 위치 토글(#693). 분할 아닐 땐 미전달.
+export default function DocPane({ root, file, onClose, pos, onTogglePos }: { root: string; file: string; onClose: () => void; pos?: "top" | "bottom"; onTogglePos?: () => void }) {
   const t = useT();
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
@@ -34,7 +35,14 @@ export default function DocPane({ root, file, onClose }: { root: string; file: s
       <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
         <IconFileText size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
         <span className="truncate">{name}</span>
-        <button type="button" onClick={onClose} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>×</button>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {onTogglePos && (
+            <button type="button" onClick={onTogglePos} title={pos === "top" ? t("workspace.docMoveBottom") : t("workspace.docMoveTop")} className="rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800">
+              {pos === "top" ? <IconLayoutBottombar size={13} stroke={2} aria-hidden /> : <IconLayoutNavbar size={13} stroke={2} aria-hidden />}
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>×</button>
+        </div>
       </div>
       <div className="nunopi-scroll min-h-0 flex-1 overflow-auto p-3">
         {status === "loading" ? (
