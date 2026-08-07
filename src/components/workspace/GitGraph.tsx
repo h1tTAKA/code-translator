@@ -21,14 +21,19 @@ const HOVER_DELAY_MS = 1000; // 커밋 호버 툴팁 dwell — 훑을 땐 안 �
 const TRUNK_COLOR = "#6366f1";
 const BRANCH_COLORS = ["#f59e0b", "#ec4899", "#14b8a6", "#a855f7", "#0ea5e9", "#f43f5e", "#84cc16", "#f97316"];
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
-// 점→부모점 연결선(#707). 대각 스윕(엉킴) 방지 위해 레인을 따라 직진하고 "전환은 한 행만" 곡선으로.
-// - 같은 레인: 직선. - 인접(≈1행): 한 번에 부드러운 bump 곡선. - 여러 행 + 레인 변경: 레인 직진 + 끝(또는 시작) 한 행만 곡선.
-const bumpC = (x1: number, ya: number, x2: number, yb: number) => { const my = (ya + yb) / 2; return `C${x1} ${my} ${x2} ${my} ${x2} ${yb}`; };
+// 점→부모점 연결선(#707). 대각 스윕(엉킴) 방지 위해 레인 따라 직진, "전환은 한 행만" 곡선.
+// roundApex: 인접 브랜치 곡선 — 바깥 끝(점)은 수평 접선(둥근 꼭지점), 트렁크(안) 끝은 수직 접선(트렁크 선과 매끄럽게 블렌드, orca식).
+// bumpVV: 여러 행 전환용 — 양 끝 수직 접선(직진 레인과 이어지게).
+const roundApex = (x1: number, ya: number, x2: number, yb: number) =>
+  x2 > x1
+    ? `C${x1} ${(ya + yb) / 2} ${(x1 + x2) / 2} ${yb} ${x2} ${yb}`   // 안(x1)→바깥(x2): 시작 수직, 끝 수평
+    : `C${(x1 + x2) / 2} ${ya} ${x2} ${(ya + yb) / 2} ${x2} ${yb}`; // 바깥(x1)→안(x2): 시작 수평, 끝 수직
+const bumpVV = (x1: number, ya: number, x2: number, yb: number) => { const my = (ya + yb) / 2; return `C${x1} ${my} ${x2} ${my} ${x2} ${yb}`; };
 const linkPath = (x1: number, y1: number, x2: number, y2: number) => {
   if (x1 === x2) return `M${x1} ${y1}L${x2} ${y2}`;
-  if (y2 - y1 <= ROW_H * 1.5) return `M${x1} ${y1}${bumpC(x1, y1, x2, y2)}`; // 인접 — 통 곡선
-  if (x2 > x1) return `M${x1} ${y1}${bumpC(x1, y1, x2, y1 + ROW_H)}L${x2} ${y2}`; // 바깥 분기 — 첫 행 곡선 후 그 레인 직진
-  return `M${x1} ${y1}L${x1} ${y2 - ROW_H}${bumpC(x1, y2 - ROW_H, x2, y2)}`;           // 안쪽 복귀 — 자기 레인 직진 후 끝 행 곡선
+  if (y2 - y1 <= ROW_H * 1.5) return `M${x1} ${y1}${roundApex(x1, y1, x2, y2)}`;    // 인접 — 바깥 끝 라운드 꼭지점
+  if (x2 > x1) return `M${x1} ${y1}${bumpVV(x1, y1, x2, y1 + ROW_H)}L${x2} ${y2}`;   // 바깥 분기 — 첫 행 곡선 후 직진
+  return `M${x1} ${y1}L${x1} ${y2 - ROW_H}${bumpVV(x1, y2 - ROW_H, x2, y2)}`;         // 안쪽 복귀 — 직진 후 끝 행 곡선
 };
 const STATUS = { M: ["M", "text-amber-600 dark:text-amber-500"], A: ["A", "text-emerald-600 dark:text-emerald-500"], D: ["D", "text-rose-600 dark:text-rose-500"], R: ["R", "text-sky-600 dark:text-sky-500"], C: ["C", "text-sky-600 dark:text-sky-500"] } as const;
 
