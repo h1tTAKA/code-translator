@@ -157,6 +157,15 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
     return () => { cancelled = true; };
   }, [sessions, root]);
 
+  // 세션 완전 삭제(승계 시 빈 중복 wt 정리용). repo는 불가.
+  const dropSession = useCallback((key: string) => {
+    if (key === REPO_KEY) return;
+    setSessions((prev) => { if (!prev[key]) return prev; const rest = { ...prev }; delete rest[key]; return rest; });
+    setOpenKeys((prev) => prev.filter((k) => k !== key));
+    setActiveKey((cur) => (cur === key ? REPO_KEY : cur));
+    ctxCache.current.delete(key);
+  }, []);
+
   // worktree 세션 → 커밋 diff 세션으로 리키(대화 보존). 타겟 이미 있으면 호출측서 스킵.
   const rekeySession = useCallback((oldKey: string, newKey: string, kind: SessionKind, label: string) => {
     setSessions((prev) => {
@@ -181,10 +190,15 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
         const hash = r.ok && d.ok && d.hash ? String(d.hash) : "";
         if (!hash) continue; // 커밋 아님(되돌림) → 방치
         const newKey = `diff:${hash}:${file}`;
-        if (!sessions[newKey]) rekeySession(s.key, newKey, "diff", `${file.split("/").pop() ?? file} @${hash.slice(0, 7)}`);
+        if (sessions[newKey]) {
+          // 타겟 커밋 세션이 이미 있음 — 대화 없는 빈 wt만 정리(대화 있으면 병합 위험이라 방치).
+          if (s.subs.every((sub) => sub.messages.length === 0)) dropSession(s.key);
+          continue;
+        }
+        rekeySession(s.key, newKey, "diff", `${file.split("/").pop() ?? file} @${hash.slice(0, 7)}`);
       } catch { /* ignore */ }
     }
-  }, [sessions, root, rekeySession]);
+  }, [sessions, root, rekeySession, dropSession]);
 
   // 변경 파일 집합이 갱신될 때(git-status refetch)만 승계 점검 — 채팅 등 잦은 렌더엔 안 돎.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- changedFiles 변경 시에만(carryOver는 그 시점 최신)

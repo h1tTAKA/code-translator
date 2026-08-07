@@ -210,7 +210,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           {gitOpen && (
             <>
               <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => { setOpenDiff({ hash, file }); focusChat(`diff:${hash}:${file}`, "diff", `${file.split("/").pop()} @${hash.slice(0, 7)}`); }} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => { setOpenDiff({ file, worktree }); focusChat(`wt:${file}`, "worktree", `${file.split("/").pop() ?? file} · 변경`); }} onRefreshed={handleGitRefreshed} /></div>
+              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => { setOpenDiff({ hash, file }); focusChat(`diff:${hash}:${file}`, "diff", `${file.split("/").pop()} @${hash.slice(0, 7)}`); }} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => { const f = file.replace(/\\/g, "/"); setOpenDiff({ file, worktree }); focusChat(`wt:${f}`, "worktree", `${f.split("/").pop() ?? f} · 변경`); }} onRefreshed={handleGitRefreshed} /></div>
             </>
           )}
           <button type="button" onClick={toggleGit} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
