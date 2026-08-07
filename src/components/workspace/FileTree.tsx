@@ -82,8 +82,9 @@ export default function FileTree({ files, selected, onSelect, status = {} }: { f
     }
     return { folderStatus: fs, changedAncestors: anc };
   }, [status]);
-  // 최상위 폴더는 펼친 채 시작(바로 탐색 가능), 하위는 접힘.
-  const [open, setOpen] = useState<Set<string>>(() => new Set(tree.filter((n) => n.children).map((n) => n.path)));
+  // 기본 접힘 — 변경사항 있는 파일의 조상 폴더만 펼친 채 시작(그 파일이 어디 있는지 바로 보이게). 그 외엔 유저가 열 때까지 접힘(#709).
+  // status가 아직 안 왔으면 빈 셋으로 시작하고, 아래 useEffect가 로드 시 변경 폴더를 펼친다. 문서 브라우저는 status 없어 전부 접힘.
+  const [open, setOpen] = useState<Set<string>>(() => new Set(changedAncestors));
   const toggle = (p: string) => setOpen((prev) => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; });
   // 변경 파일이 있는 폴더는 자동으로 펼쳐 그 파일이 드러나게(status 로드 시). 유저 접기는 안 덮게 union만.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- status 변경 시 변경 조상 폴더 펼침(union)
