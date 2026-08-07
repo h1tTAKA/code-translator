@@ -144,13 +144,13 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
             const files = filesByHash[row.commit.hash];
             return (
               <div key={row.commit.hash}>
-                <button type="button" onClick={() => void toggle(row.commit.hash)} className="flex w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
+                <button type="button" onClick={() => void toggle(row.commit.hash)} className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
                   <svg width={graphW} height={ROW_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
                     {lines.map((l, k) => <line key={k} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={l.color} strokeWidth={1.5} />)}
                     <circle cx={cx(row.lane)} cy={dotY} r={3.5} fill={laneColor(row.lane)} />
                   </svg>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
-                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5 pr-2 text-[11px]">
+                  <span className="flex items-baseline gap-1.5 whitespace-nowrap pr-3 text-[11px]">
                     {row.commit.refs.map((rf) => {
                       const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
                       const b = refBadge(rf, branch);
@@ -166,9 +166,10 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         </span>
                       );
                     })}
-                    <span className="truncate text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
-                    {(() => { const login = githubLogin(row.commit.email); return <span className="ml-auto shrink-0 truncate text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
-                    <span className="shrink-0 font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
+                    {/* 순서: 커밋메세지 → 이름 → 해시. nowrap로 흐르고, 좁으면 뒤가 잘려 패널 드래그·가로스크롤로 봄(#685). */}
+                    <span className="text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
+                    {(() => { const login = githubLogin(row.commit.email); return <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
+                    <span className="font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
                   </span>
                 </button>
                 {isOpen && (
