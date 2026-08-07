@@ -9,6 +9,7 @@ export interface GitCommit {
   ts: number;      // author time (unix seconds)
   refs: string[];  // 브랜치/태그 라벨(정리됨)
   subject: string;
+  body: string;    // 커밋 본문(%b) — 여러 줄 가능, 없으면 "". 호버 툴팁용(#685)
   isHead: boolean; // 이 커밋이 HEAD인가(%D에 HEAD 토큰)
 }
 
@@ -19,12 +20,14 @@ export function githubLogin(email: string): string | null {
   return m ? m[1] : null;
 }
 
-// git log --pretty=format:'%H|%P|%an|%ae|%at|%D|%s' 출력 → 커밋 배열(최신순).
+// git log --pretty=format 출력(필드=\x1f, 커밋=\x1e) → 커밋 배열(최신순).
+// 필드: %H \x1f %P \x1f %an \x1f %ae \x1f %at \x1f %D \x1f %s \x1f %b
 export function parseGitLog(text: string): GitCommit[] {
   const out: GitCommit[] = [];
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    const [hash, parents, author, email, at, decor, ...subj] = line.split("|");
+  for (const rec of text.split("\x1e")) {
+    const r = rec.replace(/^\n/, ""); // format:가 커밋 사이 넣는 개행 제거
+    if (!r.trim()) continue;
+    const [hash, parents, author, email, at, decor, subject, ...bodyParts] = r.split("\x1f");
     if (!hash) continue;
     const d = decor ?? "";
     out.push({
@@ -34,7 +37,8 @@ export function parseGitLog(text: string): GitCommit[] {
       email: email ?? "",
       ts: Number(at) || 0,
       refs: parseRefs(d),
-      subject: subj.join("|"), // subject에 '|'가 있어도 보존
+      subject: subject ?? "",
+      body: bodyParts.join("\x1f").replace(/\s+$/, ""), // %b 뒤 개행 정리(body에 \x1f는 없음)
       isHead: /(^|,)\s*HEAD\b/.test(d), // "HEAD -> main" 또는 detached "HEAD"
     });
   }

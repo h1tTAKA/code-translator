@@ -7,8 +7,10 @@ import { promisify } from "node:util";
 export const runtime = "nodejs";
 const pexecFile = promisify(execFile);
 
-// %H해시|%P부모들|%an작성자|%ae이메일|%at시각|%D장식(refs)|%s제목. --all로 전 브랜치, -n 200 상한.
-const ARGS = ["log", "--all", "--date-order", "-n", "200", "--pretty=format:%H|%P|%an|%ae|%at|%D|%s"];
+// 필드=Unit Separator(%x1f), 커밋=Record Separator(%x1e). body(%b)가 여러 줄이라
+// |·개행 구분은 파싱이 깨져 제어문자로 구분(커밋 메세지엔 실질적으로 안 나옴).
+// %H해시 %P부모 %an작성자 %ae이메일 %at시각 %D장식 %s제목 %b본문. --all 전 브랜치, -n 200.
+const ARGS = ["log", "--all", "--date-order", "-n", "200", "--pretty=format:%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f%b%x1e"];
 
 export async function POST(request: Request): Promise<Response> {
   let path: unknown;
