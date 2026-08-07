@@ -158,6 +158,12 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   }, [focus]);
 
   // ── 워킹트리 챗 커밋 승계(#689) ──
+  // carryOver가 await 사이 최신 sessions를 읽도록 ref 미러(클로저 stale 방지) + 언마운트 가드.
+  const sessionsRef = useRef(sessions);
+  useEffect(() => { sessionsRef.current = sessions; });
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
   // worktree 세션 생성 시점 HEAD를 baseHead로 백필(커밋 vs 되돌림 판별 기준).
   useEffect(() => {
     const pending = Object.values(sessions).filter((s) => s.kind === "worktree" && !s.baseHead);
@@ -189,6 +195,7 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   }, []);
 
   // worktree 세션 → 커밋 diff 세션으로 리키(대화 보존). 타겟 이미 있으면 호출측서 스킵.
+  // 세 setState는 React 19 자동 배칭으로 단일 커밋 → activeKey가 없는 세션 가리키는 중간 렌더 없음.
   const rekeySession = useCallback((oldKey: string, newKey: string, kind: SessionKind, label: string) => {
     setSessions((prev) => {
       if (!prev[oldKey] || prev[newKey]) return prev;
@@ -202,26 +209,29 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
 
   // 변경목록서 사라진 worktree 세션이 커밋됐으면(baseHead..HEAD에 그 파일 담은 커밋 존재) 승계.
   const carryOver = useCallback(async (changed: Set<string>) => {
-    const wt = Object.values(sessions).filter((s) => s.kind === "worktree" && s.baseHead);
+    const wt = Object.values(sessionsRef.current).filter((s) => s.kind === "worktree" && s.baseHead);
     for (const s of wt) {
       const file = s.key.slice("wt:".length);
       if (changed.has(file)) continue; // 아직 변경 중 → 유지
       try {
         const r = await fetch("/api/repo/file-commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, file, baseHead: s.baseHead }) });
         const d = await r.json();
+        if (!aliveRef.current) return; // 언마운트됨 → setState 중단
         const hash = r.ok && d.ok && d.hash ? String(d.hash) : "";
         if (!hash) continue; // 커밋 아님(되돌림) → 방치
         carryHunkNotes(root, file, hash); // DiffPane 에이전트 설명 노트도 커밋 diff로 승계(챗 세션과 무관하게)
         const newKey = `diff:${hash}:${file}`;
-        if (sessions[newKey]) {
+        const cur = sessionsRef.current[s.key]; // await 뒤 최신 스냅샷으로 재판정(stale 방지)
+        if (!cur || cur.kind !== "worktree") continue; // 이미 승계/변경됨
+        if (sessionsRef.current[newKey]) {
           // 타겟 커밋 세션이 이미 있음 — 대화 없는 빈 wt만 정리(대화 있으면 병합 위험이라 방치).
-          if (s.subs.every((sub) => sub.messages.length === 0)) dropSession(s.key);
+          if (cur.subs.every((sub) => sub.messages.length === 0)) dropSession(s.key);
           continue;
         }
         rekeySession(s.key, newKey, "diff", `${file.split("/").pop() ?? file} @${hash.slice(0, 7)}`);
       } catch { /* ignore */ }
     }
-  }, [sessions, root, rekeySession, dropSession]);
+  }, [root, rekeySession, dropSession]);
 
   // 변경 파일 집합이 갱신될 때(git-status refetch)만 승계 점검 — 채팅 등 잦은 렌더엔 안 돎.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- changedFiles 변경 시에만(carryOver는 그 시점 최신)
