@@ -21,7 +21,8 @@ function buildTree(files: string[]): TreeNode[] {
   }
   const sortNode = (n: TreeNode) => {
     if (!n.children) return;
-    n.children.sort((a, b) => (b.children ? 1 : 0) - (a.children ? 1 : 0) || a.name.localeCompare(b.name));
+    // 폴더 먼저, 그 안에서 자연 정렬(numeric) — Issue36 < Issue359 < Issue360(사전순이면 뒤죽박죽, #701).
+    n.children.sort((a, b) => (b.children ? 1 : 0) - (a.children ? 1 : 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
     n.children.forEach(sortNode);
   };
   sortNode(root);
