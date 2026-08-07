@@ -28,8 +28,13 @@ function buildTree(files: string[]): TreeNode[] {
   return root.children!;
 }
 
-function Node({ node, depth, open, toggle, selected, onSelect }: {
-  node: TreeNode; depth: number; open: Set<string>; toggle: (p: string) => void; selected: string | null; onSelect: (p: string) => void;
+// 변경 상태 도트 — 초록=신규, 노랑=수정(#687).
+function StatusDot({ kind }: { kind: "added" | "modified" }) {
+  return <span className={`ml-auto mr-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${kind === "added" ? "bg-emerald-500" : "bg-amber-500"}`} aria-hidden />;
+}
+
+function Node({ node, depth, open, toggle, selected, onSelect, status }: {
+  node: TreeNode; depth: number; open: Set<string>; toggle: (p: string) => void; selected: string | null; onSelect: (p: string) => void; status: Record<string, "added" | "modified">;
 }) {
   const pad = { paddingLeft: `${depth * 12 + 6}px` };
   if (node.children) {
@@ -42,28 +47,30 @@ function Node({ node, depth, open, toggle, selected, onSelect }: {
           {folderGlyph(node.name, isOpen)}
           <span className="truncate">{node.name}</span>
         </button>
-        {isOpen && node.children.map((c) => <Node key={c.path} node={c} depth={depth + 1} open={open} toggle={toggle} selected={selected} onSelect={onSelect} />)}
+        {isOpen && node.children.map((c) => <Node key={c.path} node={c} depth={depth + 1} open={open} toggle={toggle} selected={selected} onSelect={onSelect} status={status} />)}
       </>
     );
   }
   const on = selected === node.path;
+  const dot = status[node.path];
   return (
     <button type="button" onClick={() => onSelect(node.path)} style={pad}
       className={`flex w-full items-center gap-1 py-0.5 pr-1.5 text-left text-[12px] transition ${on ? "bg-[#3B34E2]/10 text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>
       <span className="ml-[13px] flex shrink-0">{fileGlyph(node.name)}</span>
       <span className="truncate">{node.name}</span>
+      {dot && <StatusDot kind={dot} />}
     </button>
   );
 }
 
-export default function FileTree({ files, selected, onSelect }: { files: string[]; selected: string | null; onSelect: (path: string) => void }) {
+export default function FileTree({ files, selected, onSelect, status = {} }: { files: string[]; selected: string | null; onSelect: (path: string) => void; status?: Record<string, "added" | "modified"> }) {
   const tree = useMemo(() => buildTree(files), [files]);
   // 최상위 폴더는 펼친 채 시작(바로 탐색 가능), 하위는 접힘.
   const [open, setOpen] = useState<Set<string>>(() => new Set(tree.filter((n) => n.children).map((n) => n.path)));
   const toggle = (p: string) => setOpen((prev) => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; });
   return (
     <div className="nunopi-scroll h-full overflow-auto py-1">
-      {tree.map((n) => <Node key={n.path} node={n} depth={0} open={open} toggle={toggle} selected={selected} onSelect={onSelect} />)}
+      {tree.map((n) => <Node key={n.path} node={n} depth={0} open={open} toggle={toggle} selected={selected} onSelect={onSelect} status={status} />)}
     </div>
   );
 }

@@ -15,6 +15,13 @@ import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 const WS_PATH_KEY = "nunopi:workspace-path";
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+// git status 문자(index,work) → 파일 트리 도트 종류. 삭제(D)는 트리에 행이 없어 스킵(#687).
+function statusKind(index: string, work: string): "added" | "modified" | null {
+  if (index === "D" || work === "D") return null;      // 삭제 — 트리 미표시
+  if (index === "?" || index === "A") return "added";  // untracked / staged-add = 신규
+  return "modified";                                   // M / R / C 등 = 수정
+}
+
 // 빈 존 자리표시 — 후속 커밋서 실제 트리/코드/챗/터미널로 교체.
 function ZonePlaceholder({ Icon, label }: { Icon: typeof IconFiles; label: string }) {
   const t = useT();
@@ -31,6 +38,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [path, setPath] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
+  const [fileStatus, setFileStatus] = useState<Record<string, "added" | "modified">>({}); // 변경 파일 도트(#687)
   const [treeLoading, setTreeLoading] = useState(false);
   const [openFile, setOpenFile] = useState<string | null>(null); // 열린 파일(코드칸은 이게 있을 때만)
   // 커밋 diff(hash) 또는 워킹트리 diff(worktree). 있으면 코드칸=diff.
@@ -107,7 +115,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   // 폴더 정해지면 파일트리 로드.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
-    if (!path) { setFiles([]); return; }
+    if (!path) { setFiles([]); setFileStatus({}); return; }
     let cancelled = false;
     setTreeLoading(true); setOpenFile(null);
     (async () => {
@@ -117,6 +125,16 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         if (!cancelled) setFiles(r.ok && Array.isArray(d.files) ? d.files : []);
       } catch { if (!cancelled) setFiles([]); }
       finally { if (!cancelled) setTreeLoading(false); }
+      // 변경 파일 상태 도트용 git status(#687) — 트리와 함께 로드. path별로만 갱신.
+      try {
+        const rs = await fetch("/api/repo/git-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+        const ds = await rs.json();
+        if (!cancelled) {
+          const map: Record<string, "added" | "modified"> = {};
+          if (rs.ok && ds.isGit && Array.isArray(ds.files)) for (const f of ds.files) { const k = statusKind(f.index ?? "", f.work ?? ""); if (k) map[f.path] = k; }
+          setFileStatus(map);
+        }
+      } catch { if (!cancelled) setFileStatus({}); }
     })();
     return () => { cancelled = true; };
   }, [path]);
@@ -177,7 +195,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             {treeLoading ? (
               <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : files.length > 0 ? (
-              <FileTree files={files} selected={openFile} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
+              <FileTree files={files} status={fileStatus} selected={openFile} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
             ) : (
               <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
             )}
