@@ -47,6 +47,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   const [filesByHash, setFilesByHash] = useState<Record<string, { status: string; path: string }[]>>({});
   const [changes, setChanges] = useState<Change[]>([]);
   const [changesOpen, setChangesOpen] = useState(true);
+  const [untrackedOpen, setUntrackedOpen] = useState(false); // 미추적 하위그룹(기본 접힘, #699)
   // 커밋 호버 팝오버(#685) — 전체 메세지(제목+본문). fixed라 스크롤 컨테이너 잘림 회피.
   // dwell 지연: 그래프를 훑으며 지나갈 땐 안 뜨고, 머물러야(HOVER_DELAY_MS) 뜬다(orca식).
   const [hover, setHover] = useState<{ subject: string; body: string; left: number; top: number; above: boolean } | null>(null);
@@ -91,6 +92,28 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
 
   const graphW = useMemo(() => (model ? Math.max(1, model.laneCount) * LANE_W : LANE_W), [model]);
 
+  // 추적 변경 vs 미추적(untracked) 분리 — 미추적은 접이식 하위그룹(#699).
+  const tracked = useMemo(() => changes.filter((c) => changeKind(c) !== "untracked"), [changes]);
+  const untracked = useMemo(() => changes.filter((c) => changeKind(c) === "untracked"), [changes]);
+
+  // 변경 파일 한 행(tracked·untracked 공용, #699).
+  const changeRow = (c: Change) => {
+    const b = changeBadge(c);
+    const name = c.path.replace(/\/$/, "").split("/").pop() || c.path;
+    return (
+      <button key={c.path} type="button" onClick={() => onOpenChange?.(c.path, changeKind(c))} className="flex w-full items-baseline gap-1.5 py-0.5 pl-6 pr-2 text-left text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-800">
+        <span className={`shrink-0 font-mono text-[9px] font-bold ${b.cls}`}>{b.ch}</span>
+        <span className="truncate text-zinc-700 dark:text-zinc-200">{name}</span>
+        <span className="truncate text-[9px] text-zinc-400 dark:text-zinc-500">{c.path}</span>
+        <span className="ml-auto shrink-0 font-mono text-[9px]">
+          {c.added > 0 && <span className="text-emerald-600 dark:text-emerald-500">+{c.added}</span>}
+          {c.added > 0 && c.deleted > 0 && " "}
+          {c.deleted > 0 && <span className="text-rose-600 dark:text-rose-500">−{c.deleted}</span>}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 dark:border-zinc-800">
@@ -112,33 +135,35 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
       ) : !isGit ? (
         <div className="flex flex-1 items-center justify-center px-3 text-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.gitNone")}</div>
       ) : (
-        <div className="nunopi-scroll min-h-0 flex-1 overflow-auto">
-          {/* 워킹트리 변경(커밋 전) — 커밋 그래프와 같은 스크롤에 얹어 공간 다 쓰게(잘림 방지). */}
+        // 변경 영역(상단·최대 45%·내부 스크롤) + 커밋 그래프(하단·나머지·자체 스크롤) 분리 → 드래그 없이 둘 다 보임(#699).
+        <div className="flex min-h-0 flex-1 flex-col">
           {changes.length > 0 && (
-            <div className="border-b border-zinc-200 dark:border-zinc-800">
-              <button type="button" onClick={() => setChangesOpen((v) => !v)} className="sticky top-0 z-10 flex w-full items-center gap-1 bg-white px-2.5 py-1 text-left text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50 dark:bg-[#0e0f16] dark:text-zinc-300 dark:hover:bg-zinc-800/50">
+            <div className="flex max-h-[45%] shrink-0 flex-col border-b border-zinc-200 dark:border-zinc-800">
+              <button type="button" onClick={() => setChangesOpen((v) => !v)} className="flex w-full shrink-0 items-center gap-1 bg-white px-2.5 py-1 text-left text-[11px] font-semibold text-zinc-600 transition hover:bg-zinc-50 dark:bg-[#0e0f16] dark:text-zinc-300 dark:hover:bg-zinc-800/50">
                 {changesOpen ? <IconChevronDown size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden /> : <IconChevronRight size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />}
                 <span>{t("workspace.gitChanges")}</span>
-                <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{changes.length}</span>
+                <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{tracked.length}</span>
               </button>
-              {changesOpen && changes.map((c) => {
-                const b = changeBadge(c);
-                const name = c.path.replace(/\/$/, "").split("/").pop() || c.path;
-                return (
-                  <button key={c.path} type="button" onClick={() => onOpenChange?.(c.path, changeKind(c))} className="flex w-full items-baseline gap-1.5 py-0.5 pl-6 pr-2 text-left text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                    <span className={`shrink-0 font-mono text-[9px] font-bold ${b.cls}`}>{b.ch}</span>
-                    <span className="truncate text-zinc-700 dark:text-zinc-200">{name}</span>
-                    <span className="truncate text-[9px] text-zinc-400 dark:text-zinc-500">{c.path}</span>
-                    <span className="ml-auto shrink-0 font-mono text-[9px]">
-                      {c.added > 0 && <span className="text-emerald-600 dark:text-emerald-500">+{c.added}</span>}
-                      {c.added > 0 && c.deleted > 0 && " "}
-                      {c.deleted > 0 && <span className="text-rose-600 dark:text-rose-500">−{c.deleted}</span>}
-                    </span>
-                  </button>
-                );
-              })}
+              {changesOpen && (
+                <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto">
+                  {tracked.map(changeRow)}
+                  {untracked.length > 0 && (
+                    <>
+                      {/* 미추적(gitignore 아님·git이 처음 보는) 파일 — 도배 방지 위해 기본 접힘(orca식). */}
+                      <button type="button" onClick={() => setUntrackedOpen((v) => !v)} className="flex w-full items-center gap-1 py-0.5 pl-6 pr-2 text-left text-[10px] font-medium text-zinc-400 transition hover:bg-zinc-100 dark:text-zinc-500 dark:hover:bg-zinc-800">
+                        {untrackedOpen ? <IconChevronDown size={11} stroke={2} className="shrink-0" aria-hidden /> : <IconChevronRight size={11} stroke={2} className="shrink-0" aria-hidden />}
+                        <span>{t("workspace.gitUntracked")}</span>
+                        <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{untracked.length}</span>
+                      </button>
+                      {untrackedOpen && untracked.map(changeRow)}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
+          {/* 커밋 그래프 — 나머지 공간, 자체 스크롤 */}
+          <div className="nunopi-scroll min-h-0 flex-1 overflow-auto">
           {model?.rows.map((row) => {
             const dotY = ROW_H / 2;
             const lines: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
@@ -217,6 +242,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
               </div>
             );
           })}
+          </div>
         </div>
       )}
       {hover && (
