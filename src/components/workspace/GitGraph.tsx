@@ -1,7 +1,7 @@
 "use client";
 // 워크스페이스 깃 그래프(#649) — /api/repo/git-log → 파싱 → 레인 배정 → SVG(점·선) + 커밋행.
 // 커밋 클릭 → 바뀐 파일(M/A/D) 펼침, 파일 클릭 → onOpenDiff(diff 뷰).
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconLoader2, IconRefresh, IconGitBranch, IconTag, IconChevronRight, IconChevronDown, IconGitCommit } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { parseGitLog, assignLanes, githubLogin, type GitGraphModel } from "@/lib/repo/gitGraph";
@@ -15,6 +15,7 @@ function refBadge(ref: string, curBranch: string) {
 }
 
 const ROW_H = 24, FILE_H = 20, LANE_W = 14;
+const HOVER_DELAY_MS = 1000; // 커밋 호버 툴팁 dwell — 훑을 땐 안 뜨고 머물러야 뜸
 const LANE_COLORS = ["#3B34E2", "#e11d48", "#059669", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
 const laneColor = (l: number) => LANE_COLORS[((l % LANE_COLORS.length) + LANE_COLORS.length) % LANE_COLORS.length];
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
@@ -46,6 +47,12 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   const [filesByHash, setFilesByHash] = useState<Record<string, { status: string; path: string }[]>>({});
   const [changes, setChanges] = useState<Change[]>([]);
   const [changesOpen, setChangesOpen] = useState(true);
+  // 커밋 호버 팝오버(#685) — 전체 메세지(제목+본문). fixed라 스크롤 컨테이너 잘림 회피.
+  // dwell 지연: 그래프를 훑으며 지나갈 땐 안 뜨고, 머물러야(HOVER_DELAY_MS) 뜬다(orca식).
+  const [hover, setHover] = useState<{ subject: string; body: string; left: number; top: number; above: boolean } | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearHover = useCallback(() => { if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; } setHover(null); }, []);
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []); // 언마운트 시 타이머 정리
 
   const load = useCallback(async () => {
     if (!root) return;
@@ -144,13 +151,23 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
             const files = filesByHash[row.commit.hash];
             return (
               <div key={row.commit.hash}>
-                <button type="button" onClick={() => void toggle(row.commit.hash)} className="flex w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
+                <button type="button" onClick={() => void toggle(row.commit.hash)}
+                  onMouseEnter={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect(); // 좌표는 지금 캡처(지연 콜백서 currentTarget null)
+                    const POP_W = 380;
+                    const above = r.top > window.innerHeight / 2; // 아래쪽 행이면 위로 띄워 뷰포트 밖 잘림 방지
+                    const payload = { subject: row.commit.subject, body: row.commit.body, left: Math.max(8, Math.min(r.left, window.innerWidth - POP_W - 8)), top: above ? r.top - 4 : r.bottom + 4, above };
+                    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+                    hoverTimer.current = setTimeout(() => setHover(payload), HOVER_DELAY_MS); // 머물러야 뜸
+                  }}
+                  onMouseLeave={clearHover}
+                  className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
                   <svg width={graphW} height={ROW_H} className="shrink-0" style={{ minWidth: graphW }} aria-hidden>
                     {lines.map((l, k) => <line key={k} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={l.color} strokeWidth={1.5} />)}
                     <circle cx={cx(row.lane)} cy={dotY} r={3.5} fill={laneColor(row.lane)} />
                   </svg>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
-                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5 pr-2 text-[11px]">
+                  <span className="flex items-baseline gap-1.5 whitespace-nowrap pr-3 text-[11px]">
                     {row.commit.refs.map((rf) => {
                       const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
                       const b = refBadge(rf, branch);
@@ -166,9 +183,10 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         </span>
                       );
                     })}
-                    <span className="truncate text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
-                    {(() => { const login = githubLogin(row.commit.email); return <span className="ml-auto shrink-0 truncate text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
-                    <span className="shrink-0 font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
+                    {/* 순서: 커밋메세지 → 이름 → 해시. nowrap로 흐르고, 좁으면 뒤가 잘려 패널 드래그·가로스크롤로 봄(#685). */}
+                    <span className="text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
+                    {(() => { const login = githubLogin(row.commit.email); return <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
+                    <span className="font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
                   </span>
                 </button>
                 {isOpen && (
@@ -198,6 +216,14 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
               </div>
             );
           })}
+        </div>
+      )}
+      {hover && (
+        <div role="tooltip" aria-hidden
+          style={{ position: "fixed", left: hover.left, top: hover.top, transform: hover.above ? "translateY(-100%)" : undefined, maxWidth: 380, maxHeight: "60vh", zIndex: 50 }}
+          className="pointer-events-none overflow-hidden rounded-lg border border-zinc-200 bg-white p-2.5 text-[11px] leading-relaxed shadow-xl dark:border-zinc-700 dark:bg-zinc-800">
+          <div className="font-semibold text-zinc-800 dark:text-zinc-100">{hover.subject}</div>
+          {hover.body && <div className="mt-1.5 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{hover.body}</div>}
         </div>
       )}
     </div>

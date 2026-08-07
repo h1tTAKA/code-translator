@@ -8,12 +8,14 @@ assert.strictEqual(githubLogin("hong@users.noreply.github.com"), "hong", "login 
 assert.strictEqual(githubLogin("me@gmail.com"), null, "일반 이메일 → null");
 assert.strictEqual(githubLogin(""), null, "빈 이메일 → null");
 
-// 파싱: 한 줄 형식 %H|%P|%an|%ae|%at|%D|%s.
+// 파싱: 필드=\x1f, 커밋=\x1e 형식 %H %P %an %ae %at %D %s %b.
+const US = "\x1f", RS = "\x1e";
+const rec = (fields: string[]) => fields.join(US) + RS; // 한 커밋 레코드
 const log = [
-  "c3|c2|Kim|1+kim@users.noreply.github.com|1700000003|HEAD -> main, origin/main|feat: 세 번째",
-  "c2|c1|Kim|kim@corp.com|1700000002||fix: 두 번째",
-  "c1||Kim|kim@corp.com|1700000001|tag: v1|init",
-].join("\n");
+  rec(["c3", "c2", "Kim", "1+kim@users.noreply.github.com", "1700000003", "HEAD -> main, origin/main", "feat: 세 번째", ""]),
+  rec(["c2", "c1", "Kim", "kim@corp.com", "1700000002", "", "fix: 두 번째", "본문 첫 줄\n본문 둘째 줄"]), // 여러 줄 body
+  rec(["c1", "", "Kim", "kim@corp.com", "1700000001", "tag: v1", "init", ""]),
+].join("\n"); // git format:이 커밋 사이 개행 넣는 것 흉내
 const commits = parseGitLog(log);
 assert.strictEqual(commits.length, 3, "3 커밋 파싱");
 assert.deepStrictEqual(commits[0].parents, ["c2"], "부모 파싱");
@@ -27,13 +29,15 @@ assert.deepStrictEqual(commits[2].refs, ["v1"], "tag: 제거");
 assert.deepStrictEqual(commits[1].parents, ["c1"], "c2 부모 c1");
 assert.strictEqual(commits[2].parents.length, 0, "루트 부모 없음");
 assert.strictEqual(commits[0].subject, "feat: 세 번째", "subject");
+assert.strictEqual(commits[0].body, "", "body 없으면 빈 문자열");
+assert.strictEqual(commits[1].body, "본문 첫 줄\n본문 둘째 줄", "여러 줄 body 보존");
 
 // detached HEAD("HEAD" 단독) 감지.
-const det = parseGitLog("x|y|K|k@corp.com|9|HEAD|wip")[0];
+const det = parseGitLog(rec(["x", "y", "K", "k@corp.com", "9", "HEAD", "wip", ""]))[0];
 assert.strictEqual(det.isHead, true, "detached HEAD 감지");
 
 // origin/HEAD·bare HEAD 잡음 제거(HEAD는 현재 브랜치 배지로만).
-const noise = parseGitLog("z|y|K|k@x|9|HEAD -> main, origin/main, origin/HEAD, tag: v2|x")[0];
+const noise = parseGitLog(rec(["z", "y", "K", "k@x", "9", "HEAD -> main, origin/main, origin/HEAD, tag: v2", "x", ""]))[0];
 assert.deepStrictEqual(noise.refs, ["main", "origin/main", "v2"], "origin/HEAD·HEAD 제거");
 assert.strictEqual(noise.isHead, true, "HEAD -> 여도 isHead");
 
@@ -44,10 +48,10 @@ assert.strictEqual(lin.laneCount, 1, "직선 레인 1개");
 
 // 분기+머지: m(부모 a,b) → a(부모 base) → b(부모 base) → base.
 const merged = parseGitLog([
-  "m|a b|K|k@x|4||merge",
-  "a|base|K|k@x|3||branchA",
-  "b|base|K|k@x|2||branchB",
-  "base||K|k@x|1||base",
+  rec(["m", "a b", "K", "k@x", "4", "", "merge", ""]),
+  rec(["a", "base", "K", "k@x", "3", "", "branchA", ""]),
+  rec(["b", "base", "K", "k@x", "2", "", "branchB", ""]),
+  rec(["base", "", "K", "k@x", "1", "", "base", ""]),
 ].join("\n"));
 const g = assignLanes(merged);
 // m은 부모 2개 → a,b가 서로 다른 레인으로 갈라짐 → 레인 2개 이상.
