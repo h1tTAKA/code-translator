@@ -14,16 +14,22 @@ function refBadge(ref: string, curBranch: string) {
   return { cls: "bg-[#3B34E2]/10 text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]", tag: false };                    // 로컬 브랜치
 }
 
-const ROW_H = 24, FILE_H = 20, LANE_W = 20;
+const ROW_H = 24, FILE_H = 20, LANE_W = 16;
 const HOVER_DELAY_MS = 1000; // 커밋 호버 툴팁 dwell — 훑을 땐 안 뜨고 머물러야 뜸
 // 색(#707, orca식) — 트렁크(lane 0)는 브랜드 인디고 고정, 브랜치는 커밋마다 다른 accent 순환.
 // 레인이 아니라 "커밋별"로 색을 매김 → 같은 레인(1)을 재사용하는 단발 브랜치들도 서로 다른 색(무지개).
 const TRUNK_COLOR = "#6366f1";
 const BRANCH_COLORS = ["#f59e0b", "#ec4899", "#14b8a6", "#a855f7", "#0ea5e9", "#f43f5e", "#84cc16", "#f97316"];
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
-// 레인 이동 연결선(#707) — 같은 레인이면 직선, 다르면 양 끝에서 수직으로 진입·이탈하는 부드러운 S곡선(cubic bezier, orca식).
-const linkPath = (x1: number, y1: number, x2: number, y2: number) =>
-  x1 === x2 ? `M${x1} ${y1}L${x2} ${y2}` : `M${x1} ${y1}C${x1} ${(y1 + y2) / 2} ${x2} ${(y1 + y2) / 2} ${x2} ${y2}`;
+// 점→부모점 연결선(#707). 대각 스윕(엉킴) 방지 위해 레인을 따라 직진하고 "전환은 한 행만" 곡선으로.
+// - 같은 레인: 직선. - 인접(≈1행): 한 번에 부드러운 bump 곡선. - 여러 행 + 레인 변경: 레인 직진 + 끝(또는 시작) 한 행만 곡선.
+const bumpC = (x1: number, ya: number, x2: number, yb: number) => { const my = (ya + yb) / 2; return `C${x1} ${my} ${x2} ${my} ${x2} ${yb}`; };
+const linkPath = (x1: number, y1: number, x2: number, y2: number) => {
+  if (x1 === x2) return `M${x1} ${y1}L${x2} ${y2}`;
+  if (y2 - y1 <= ROW_H * 1.5) return `M${x1} ${y1}${bumpC(x1, y1, x2, y2)}`; // 인접 — 통 곡선
+  if (x2 > x1) return `M${x1} ${y1}${bumpC(x1, y1, x2, y1 + ROW_H)}L${x2} ${y2}`; // 바깥 분기 — 첫 행 곡선 후 그 레인 직진
+  return `M${x1} ${y1}L${x1} ${y2 - ROW_H}${bumpC(x1, y2 - ROW_H, x2, y2)}`;           // 안쪽 복귀 — 자기 레인 직진 후 끝 행 곡선
+};
 const STATUS = { M: ["M", "text-amber-600 dark:text-amber-500"], A: ["A", "text-emerald-600 dark:text-emerald-500"], D: ["D", "text-rose-600 dark:text-rose-500"], R: ["R", "text-sky-600 dark:text-sky-500"], C: ["C", "text-sky-600 dark:text-sky-500"] } as const;
 
 // 워킹트리 변경 파일 한 건.
