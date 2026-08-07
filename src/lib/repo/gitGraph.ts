@@ -75,14 +75,12 @@ export function assignLanes(commits: GitCommit[]): GitGraphModel {
     // 이 커밋을 기다리던 다른 레인들(머지 수렴)은 비운다 — 점 레인 하나로 모임.
     for (let i = 0; i < lanes.length; i++) if (i !== lane && lanes[i] === c.hash) lanes[i] = null;
 
-    // 부모 라우팅: 첫 부모는 점 레인 계속(이미 다른 레인에 있으면 점 레인 비움), 나머지는 새 레인(분기).
+    // 부모 라우팅: 첫 부모는 점 레인이 계속 이어감(부모가 이미 다른 레인에 있어도 "즉시 비우지 않고" 예약 유지 —
+    // 수렴은 부모 커밋 행에서 처리). 이래야 서로 다른 브랜치가 같은 레인을 재사용해 겹쳐 그려지지 않는다(#707, Zed식 분리).
     const [p0, ...rest] = c.parents;
-    if (p0 !== undefined) {
-      if (lanes.indexOf(p0) === -1) lanes[lane] = p0; // 점 레인이 첫 부모를 이어감
-      else lanes[lane] = null;                        // 첫 부모가 이미 다른 레인 → 점 레인 종료
-    } else {
-      lanes[lane] = null; // 루트 커밋(부모 없음) → 레인 종료
-    }
+    if (p0 !== undefined) lanes[lane] = p0;
+    else lanes[lane] = null; // 루트 커밋(부모 없음) → 레인 종료
+    // 나머지 부모(머지)는 새 레인으로 분기.
     for (const p of rest) {
       if (lanes.indexOf(p) === -1) { const e = firstNull(); lanes[e] = p; }
     }
