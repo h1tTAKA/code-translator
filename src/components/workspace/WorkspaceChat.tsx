@@ -1,11 +1,12 @@
 "use client";
 // 워크스페이스 우측 챗룸(#647, #653) — 코딩하다 바로 질문. 워크스페이스 전용 슬림 UI.
 // #653: 단일 스레드 → "무엇에 대한 대화인가"별 키드 세션 맵.
-//   repo(기본, 레포 전체) / file:<path>(그 파일) / diff:<hash>:<file>(커밋 변경) / branch:<name>(브랜치 작업).
+//   repo(기본, 레포 전체) / file:<path>(그 파일) / diff:<hash>:<file>(커밋 변경) / branch:<name>(브랜치 작업)
+//   / wt:<file>(커밋 전 워킹트리 변경 — 커밋되면 diff:<hash>:<file>로 승계, #689).
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconX, IconPlus, IconCheck, IconHistory } from "@tabler/icons-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
@@ -18,9 +19,10 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
-type SessionKind = "repo" | "file" | "diff" | "branch";
+type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree";
 interface Sub { id: string; messages: ChatMessage[]; } // 세션 안의 한 대화 스레드
-interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; }
+// baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
+interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
 // WorkspaceView가 주는 포커스 신호 — n(nonce)로 같은 대상 재클릭도 매번 발화.
 export interface ChatFocus { key: string; kind: SessionKind; label: string; n: number; }
 
@@ -30,6 +32,28 @@ const MAX_SESSIONS = 40; // 닫힌 세션 포함 저장 상한 — 초과 시 �
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
 const freshSub = (): Sub => ({ id: genId(), messages: [] });
 const mkSession = (key: string, kind: SessionKind, label: string): Session => { const s = freshSub(); return { key, kind, label, subs: [s], activeSubId: s.id }; };
+
+// DiffPane hunk 노트 버킷을 워킹트리→커밋 해시로 승계(#689). 키 스킴은 DiffPane.noteStore와 동일:
+//   nunopi:hunk-notes:<root>:<hash | "wt:"+kind>:<file>. hunk는 diffText로 키잉돼 내용 같으면 재부착.
+// 워킹트리 kind 3종(unstaged/staged/untracked)을 커밋 해시 버킷에 병합 후 원본 정리(중복 방지).
+function carryHunkNotes(root: string, file: string, hash: string): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const dstKey = `nunopi:hunk-notes:${root}:${hash}:${file}`;
+    const dst: Record<string, string> = JSON.parse(localStorage.getItem(dstKey) || "{}");
+    let touched = false;
+    for (const kind of ["unstaged", "staged", "untracked"] as const) {
+      const srcKey = `nunopi:hunk-notes:${root}:wt:${kind}:${file}`;
+      const raw = localStorage.getItem(srcKey);
+      if (!raw) continue;
+      const src = JSON.parse(raw) as Record<string, string>;
+      for (const k in src) if (!(k in dst)) dst[k] = src[k]; // 기존 커밋 노트 보존, 없는 것만 채움
+      localStorage.removeItem(srcKey);
+      touched = true;
+    }
+    if (touched) localStorage.setItem(dstKey, JSON.stringify(dst));
+  } catch { /* ignore */ }
+}
 
 // localStorage에서 세션 복원(마이그레이션 포함). SSR/미저장 시 기본(repo 세션 1개).
 // 마운트 시 동기 호출 → 하이드레이션 이펙트 레이스(빈 상태 덮어쓰기) 원천 제거.
@@ -56,13 +80,14 @@ function loadStore(store: string, repoLabel: string): { sessions: Record<string,
 // 세션 kind별 아이콘 — JSX 직접 반환(렌더 중 컴포넌트 변수 생성 회피: react-hooks/static-components).
 function kindGlyph(k: SessionKind, size: number, className?: string) {
   const p = { size, stroke: 2, className, "aria-hidden": true } as const;
-  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : <IconFileCode {...p} />;
+  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : k === "worktree" ? <IconPencil {...p} /> : <IconFileCode {...p} />;
 }
 
-export default function WorkspaceChat({ root, files, focus, providerId, providerSettings }: {
+export default function WorkspaceChat({ root, files, focus, changedFiles, providerId, providerSettings }: {
   root: string;
   files: string[];
   focus: ChatFocus | null;
+  changedFiles?: Set<string>; // 현재 워킹트리 변경 파일 경로(#689 승계 트리거)
   providerId: AgentProviderKind;
   providerSettings: ProviderSettings;
 }) {
@@ -128,10 +153,89 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   // 포커스 신호(WorkspaceView) → 해당 세션 열기·활성. n(nonce) 덕에 같은 대상 재클릭도 발화.
   useEffect(() => {
     if (!focus) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부 클릭 신호를 세션 상태로 동기화
     openSession(focus.key, focus.kind, focus.label);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- focus만 감시(openSession 넣으면 매 렌더 재실행)
   }, [focus]);
+
+  // ── 워킹트리 챗 커밋 승계(#689) ──
+  // carryOver가 await 사이 최신 sessions를 읽도록 ref 미러(클로저 stale 방지) + 언마운트 가드.
+  const sessionsRef = useRef(sessions);
+  useEffect(() => { sessionsRef.current = sessions; });
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  // worktree 세션 생성 시점 HEAD를 baseHead로 백필(커밋 vs 되돌림 판별 기준).
+  useEffect(() => {
+    const pending = Object.values(sessions).filter((s) => s.kind === "worktree" && !s.baseHead);
+    if (!pending.length || !root) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/repo/file-commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root }) });
+        const d = await r.json();
+        const head = r.ok && d.ok ? String(d.head ?? "") : "";
+        if (!head || cancelled) return;
+        setSessions((prev) => {
+          let changed = false; const next = { ...prev };
+          for (const s of pending) { const cur = next[s.key]; if (cur && cur.kind === "worktree" && !cur.baseHead) { next[s.key] = { ...cur, baseHead: head }; changed = true; } }
+          return changed ? next : prev;
+        });
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [sessions, root]);
+
+  // 세션 완전 삭제(승계 시 빈 중복 wt 정리용). repo는 불가.
+  const dropSession = useCallback((key: string) => {
+    if (key === REPO_KEY) return;
+    setSessions((prev) => { if (!prev[key]) return prev; const rest = { ...prev }; delete rest[key]; return rest; });
+    setOpenKeys((prev) => prev.filter((k) => k !== key));
+    setActiveKey((cur) => (cur === key ? REPO_KEY : cur));
+    ctxCache.current.delete(key);
+  }, []);
+
+  // worktree 세션 → 커밋 diff 세션으로 리키(대화 보존). 타겟 이미 있으면 호출측서 스킵.
+  // 세 setState는 React 19 자동 배칭으로 단일 커밋 → activeKey가 없는 세션 가리키는 중간 렌더 없음.
+  const rekeySession = useCallback((oldKey: string, newKey: string, kind: SessionKind, label: string) => {
+    setSessions((prev) => {
+      if (!prev[oldKey] || prev[newKey]) return prev;
+      const { [oldKey]: old, ...rest } = prev;
+      return { ...rest, [newKey]: { ...old, key: newKey, kind, label, baseHead: undefined } };
+    });
+    setOpenKeys((prev) => prev.map((k) => (k === oldKey ? newKey : k)));
+    setActiveKey((cur) => (cur === oldKey ? newKey : cur));
+    ctxCache.current.delete(oldKey);
+  }, []);
+
+  // 변경목록서 사라진 worktree 세션이 커밋됐으면(baseHead..HEAD에 그 파일 담은 커밋 존재) 승계.
+  const carryOver = useCallback(async (changed: Set<string>) => {
+    const wt = Object.values(sessionsRef.current).filter((s) => s.kind === "worktree" && s.baseHead);
+    for (const s of wt) {
+      const file = s.key.slice("wt:".length);
+      if (changed.has(file)) continue; // 아직 변경 중 → 유지
+      try {
+        const r = await fetch("/api/repo/file-commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, file, baseHead: s.baseHead }) });
+        const d = await r.json();
+        if (!aliveRef.current) return; // 언마운트됨 → setState 중단
+        const hash = r.ok && d.ok && d.hash ? String(d.hash) : "";
+        if (!hash) continue; // 커밋 아님(되돌림) → 방치
+        carryHunkNotes(root, file, hash); // DiffPane 에이전트 설명 노트도 커밋 diff로 승계(챗 세션과 무관하게)
+        const newKey = `diff:${hash}:${file}`;
+        const cur = sessionsRef.current[s.key]; // await 뒤 최신 스냅샷으로 재판정(stale 방지)
+        if (!cur || cur.kind !== "worktree") continue; // 이미 승계/변경됨
+        if (sessionsRef.current[newKey]) {
+          // 타겟 커밋 세션이 이미 있음 — 대화 없는 빈 wt만 정리(대화 있으면 병합 위험이라 방치).
+          if (cur.subs.every((sub) => sub.messages.length === 0)) dropSession(s.key);
+          continue;
+        }
+        rekeySession(s.key, newKey, "diff", `${file.split("/").pop() ?? file} @${hash.slice(0, 7)}`);
+      } catch { /* ignore */ }
+    }
+  }, [root, rekeySession, dropSession]);
+
+  // 변경 파일 집합이 갱신될 때(git-status refetch)만 승계 점검 — 채팅 등 잦은 렌더엔 안 돎.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- changedFiles 변경 시에만(carryOver는 그 시점 최신)
+  useEffect(() => { if (changedFiles) void carryOver(changedFiles); }, [changedFiles]);
 
   // 탭 닫기 — 탭바에서만 제거, 대화 데이터는 sessions에 보존(다시 열면 복원).
   function closeSession(key: string) {
@@ -170,7 +274,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
   // kind별 컨텍스트 빌드(세션키 캐시).
   async function buildContext(s: Session): Promise<string> {
     const cached = ctxCache.current.get(s.key);
-    if (cached != null) return cached;
+    if (s.kind !== "worktree" && cached != null) return cached; // worktree는 편집 시 변하니 캐시 무시
     let ctx = "";
     try {
       if (s.kind === "file") {
@@ -189,6 +293,20 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         const d = await r.json();
         const diff = r.ok && d.ok ? String(d.diff ?? "") : "";
         ctx = diff ? `# 커밋 ${hash.slice(0, 7)}에서 ${file}의 변경(diff, before/after)\n\`\`\`diff\n${diff}\n\`\`\`\n` : "";
+      } else if (s.kind === "worktree") {
+        // wt:<file> — 그 파일의 커밋 전 diff. unstaged+staged 우선(둘 다 비면 untracked 새 파일).
+        // 추적 파일에 untracked(--no-index)를 헛돌리면 전체를 신규로 오인하므로 마지막에만.
+        const file = s.key.slice("wt:".length);
+        const getDiff = async (kind: "unstaged" | "staged" | "untracked") => {
+          try {
+            const r = await fetch("/api/repo/git-diff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, file, kind }) });
+            const d = await r.json();
+            return r.ok && d.ok ? String(d.diff ?? "") : "";
+          } catch { return ""; }
+        };
+        let diff = [await getDiff("unstaged"), await getDiff("staged")].filter(Boolean).join("\n");
+        if (!diff) diff = await getDiff("untracked");
+        ctx = diff ? `# ${file}의 커밋 전 변경(워킹트리 diff, before/after)\n\`\`\`diff\n${diff}\n\`\`\`\n` : `# ${file}: 현재 커밋 전 변경 없음\n`;
       } else if (s.kind === "branch") {
         const branch = s.key.slice("branch:".length);
         const r = await fetch("/api/repo/git-branch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, branch }) });
@@ -203,7 +321,7 @@ export default function WorkspaceChat({ root, files, focus, providerId, provider
         ctx = await repoContext();
       }
     } catch { ctx = ""; }
-    ctxCache.current.set(s.key, ctx);
+    if (s.kind !== "worktree") ctxCache.current.set(s.key, ctx); // worktree는 캐시 안 함(매번 최신 diff)
     return ctx;
   }
 

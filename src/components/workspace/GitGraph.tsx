@@ -37,7 +37,7 @@ function changeBadge(c: Change): { ch: string; cls: string } {
   return { ch: "M", cls: staged ? "text-emerald-600 dark:text-emerald-500" : "text-amber-600 dark:text-amber-500" };
 }
 
-export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange }: { root: string; onOpenDiff: (hash: string, file: string) => void; onFocusBranch: (branch: string) => void; onOpenChange?: (file: string, kind: WorktreeKind) => void }) {
+export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange, onRefreshed }: { root: string; onOpenDiff: (hash: string, file: string) => void; onFocusBranch: (branch: string) => void; onOpenChange?: (file: string, kind: WorktreeKind) => void; onRefreshed?: () => void }) {
   const t = useT();
   const [model, setModel] = useState<GitGraphModel | null>(null);
   const [isGit, setIsGit] = useState(true);
@@ -70,7 +70,8 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
       const d = await r.json();
       setChanges(r.ok && d.isGit && Array.isArray(d.files) ? d.files : []);
     } catch { setChanges([]); }
-  }, [root]);
+    onRefreshed?.(); // 상위(파일트리 도트·챗 승계)도 함께 갱신(#687/#689)
+  }, [root, onRefreshed]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load()가 setLoading 동기 호출(마운트/root 변경 시 로드)
   useEffect(() => { void load(); }, [load]);
   // 폴더 바뀌면 펼침·캐시 초기화.

@@ -1,7 +1,7 @@
 "use client";
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconFolderOpen, IconFiles, IconFileCode, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
@@ -112,6 +112,22 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
 
+  // 워킹트리 변경 상태맵 로드(#687 도트 + #689 챗 승계 트리거). 경로 로드·깃 새로고침 시 호출.
+  const loadGitStatus = useCallback(async (p: string) => {
+    try {
+      const rs = await fetch("/api/repo/git-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: p }) });
+      const ds = await rs.json();
+      const map: Record<string, "added" | "modified"> = {};
+      // 키는 트리(scan)와 같은 repo-relative POSIX. git porcelain은 항상 "/"지만 방어적 정규화.
+      if (rs.ok && ds.isGit && Array.isArray(ds.files)) for (const f of ds.files) { const k = statusKind(f.index ?? "", f.work ?? ""); if (k && typeof f.path === "string") map[f.path.replace(/\\/g, "/")] = k; }
+      setFileStatus(map);
+    } catch { setFileStatus({}); }
+  }, []);
+  // 변경 파일 경로 집합(챗 승계 판별용, #689) — fileStatus 바뀔 때만 새 identity(effect 무한루프 방지).
+  const changedFileSet = useMemo(() => new Set(Object.keys(fileStatus)), [fileStatus]);
+  // 깃 그래프 새로고침 시 상태맵도 갱신 — stable(inline이면 GitGraph load가 매 렌더 재생성→무한 fetch).
+  const handleGitRefreshed = useCallback(() => { if (path) void loadGitStatus(path); }, [path, loadGitStatus]);
+
   // 폴더 정해지면 파일트리 로드.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
@@ -125,20 +141,10 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         if (!cancelled) setFiles(r.ok && Array.isArray(d.files) ? d.files : []);
       } catch { if (!cancelled) setFiles([]); }
       finally { if (!cancelled) setTreeLoading(false); }
-      // 변경 파일 상태 도트용 git status(#687) — 트리와 함께 로드. path별로만 갱신.
-      try {
-        const rs = await fetch("/api/repo/git-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
-        const ds = await rs.json();
-        if (!cancelled) {
-          const map: Record<string, "added" | "modified"> = {};
-          // 키는 트리(scan)와 같은 repo-relative POSIX. git porcelain은 항상 "/"지만 방어적 정규화.
-          if (rs.ok && ds.isGit && Array.isArray(ds.files)) for (const f of ds.files) { const k = statusKind(f.index ?? "", f.work ?? ""); if (k && typeof f.path === "string") map[f.path.replace(/\\/g, "/")] = k; }
-          setFileStatus(map);
-        }
-      } catch { if (!cancelled) setFileStatus({}); }
+      if (!cancelled) void loadGitStatus(path); // 변경 파일 상태 도트(#687)·워킹트리 챗 승계(#689)용
     })();
     return () => { cancelled = true; };
-  }, [path]);
+  }, [path, loadGitStatus]);
 
   void active;
 
@@ -204,7 +210,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           {gitOpen && (
             <>
               <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => { setOpenDiff({ hash, file }); focusChat(`diff:${hash}:${file}`, "diff", `${file.split("/").pop()} @${hash.slice(0, 7)}`); }} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => setOpenDiff({ file, worktree })} /></div>
+              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => { setOpenDiff({ hash, file }); focusChat(`diff:${hash}:${file}`, "diff", `${file.split("/").pop()} @${hash.slice(0, 7)}`); }} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => { const f = file.replace(/\\/g, "/"); setOpenDiff({ file, worktree }); focusChat(`wt:${f}`, "worktree", `${f.split("/").pop() ?? f} · 변경`); }} onRefreshed={handleGitRefreshed} /></div>
             </>
           )}
           <button type="button" onClick={toggleGit} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
@@ -240,7 +246,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 우: 챗룸 */}
         <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-          <WorkspaceChat root={path} files={files} focus={chatFocus} providerId={providerId} providerSettings={providerSettings} />
+          <WorkspaceChat root={path} files={files} focus={chatFocus} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
         </aside>
       </div>
     </div>
