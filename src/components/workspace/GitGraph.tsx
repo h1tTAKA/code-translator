@@ -213,9 +213,8 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
           )}
           {/* 커밋 그래프 — 나머지 공간, 자체 스크롤 */}
           <div className="nunopi-scroll min-h-0 flex-1 overflow-auto">
-          {model?.rows.map((row) => {
+          {model?.rows.map((row, idx) => {
             const dotY = ROW_H / 2;
-            const idx = rowIndexByHash.get(row.commit.hash) ?? 0;
             // 각 부모로 향하는 선을 "점→점" 곡선으로(#707) — 반행 stub 없이 점에서 점까지 한 번에 부드럽게(orca식).
             // 세로거리는 누적 top(rowTop)으로 재 펼친 파일 높이까지 반영. 같은 레인이면 직선, 아니면 부드러운 S곡선.
             const edges = row.commit.parents.map((p) => {
