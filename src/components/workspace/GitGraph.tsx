@@ -14,15 +14,23 @@ function refBadge(ref: string, curBranch: string) {
   return { cls: "bg-[#3B34E2]/10 text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]", tag: false };                    // 로컬 브랜치
 }
 
-const ROW_H = 24, FILE_H = 20, LANE_W = 14;
+const ROW_H = 24, FILE_H = 20, LANE_W = 18;
 const HOVER_DELAY_MS = 1000; // 커밋 호버 툴팁 dwell — 훑을 땐 안 뜨고 머물러야 뜸
 // 조화로운 팔레트(#707) — 인디고(트렁크)에서 이웃색으로 흐름. 완전채도 원색(핏빨강 등) 회피, 라이트·다크 양쪽 대비 OK.
 const LANE_COLORS = ["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#84cc16", "#a855f7"];
 const laneColor = (l: number) => LANE_COLORS[((l % LANE_COLORS.length) + LANE_COLORS.length) % LANE_COLORS.length];
 const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
-// 레인 이동을 부드러운 S커브로(#707) — 같은 x면 직선, 다르면 제어점을 양 끝 x·중간 높이에 둬 수직 진입·이탈하는 cubic bezier.
-const linkPath = (x1: number, y1: number, x2: number, y2: number) =>
-  x1 === x2 ? `M${x1} ${y1}L${x2} ${y2}` : `M${x1} ${y1}C${x1} ${(y1 + y2) / 2} ${x2} ${(y1 + y2) / 2} ${x2} ${y2}`;
+// 레인 이동 연결선(#707) — 같은 레인이면 직선. 레인 바뀌면 "둥근 직교" 라우팅:
+// 수직 → 둥근 코너 → 중간 높이 수평 → 둥근 코너 → 수직. 가파른 대각선의 각을 없애 매끄럽게.
+const CORNER_R = 6; // 코너 반경(레인폭·행높이보다 작게 clamp됨)
+const linkPath = (x1: number, y1: number, x2: number, y2: number) => {
+  if (x1 === x2) return `M${x1} ${y1}L${x2} ${y2}`;
+  const my = (y1 + y2) / 2;
+  const r = Math.min(CORNER_R, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2);
+  const dx = x2 > x1 ? r : -r; // 수평 진행 방향
+  const dy = y2 > y1 ? r : -r; // 수직 진행 방향(항상 아래로)
+  return `M${x1} ${y1}L${x1} ${my - dy}Q${x1} ${my} ${x1 + dx} ${my}L${x2 - dx} ${my}Q${x2} ${my} ${x2} ${my + dy}L${x2} ${y2}`;
+};
 const STATUS = { M: ["M", "text-amber-600 dark:text-amber-500"], A: ["A", "text-emerald-600 dark:text-emerald-500"], D: ["D", "text-rose-600 dark:text-rose-500"], R: ["R", "text-sky-600 dark:text-sky-500"], C: ["C", "text-sky-600 dark:text-sky-500"] } as const;
 
 // 워킹트리 변경 파일 한 건.
