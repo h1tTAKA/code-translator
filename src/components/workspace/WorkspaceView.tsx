@@ -112,6 +112,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     const K = (b: string) => `nunopi:ws:${p}:${b}`;
     try {
       /* eslint-disable react-hooks/set-state-in-effect -- path 변경 시 그 레포 상태 복원 */
+      // 코드/diff 탭 복원(#714) — file/diff 모양만 통과.
+      try { const ct = JSON.parse(localStorage.getItem(K("code-tabs")) || "null"); setCodeTabs(Array.isArray(ct) ? ct.filter((x): x is CodeTab => x && (x.kind === "file" || x.kind === "diff") && typeof x.file === "string") : []); } catch { setCodeTabs([]); }
+      setActiveCode(localStorage.getItem(K("active-code")) || null);
       setDocsRoot(localStorage.getItem(K("docs-root")) || null);
       try { const dt = JSON.parse(localStorage.getItem(K("doc-tabs")) || "null"); setDocTabs(Array.isArray(dt) ? dt.filter((x): x is string => typeof x === "string") : []); } catch { setDocTabs([]); }
       setActiveDoc(localStorage.getItem(K("active-doc")) || null);
@@ -126,6 +129,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:doc-tabs`; try { if (docTabs.length) localStorage.setItem(k, JSON.stringify(docTabs)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [docTabs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:active-doc`; try { if (activeDoc) localStorage.setItem(k, activeDoc); else localStorage.removeItem(k); } catch { /* ignore */ } }, [activeDoc]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:docs-open`; try { localStorage.setItem(k, docsOpen ? "1" : "0"); } catch { /* ignore */ } }, [docsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 코드/diff 탭 영속(#714).
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:code-tabs`; try { if (codeTabs.length) localStorage.setItem(k, JSON.stringify(codeTabs)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [codeTabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:active-code`; try { if (activeCode) localStorage.setItem(k, activeCode); else localStorage.removeItem(k); } catch { /* ignore */ } }, [activeCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 드래그 리사이즈 — 전역 mousemove/up 리스너.
   useEffect(() => {
