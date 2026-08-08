@@ -322,8 +322,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   // 코드/diff 노드(멀티탭, #714) — 문서 뷰어(DocViewer)와 동형 탭 바 + 활성 pane. 코드 영역 분할 배치에 재사용(#693).
   const codeNode = codeTabs.length ? (
     <div className="flex h-full min-h-0 flex-col">
-      {/* 탭 바(스크롤) — 파일/diff 각 탭. × 로 닫기, 클릭으로 전환. */}
-      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-[#15161d]">
+      {/* 탭 바(스크롤) — 파일/diff 각 탭. × 로 닫기, 클릭으로 전환. pr-6: 우상단 이동 그립 자리 예약(#716). */}
+      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-6 dark:border-zinc-800 dark:bg-[#15161d]">
         <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
           {codeTabs.map((tb) => {
             const key = codeTabKey(tb);

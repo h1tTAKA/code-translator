@@ -4,7 +4,7 @@
 // 커밋1: 트리 렌더 + split 리사이즈(기본 배치=현재와 동일). 드래그 도킹은 커밋2.
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { IconGripHorizontal } from "@tabler/icons-react";
+import { IconGripVertical } from "@tabler/icons-react";
 
 export type PanelId = "terminal" | "code" | "doc";
 export type DockNode =
@@ -97,26 +97,24 @@ export default function WorkspaceDockLayout({ tree, panels, onTreeChange }: {
       const showOver = over && over.panel === panel && drag && drag !== panel;
       const ov = over?.edge;
       return (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* 상단 이동 레일(얇음) — 탭 위쪽이라 탭과 안 겹치고 폭도 안 먹음. 잡아 끌어 다른 패널 가장자리로 드롭 = 도킹. */}
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          {panels[panel]}
+          {/* 이동 핸들 — 탭바 우측에 예약된 빈 자리(각 패널 탭바 pr)에 앉는 그립. 박스·배경 없이 점만, 탭과 안 겹침. */}
           <div draggable
             onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", panel); setDrag(panel); }}
             onDragEnd={() => { setDrag(null); setOver(null); }}
             title="패널 이동" aria-label="패널 이동"
-            className="group flex h-3.5 shrink-0 cursor-grab items-center justify-center bg-zinc-100 transition hover:bg-zinc-200 active:cursor-grabbing dark:bg-[#15161d] dark:hover:bg-zinc-700">
-            <IconGripHorizontal size={13} stroke={2} className="text-zinc-400 opacity-50 transition group-hover:opacity-100" aria-hidden />
+            className="absolute right-0.5 top-1 z-40 flex cursor-grab items-center justify-center text-zinc-400 opacity-50 transition hover:text-zinc-600 hover:opacity-100 active:cursor-grabbing dark:hover:text-zinc-200">
+            <IconGripVertical size={13} stroke={2} aria-hidden />
           </div>
-          {/* 패널 본체 + (드래그 중) 드롭 오버레이 */}
-          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            {panels[panel]}
-            {drag && drag !== panel && (
-              <div className="absolute inset-0 z-30"
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver({ panel, edge: edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY) }); }}
-                onDrop={(e) => { e.preventDefault(); const edge = edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY); onTreeChange(dockTo(treeRef.current, drag, panel, edge)); setDrag(null); setOver(null); }}>
-                {showOver && <div className={`pointer-events-none absolute bg-[#3B34E2]/30 dark:bg-[#8b86f5]/30 ${ov === "left" ? "inset-y-0 left-0 w-1/2" : ov === "right" ? "inset-y-0 right-0 w-1/2" : ov === "top" ? "inset-x-0 top-0 h-1/2" : "inset-x-0 bottom-0 h-1/2"}`} />}
-              </div>
-            )}
-          </div>
+          {/* 드래그 중: 다른 패널 위 드롭 오버레이(이벤트 안정 캡처 + 가장자리 하이라이트). 자기 자신엔 안 뜸. */}
+          {drag && drag !== panel && (
+            <div className="absolute inset-0 z-30"
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver({ panel, edge: edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY) }); }}
+              onDrop={(e) => { e.preventDefault(); const edge = edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY); onTreeChange(dockTo(treeRef.current, drag, panel, edge)); setDrag(null); setOver(null); }}>
+              {showOver && <div className={`pointer-events-none absolute bg-[#3B34E2]/30 dark:bg-[#8b86f5]/30 ${ov === "left" ? "inset-y-0 left-0 w-1/2" : ov === "right" ? "inset-y-0 right-0 w-1/2" : ov === "top" ? "inset-x-0 top-0 h-1/2" : "inset-x-0 bottom-0 h-1/2"}`} />}
+            </div>
+          )}
         </div>
       );
     }
