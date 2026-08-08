@@ -188,7 +188,10 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
     if (!path) { setFiles([]); setFileStatus({}); return; }
     let cancelled = false;
-    setTreeLoading(true); // 열린 파일 초기화는 여기서 안 함 — 새로고침 시 복원 유지. 레포 전환 시엔 pick()이 클리어(#712).
+    setTreeLoading(true);
+    // 레포 전환 시 이전 목록·상태 즉시 비움 — key={path}로 리마운트되는 FileTree가 옛 레포의 changedAncestors(변경 폴더)를
+    // 물어 그 폴더 펼침이 새 레포 저장분에 섞이는 것 방지(#712 리뷰). 열린 파일 초기화는 안 함(위 path 이펙트가 레포별 복원).
+    setFiles([]); setFileStatus({});
     (async () => {
       try {
         const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
