@@ -137,6 +137,7 @@ export default function WorkspaceDockLayout({ tree, panels, onTreeChange }: {
       const container = e.currentTarget.parentElement;
       if (!container) return;
       const rect = container.getBoundingClientRect();
+      if (!rect.width || !rect.height) return; // 0크기 컨테이너 → 나눗셈 발산 방지
       const move = (ev: PointerEvent) => {
         const r = isRow ? (ev.clientX - rect.left) / rect.width : (ev.clientY - rect.top) / rect.height;
         onTreeChange(setRatioAt(treeRef.current, path, clamp(r, MIN_RATIO, 1 - MIN_RATIO)));

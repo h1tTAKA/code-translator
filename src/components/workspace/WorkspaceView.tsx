@@ -182,7 +182,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     });
   }, [path, hasCode, hasDoc, mounted]);
   // 도킹 트리 저장(#716) — 로드된 레포와 현재 path 일치할 때만(전환 오염 방지).
-  useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree, path]);
+  useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree]); // eslint-disable-line react-hooks/exhaustive-deps -- path 제외: 전환 커밋에 옛 트리를 새 레포 키에 쓰는 오염 방지(dockTree 변할 때만 저장)
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
