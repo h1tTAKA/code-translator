@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconGitCommit, IconX } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -15,6 +15,11 @@ import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path"; // 마지막 연 레포(전역). 나머지 열린 상태는 레포별 nunopi:ws:${path}:* (#712)
+
+// 코드/diff 멀티탭 한 건(#714) — 파일 또는 diff(커밋 diff는 hash, 워킹트리 diff는 worktree).
+type CodeTab = { kind: "file"; file: string } | { kind: "diff"; hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" };
+// 탭 식별 키(중복 열기 방지·활성 지정). file / diff(hash) / diff(워킹트리) 구분.
+const codeTabKey = (tb: CodeTab) => tb.kind === "file" ? `file:${tb.file}` : `diff:${tb.hash ?? "wt:" + (tb.worktree ?? "")}:${tb.file}`;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 // git status 문자(index,work) → 파일 트리 도트 종류. 삭제(D)는 트리에 행이 없어 스킵(#687).
@@ -53,9 +58,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [docViewH, setDocViewH] = useState(300);
   const docDockRef = useRef(docDock); // 드래그 move 핸들러(stale 클로저)서 최신 pos 읽기용
   useEffect(() => { docDockRef.current = docDock; });
-  const [openFile, setOpenFile] = useState<string | null>(null); // 열린 파일(코드칸은 이게 있을 때만)
-  // 커밋 diff(hash) 또는 워킹트리 diff(worktree). 있으면 코드칸=diff.
-  const [openDiff, setOpenDiff] = useState<{ hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" } | null>(null);
+  // 코드/diff 멀티탭(#714) — 파일·diff를 탭으로 쌓음(터미널·문서처럼). openFile/openDiff 단일 슬롯 대체.
+  const [codeTabs, setCodeTabs] = useState<CodeTab[]>([]);
+  const [activeCode, setActiveCode] = useState<string | null>(null); // 활성 탭 키(codeTabKey)
   // 챗 포커스 신호(#653) — 파일/diff/브랜치 클릭 시 그 챗 세션 열기. n(nonce)로 같은 대상 재클릭도 발화.
   const [chatFocus, setChatFocus] = useState<ChatFocus | null>(null);
   const focusN = useRef(0);
@@ -107,8 +112,13 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     const K = (b: string) => `nunopi:ws:${p}:${b}`;
     try {
       /* eslint-disable react-hooks/set-state-in-effect -- path 변경 시 그 레포 상태 복원 */
-      setOpenFile(localStorage.getItem(K("open-file")) || null);
-      try { const od = JSON.parse(localStorage.getItem(K("open-diff")) || "null"); setOpenDiff(od && typeof od.file === "string" ? od : null); } catch { setOpenDiff(null); }
+      // 코드/diff 탭 복원(#714) — file은 경로, diff는 hash 또는 worktree 중 하나는 반드시 있어야 통과(둘 다 없는 깨진 탭 배제).
+      let ctabs: CodeTab[] = [];
+      try { const ct = JSON.parse(localStorage.getItem(K("code-tabs")) || "null"); if (Array.isArray(ct)) ctabs = ct.filter((x): x is CodeTab => x && typeof x.file === "string" && (x.kind === "file" || (x.kind === "diff" && (typeof x.hash === "string" || typeof x.worktree === "string")))); } catch { /* ignore */ }
+      setCodeTabs(ctabs);
+      // 활성 키가 복원된 탭에 없으면 마지막 탭으로 폴백(빈 pane 방지).
+      const ac = localStorage.getItem(K("active-code"));
+      setActiveCode(ctabs.some((tb) => codeTabKey(tb) === ac) ? ac : (ctabs.length ? codeTabKey(ctabs[ctabs.length - 1]) : null));
       setDocsRoot(localStorage.getItem(K("docs-root")) || null);
       try { const dt = JSON.parse(localStorage.getItem(K("doc-tabs")) || "null"); setDocTabs(Array.isArray(dt) ? dt.filter((x): x is string => typeof x === "string") : []); } catch { setDocTabs([]); }
       setActiveDoc(localStorage.getItem(K("active-doc")) || null);
@@ -119,12 +129,13 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   }, [path, mounted]);
 
   // 레포 스코프 저장(#712) — 복원된 레포와 현재 path 일치할 때만(전환 중 A→B 오염 방지). deps는 값만, path는 클로저.
-  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:open-file`; try { if (openFile) localStorage.setItem(k, openFile); else localStorage.removeItem(k); } catch { /* ignore */ } }, [openFile]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:open-diff`; try { if (openDiff) localStorage.setItem(k, JSON.stringify(openDiff)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [openDiff]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:docs-root`; try { if (docsRoot) localStorage.setItem(k, docsRoot); else localStorage.removeItem(k); } catch { /* ignore */ } }, [docsRoot]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:doc-tabs`; try { if (docTabs.length) localStorage.setItem(k, JSON.stringify(docTabs)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [docTabs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:active-doc`; try { if (activeDoc) localStorage.setItem(k, activeDoc); else localStorage.removeItem(k); } catch { /* ignore */ } }, [activeDoc]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:docs-open`; try { localStorage.setItem(k, docsOpen ? "1" : "0"); } catch { /* ignore */ } }, [docsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 코드/diff 탭 영속(#714).
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:code-tabs`; try { if (codeTabs.length) localStorage.setItem(k, JSON.stringify(codeTabs)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [codeTabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:active-code`; try { if (activeCode) localStorage.setItem(k, activeCode); else localStorage.removeItem(k); } catch { /* ignore */ } }, [activeCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 드래그 리사이즈 — 전역 mousemove/up 리스너.
   useEffect(() => {
@@ -253,6 +264,31 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     setActiveDoc((cur) => { if (cur !== id) return cur; const rest = docTabs.filter((x) => x !== id); return rest.length ? rest[rest.length - 1] : null; });
   }
 
+  // 코드/diff 탭(#714) — 문서 탭과 동형. 그 탭 컨텍스트로 챗 포커스도 맞춘다.
+  const focusForTab = (tb: CodeTab) => {
+    const name = tb.file.split("/").pop() ?? tb.file;
+    if (tb.kind === "file") focusChat(`file:${tb.file}`, "file", name);
+    else if (tb.hash) focusChat(`diff:${tb.hash}:${tb.file}`, "diff", `${name} @${tb.hash.slice(0, 7)}`);
+    else { const f = tb.file.replace(/\\/g, "/"); focusChat(`wt:${f}`, "worktree", `${f.split("/").pop() ?? f} · 변경`); }
+  };
+  function openCodeTab(tb: CodeTab) {
+    const key = codeTabKey(tb);
+    setCodeTabs((prev) => (prev.some((x) => codeTabKey(x) === key) ? prev : [...prev, tb])); // 있으면 그대로(활성만 바꿈), 없으면 추가
+    setActiveCode(key);
+    focusForTab(tb);
+  }
+  function activateCode(key: string) {
+    setActiveCode(key);
+    const tb = codeTabs.find((x) => codeTabKey(x) === key);
+    if (tb) focusForTab(tb);
+  }
+  function closeCodeTab(key: string) {
+    setCodeTabs((prev) => prev.filter((x) => codeTabKey(x) !== key));
+    setActiveCode((cur) => { if (cur !== key) return cur; const rest = codeTabs.filter((x) => codeTabKey(x) !== key); return rest.length ? codeTabKey(rest[rest.length - 1]) : null; });
+  }
+  const activeTab = codeTabs.find((tb) => codeTabKey(tb) === activeCode) ?? null;
+  const activeFile = activeTab?.kind === "file" ? activeTab.file : null; // FileTree 선택 하이라이트용
+
   const folderName = path ? path.split("/").filter(Boolean).pop() ?? path : null;
 
   // 웹(비데스크톱): 터미널·폴더접근 불가 → 안내.
@@ -280,20 +316,39 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     );
   }
 
-  // 코드/diff 노드(자체 헤더 포함) & 문서 노드 — 코드 영역 분할 배치에 재사용(#693).
-  const codeNode = (openFile || openDiff) ? (
+  // 코드/diff 노드(멀티탭, #714) — 문서 뷰어(DocViewer)와 동형 탭 바 + 활성 pane. 코드 영역 분할 배치에 재사용(#693).
+  const codeNode = codeTabs.length ? (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        <IconFileCode size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
-        {openDiff ? (
-          <span className="truncate">{openDiff.file} <span className="font-mono text-zinc-400 dark:text-zinc-500">{openDiff.hash ? `@ ${openDiff.hash.slice(0, 7)}` : `· ${openDiff.worktree}`}</span></span>
-        ) : (
-          <span className="truncate">{openFile}</span>
-        )}
-        <button type="button" onClick={() => { setOpenDiff(null); setOpenFile(null); }} className="ml-auto shrink-0 rounded px-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label="close">×</button>
+      {/* 탭 바(스크롤) — 파일/diff 각 탭. × 로 닫기, 클릭으로 전환. */}
+      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-[#15161d]">
+        <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
+          {codeTabs.map((tb) => {
+            const key = codeTabKey(tb);
+            const on = key === activeCode;
+            const name = tb.file.split("/").pop() ?? tb.file;
+            return (
+              <div key={key} onClick={() => activateCode(key)}
+                className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}>
+                {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-[#3B34E2] dark:bg-[#8b86f5]" aria-hidden />}
+                {tb.kind === "diff"
+                  ? <IconGitCommit size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
+                  : <IconFileCode size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />}
+                <span className="whitespace-nowrap">{name}{tb.kind === "diff" && <span className="ml-1 font-mono text-[10px] text-zinc-400 dark:text-zinc-500">{tb.hash ? `@${tb.hash.slice(0, 7)}` : `· ${tb.worktree}`}</span>}</span>
+                <button type="button" onClick={(e) => { e.stopPropagation(); closeCodeTab(key); }}
+                  className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`} aria-label={t("mem.close")}>
+                  <IconX size={12} stroke={2.5} aria-hidden />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="min-h-0 flex-1">
-        {openDiff ? <DiffPane root={path} hash={openDiff.hash} file={openDiff.file} worktree={openDiff.worktree} providerId={providerId} providerSettings={providerSettings} /> : openFile ? <CodePane root={path} file={openFile} /> : null}
+        {activeTab?.kind === "diff"
+          ? <DiffPane key={activeCode} root={path} hash={activeTab.hash} file={activeTab.file} worktree={activeTab.worktree} providerId={providerId} providerSettings={providerSettings} />
+          : activeTab?.kind === "file"
+            ? <CodePane key={activeCode} root={path} file={activeTab.file} />
+            : null}
       </div>
     </div>
   ) : null;
@@ -336,7 +391,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             {treeLoading ? (
               <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : files.length > 0 ? (
-              <FileTree key={path} files={files} status={fileStatus} selected={openFile} storageKey={path ? `nunopi:ws:${path}:tree-open` : undefined} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
+              <FileTree key={path} files={files} status={fileStatus} selected={activeFile} storageKey={path ? `nunopi:ws:${path}:tree-open` : undefined} onSelect={(id) => openCodeTab({ kind: "file", file: id })} />
             ) : (
               <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
             )}
@@ -344,7 +399,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           {gitOpen && (
             <>
               <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => { setOpenDiff({ hash, file }); focusChat(`diff:${hash}:${file}`, "diff", `${file.split("/").pop()} @${hash.slice(0, 7)}`); }} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => { const f = file.replace(/\\/g, "/"); setOpenDiff({ file, worktree }); focusChat(`wt:${f}`, "worktree", `${f.split("/").pop() ?? f} · 변경`); }} onRefreshed={handleGitRefreshed} /></div>
+              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => openCodeTab({ kind: "diff", hash, file })} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => openCodeTab({ kind: "diff", file, worktree })} onRefreshed={handleGitRefreshed} /></div>
             </>
           )}
           <button type="button" onClick={toggleGit} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
