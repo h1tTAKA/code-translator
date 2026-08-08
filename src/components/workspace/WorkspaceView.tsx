@@ -112,9 +112,13 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     const K = (b: string) => `nunopi:ws:${p}:${b}`;
     try {
       /* eslint-disable react-hooks/set-state-in-effect -- path 변경 시 그 레포 상태 복원 */
-      // 코드/diff 탭 복원(#714) — file/diff 모양만 통과.
-      try { const ct = JSON.parse(localStorage.getItem(K("code-tabs")) || "null"); setCodeTabs(Array.isArray(ct) ? ct.filter((x): x is CodeTab => x && (x.kind === "file" || x.kind === "diff") && typeof x.file === "string") : []); } catch { setCodeTabs([]); }
-      setActiveCode(localStorage.getItem(K("active-code")) || null);
+      // 코드/diff 탭 복원(#714) — file은 경로, diff는 hash 또는 worktree 중 하나는 반드시 있어야 통과(둘 다 없는 깨진 탭 배제).
+      let ctabs: CodeTab[] = [];
+      try { const ct = JSON.parse(localStorage.getItem(K("code-tabs")) || "null"); if (Array.isArray(ct)) ctabs = ct.filter((x): x is CodeTab => x && typeof x.file === "string" && (x.kind === "file" || (x.kind === "diff" && (typeof x.hash === "string" || typeof x.worktree === "string")))); } catch { /* ignore */ }
+      setCodeTabs(ctabs);
+      // 활성 키가 복원된 탭에 없으면 마지막 탭으로 폴백(빈 pane 방지).
+      const ac = localStorage.getItem(K("active-code"));
+      setActiveCode(ctabs.some((tb) => codeTabKey(tb) === ac) ? ac : (ctabs.length ? codeTabKey(ctabs[ctabs.length - 1]) : null));
       setDocsRoot(localStorage.getItem(K("docs-root")) || null);
       try { const dt = JSON.parse(localStorage.getItem(K("doc-tabs")) || "null"); setDocTabs(Array.isArray(dt) ? dt.filter((x): x is string => typeof x === "string") : []); } catch { setDocTabs([]); }
       setActiveDoc(localStorage.getItem(K("active-doc")) || null);
