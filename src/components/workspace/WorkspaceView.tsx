@@ -101,6 +101,10 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       // 열린 코드 파일·diff 복원(#712). 경로는 repo 상대 — 같은 repo가 함께 복원되므로 유효.
       const of = localStorage.getItem("nunopi:ws-open-file"); if (of) setOpenFile(of);
       try { const od = JSON.parse(localStorage.getItem("nunopi:ws-open-diff") || "null"); if (od && typeof od.file === "string") setOpenDiff(od); } catch { /* ignore */ }
+      // 열린 문서 탭·활성 문서·문서 섹션 복원(#712).
+      try { const dt = JSON.parse(localStorage.getItem("nunopi:ws-doc-tabs") || "null"); if (Array.isArray(dt) && dt.every((x) => typeof x === "string")) setDocTabs(dt); } catch { /* ignore */ }
+      const ad = localStorage.getItem("nunopi:ws-active-doc"); if (ad) setActiveDoc(ad);
+      setDocsOpen(localStorage.getItem("nunopi:ws-docs-open") === "1");
     } catch { /* ignore */ }
     setHydrated(true); // 복원 끝 — 이제부터 저장 허용(#712)
   }, [mounted]);
@@ -108,6 +112,10 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   // 열린 코드 파일·diff 영속(#712) — 복원 완료(hydrated) 후에만 저장. 값 없으면 키 제거.
   useEffect(() => { if (!hydrated) return; try { if (openFile) localStorage.setItem("nunopi:ws-open-file", openFile); else localStorage.removeItem("nunopi:ws-open-file"); } catch { /* ignore */ } }, [openFile, hydrated]);
   useEffect(() => { if (!hydrated) return; try { if (openDiff) localStorage.setItem("nunopi:ws-open-diff", JSON.stringify(openDiff)); else localStorage.removeItem("nunopi:ws-open-diff"); } catch { /* ignore */ } }, [openDiff, hydrated]);
+  // 열린 문서 탭·활성 문서·문서 섹션 영속(#712).
+  useEffect(() => { if (!hydrated) return; try { if (docTabs.length) localStorage.setItem("nunopi:ws-doc-tabs", JSON.stringify(docTabs)); else localStorage.removeItem("nunopi:ws-doc-tabs"); } catch { /* ignore */ } }, [docTabs, hydrated]);
+  useEffect(() => { if (!hydrated) return; try { if (activeDoc) localStorage.setItem("nunopi:ws-active-doc", activeDoc); else localStorage.removeItem("nunopi:ws-active-doc"); } catch { /* ignore */ } }, [activeDoc, hydrated]);
+  useEffect(() => { if (!hydrated) return; try { localStorage.setItem("nunopi:ws-docs-open", docsOpen ? "1" : "0"); } catch { /* ignore */ } }, [docsOpen, hydrated]);
 
   // 드래그 리사이즈 — 전역 mousemove/up 리스너.
   useEffect(() => {
@@ -220,7 +228,11 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     setPicking(true);
     try {
       const r = await desktop.pickRepoFolder();
-      if (!r.canceled && r.path) { setDocsRoot(r.path); try { localStorage.setItem(WS_DOCS_KEY, r.path); } catch { /* ignore */ } }
+      if (!r.canceled && r.path) {
+        setDocsRoot(r.path);
+        setDocTabs([]); setActiveDoc(null); // 새 문서 폴더 = 이전 탭 무효(#712)
+        try { localStorage.setItem(WS_DOCS_KEY, r.path); localStorage.removeItem("nunopi:ws-doc-tabs"); localStorage.removeItem("nunopi:ws-active-doc"); } catch { /* ignore */ }
+      }
     } catch { /* 무시 */ } finally { setPicking(false); }
   }
 
