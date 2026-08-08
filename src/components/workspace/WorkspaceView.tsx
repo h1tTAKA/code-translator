@@ -14,8 +14,7 @@ import DocViewer from "@/components/workspace/DocViewer";
 import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
-const WS_PATH_KEY = "nunopi:workspace-path";
-const WS_DOCS_KEY = "nunopi:ws-docs-path"; // 문서 폴더(#693)
+const WS_PATH_KEY = "nunopi:workspace-path"; // 마지막 연 레포(전역). 나머지 열린 상태는 레포별 nunopi:ws:${path}:* (#712)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 // git status 문자(index,work) → 파일 트리 도트 종류. 삭제(D)는 트리에 행이 없어 스킵(#687).
@@ -72,7 +71,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH" | "docsH" | "docViewH"; startX: number; startY: number; startVal: number } | null>(null);
   const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220, docsH: 220, docViewH: 300 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
   const [mounted, setMounted] = useState(false);
-  const [hydrated, setHydrated] = useState(false); // 저장 상태 복원 완료 후 true — 이후에만 저장(마운트 초기값이 저장분 덮어쓰는 것 방지, #712)
+  const repoLoadedRef = useRef<string | null>(null); // 현재 열린 상태가 복원된 레포 path — 전환 중 오염 방지·저장 게이트(#712)
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
   useEffect(() => setMounted(true), []);
   const desktop = mounted ? window.nunopiDesktop : undefined;
@@ -80,8 +79,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   useEffect(() => {
     if (!mounted) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 경로 복원(1회)
-    try { const s = localStorage.getItem(WS_PATH_KEY); if (s) setPath(s); } catch { /* ignore */ }
-    try { const ds = localStorage.getItem(WS_DOCS_KEY); if (ds) setDocsRoot(ds); } catch { /* ignore */ } // 문서 폴더 복원(#693)
+    try { const s = localStorage.getItem(WS_PATH_KEY); if (s) setPath(s); } catch { /* ignore */ } // docsRoot·열린상태는 레포별 — 아래 path 이펙트가 복원(#712)
   }, [mounted]);
 
   // 저장된 패널 폭 복원.
@@ -98,24 +96,35 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       try { const p = JSON.parse(localStorage.getItem("nunopi:ws-doc-dock") || "null"); if (p && (p.region === "terminal" || p.region === "code") && (p.pos === "top" || p.pos === "bottom")) setDocDock(p); } catch { /* ignore */ } // 문서 dock 복원(#693)
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
-      // 열린 코드 파일·diff 복원(#712). 경로는 repo 상대 — 같은 repo가 함께 복원되므로 유효.
-      const of = localStorage.getItem("nunopi:ws-open-file"); if (of) setOpenFile(of);
-      try { const od = JSON.parse(localStorage.getItem("nunopi:ws-open-diff") || "null"); if (od && typeof od.file === "string") setOpenDiff(od); } catch { /* ignore */ }
-      // 열린 문서 탭·활성 문서·문서 섹션 복원(#712).
-      try { const dt = JSON.parse(localStorage.getItem("nunopi:ws-doc-tabs") || "null"); if (Array.isArray(dt) && dt.every((x) => typeof x === "string")) setDocTabs(dt); } catch { /* ignore */ }
-      const ad = localStorage.getItem("nunopi:ws-active-doc"); if (ad) setActiveDoc(ad);
-      setDocsOpen(localStorage.getItem("nunopi:ws-docs-open") === "1");
     } catch { /* ignore */ }
-    setHydrated(true); // 복원 끝 — 이제부터 저장 허용(#712)
   }, [mounted]);
 
-  // 열린 코드 파일·diff 영속(#712) — 복원 완료(hydrated) 후에만 저장. 값 없으면 키 제거.
-  useEffect(() => { if (!hydrated) return; try { if (openFile) localStorage.setItem("nunopi:ws-open-file", openFile); else localStorage.removeItem("nunopi:ws-open-file"); } catch { /* ignore */ } }, [openFile, hydrated]);
-  useEffect(() => { if (!hydrated) return; try { if (openDiff) localStorage.setItem("nunopi:ws-open-diff", JSON.stringify(openDiff)); else localStorage.removeItem("nunopi:ws-open-diff"); } catch { /* ignore */ } }, [openDiff, hydrated]);
-  // 열린 문서 탭·활성 문서·문서 섹션 영속(#712).
-  useEffect(() => { if (!hydrated) return; try { if (docTabs.length) localStorage.setItem("nunopi:ws-doc-tabs", JSON.stringify(docTabs)); else localStorage.removeItem("nunopi:ws-doc-tabs"); } catch { /* ignore */ } }, [docTabs, hydrated]);
-  useEffect(() => { if (!hydrated) return; try { if (activeDoc) localStorage.setItem("nunopi:ws-active-doc", activeDoc); else localStorage.removeItem("nunopi:ws-active-doc"); } catch { /* ignore */ } }, [activeDoc, hydrated]);
-  useEffect(() => { if (!hydrated) return; try { localStorage.setItem("nunopi:ws-docs-open", docsOpen ? "1" : "0"); } catch { /* ignore */ } }, [docsOpen, hydrated]);
+  // 레포별 열린 상태 복원(#712) — path(레포) 바뀔 때마다 그 레포의 저장분을 로드(챗처럼 레포 스코프). 없으면 초기화.
+  useEffect(() => {
+    if (!mounted) return;
+    const p = path;
+    if (!p) { repoLoadedRef.current = null; return; }
+    const K = (b: string) => `nunopi:ws:${p}:${b}`;
+    try {
+      /* eslint-disable react-hooks/set-state-in-effect -- path 변경 시 그 레포 상태 복원 */
+      setOpenFile(localStorage.getItem(K("open-file")) || null);
+      try { const od = JSON.parse(localStorage.getItem(K("open-diff")) || "null"); setOpenDiff(od && typeof od.file === "string" ? od : null); } catch { setOpenDiff(null); }
+      setDocsRoot(localStorage.getItem(K("docs-root")) || null);
+      try { const dt = JSON.parse(localStorage.getItem(K("doc-tabs")) || "null"); setDocTabs(Array.isArray(dt) ? dt.filter((x): x is string => typeof x === "string") : []); } catch { setDocTabs([]); }
+      setActiveDoc(localStorage.getItem(K("active-doc")) || null);
+      setDocsOpen(localStorage.getItem(K("docs-open")) === "1");
+      /* eslint-enable react-hooks/set-state-in-effect */
+    } catch { /* ignore */ }
+    repoLoadedRef.current = p;
+  }, [path, mounted]);
+
+  // 레포 스코프 저장(#712) — 복원된 레포와 현재 path 일치할 때만(전환 중 A→B 오염 방지). deps는 값만, path는 클로저.
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:open-file`; try { if (openFile) localStorage.setItem(k, openFile); else localStorage.removeItem(k); } catch { /* ignore */ } }, [openFile]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:open-diff`; try { if (openDiff) localStorage.setItem(k, JSON.stringify(openDiff)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [openDiff]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:docs-root`; try { if (docsRoot) localStorage.setItem(k, docsRoot); else localStorage.removeItem(k); } catch { /* ignore */ } }, [docsRoot]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:doc-tabs`; try { if (docTabs.length) localStorage.setItem(k, JSON.stringify(docTabs)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [docTabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:active-doc`; try { if (activeDoc) localStorage.setItem(k, activeDoc); else localStorage.removeItem(k); } catch { /* ignore */ } }, [activeDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!path || repoLoadedRef.current !== path) return; const k = `nunopi:ws:${path}:docs-open`; try { localStorage.setItem(k, docsOpen ? "1" : "0"); } catch { /* ignore */ } }, [docsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 드래그 리사이즈 — 전역 mousemove/up 리스너.
   useEffect(() => {
@@ -215,9 +224,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     try {
       const r = await desktop.pickRepoFolder();
       if (!r.canceled && r.path) {
-        setPath(r.path);
-        setOpenFile(null); setOpenDiff(null); // 새 레포 = 이전 열린 파일/diff 무효(#712)
-        try { localStorage.setItem(WS_PATH_KEY, r.path); localStorage.removeItem("nunopi:ws-open-file"); localStorage.removeItem("nunopi:ws-open-diff"); } catch { /* ignore */ }
+        setPath(r.path); // path 변경 → 위 이펙트가 그 레포의 열린 상태를 로드(없으면 초기화)(#712)
+        try { localStorage.setItem(WS_PATH_KEY, r.path); } catch { /* ignore */ }
       }
     } catch { /* 무시 */ } finally { setPicking(false); }
   }
@@ -230,8 +238,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const r = await desktop.pickRepoFolder();
       if (!r.canceled && r.path) {
         setDocsRoot(r.path);
-        setDocTabs([]); setActiveDoc(null); // 새 문서 폴더 = 이전 탭 무효(#712)
-        try { localStorage.setItem(WS_DOCS_KEY, r.path); localStorage.removeItem("nunopi:ws-doc-tabs"); localStorage.removeItem("nunopi:ws-active-doc"); } catch { /* ignore */ }
+        setDocTabs([]); setActiveDoc(null); // 새 문서 폴더 = 이전 탭 무효. 레포 스코프 저장 이펙트가 반영(#712)
       }
     } catch { /* 무시 */ } finally { setPicking(false); }
   }
@@ -326,7 +333,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             {treeLoading ? (
               <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : files.length > 0 ? (
-              <FileTree files={files} status={fileStatus} selected={openFile} storageKey="nunopi:ws-tree-open" onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
+              <FileTree key={path} files={files} status={fileStatus} selected={openFile} storageKey={path ? `nunopi:ws:${path}:tree-open` : undefined} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
             ) : (
               <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
             )}
@@ -355,7 +362,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
                     <button type="button" onClick={pickDocs} className="ml-auto shrink-0 rounded px-1 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800">{t("workspace.docsChangeFolder")}</button>
                   </div>
                   <div className="min-h-0 flex-1">
-                    <FileTree files={docsFiles} selected={activeDoc} storageKey="nunopi:ws-docs-tree-open" onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) openDoc(id); }} />
+                    <FileTree key={docsRoot} files={docsFiles} selected={activeDoc} storageKey={path ? `nunopi:ws:${path}:docs-tree-open` : undefined} onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) openDoc(id); }} />
                   </div>
                 </>
               ) : (
