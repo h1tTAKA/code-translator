@@ -1,8 +1,8 @@
 "use client";
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconGitCommit, IconX } from "@tabler/icons-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -11,7 +11,7 @@ import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
-import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
+import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, isDockNode, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path"; // 마지막 연 레포(전역). 나머지 열린 상태는 레포별 nunopi:ws:${path}:* (#712)
@@ -53,11 +53,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const [docTabs, setDocTabs] = useState<string[]>([]); // 열린 문서 탭(rel 경로들, #693)
   const [activeDoc, setActiveDoc] = useState<string | null>(null); // 활성 문서
   const [docsOpen, setDocsOpen] = useState(false); // 좌측 문서 섹션 열림
-  // 문서 뷰어 dock(#693): region=어느 영역과 분할할지(터미널/코드), pos=위/아래. docViewH=문서 pane 높이(px).
-  const [docDock, setDocDock] = useState<{ region: "terminal" | "code"; pos: "top" | "bottom" }>({ region: "code", pos: "bottom" });
-  const [docViewH, setDocViewH] = useState(300);
-  const docDockRef = useRef(docDock); // 드래그 move 핸들러(stale 클로저)서 최신 pos 읽기용
-  useEffect(() => { docDockRef.current = docDock; });
+  // 중앙 3패널 커스텀 도킹 분할 트리(#716) — 터미널·코드·문서를 자유 배치. null이면 기본 트리 생성.
+  const [dockTree, setDockTree] = useState<DockNode | null>(null);
   // 코드/diff 멀티탭(#714) — 파일·diff를 탭으로 쌓음(터미널·문서처럼). openFile/openDiff 단일 슬롯 대체.
   const [codeTabs, setCodeTabs] = useState<CodeTab[]>([]);
   const [activeCode, setActiveCode] = useState<string | null>(null); // 활성 탭 키(codeTabKey)
@@ -68,13 +65,12 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   // 패널 폭(px) — 드래그 리사이즈, localStorage 영속.
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
-  const [codeW, setCodeW] = useState(480);
   const [chatOpen, setChatOpen] = useState(true);  // 우측 챗 패널 열림(#695)
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
-  const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH" | "docsH" | "docViewH"; startX: number; startY: number; startVal: number } | null>(null);
-  const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220, docsH: 220, docViewH: 300 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
+  const dragRef = useRef<{ kind: "tree" | "chat" | "gitH" | "docsH"; startX: number; startY: number; startVal: number } | null>(null);
+  const wRef = useRef({ tree: 240, chat: 320, gitH: 220, docsH: 220 }); // 최신 폭·높이 미러(드래그 종료 시 영속용). 중앙은 도킹 트리 관리.
   const [mounted, setMounted] = useState(false);
   const repoLoadedRef = useRef<string | null>(null); // 현재 열린 상태가 복원된 레포 path — 전환 중 오염 방지·저장 게이트(#712)
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
@@ -94,11 +90,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 폭 복원(1회)
       const t = Number(localStorage.getItem("nunopi:ws-tree-w")); if (t) { const v = clamp(t, 140, 560); setTreeW(v); wRef.current.tree = v; }
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
-      const k = Number(localStorage.getItem("nunopi:ws-code-w")); if (k) { const v = clamp(k, 240, 900); setCodeW(v); wRef.current.code = v; }
       const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
       const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
-      const dvh = Number(localStorage.getItem("nunopi:ws-docview-h")); if (dvh) { const v = clamp(dvh, 120, 900); setDocViewH(v); wRef.current.docViewH = v; }
-      try { const p = JSON.parse(localStorage.getItem("nunopi:ws-doc-dock") || "null"); if (p && (p.region === "terminal" || p.region === "code") && (p.pos === "top" || p.pos === "bottom")) setDocDock(p); } catch { /* ignore */ } // 문서 dock 복원(#693)
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
     } catch { /* ignore */ }
@@ -143,14 +136,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       const d = dragRef.current; if (!d) return;
       const dx = e.clientX - d.startX;
       if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
-      else if (d.kind === "code") { const v = clamp(d.startVal - dx, 240, 900); setCodeW(v); wRef.current.code = v; }
       else if (d.kind === "chat") { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
       else if (d.kind === "gitH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // 세로
-      else if (d.kind === "docsH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setDocsH(v); wRef.current.docsH = v; } // docsH: 세로
-      else { // docViewH: 문서 pane 높이. pos=top이면 아래로 드래그=커짐(+), bottom이면 반대(-).
-        const dy = e.clientY - d.startY; const sign = docDockRef.current.pos === "top" ? 1 : -1;
-        const v = clamp(d.startVal + sign * dy, 120, 900); setDocViewH(v); wRef.current.docViewH = v;
-      }
+      else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setDocsH(v); wRef.current.docsH = v; } // docsH: 세로
     };
     const up = () => {
       if (!dragRef.current) return;
@@ -158,22 +146,43 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       try {
         localStorage.setItem("nunopi:ws-tree-w", String(wRef.current.tree));
         localStorage.setItem("nunopi:ws-chat-w", String(wRef.current.chat));
-        localStorage.setItem("nunopi:ws-code-w", String(wRef.current.code));
         localStorage.setItem("nunopi:ws-git-h", String(wRef.current.gitH));
         localStorage.setItem("nunopi:ws-docs-h", String(wRef.current.docsH));
-        localStorage.setItem("nunopi:ws-docview-h", String(wRef.current.docViewH));
       } catch { /* ignore */ }
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, []);
 
-  const startDrag = (kind: "tree" | "code" | "chat" | "gitH" | "docsH" | "docViewH", startVal: number) => (e: React.MouseEvent) => {
+  const startDrag = (kind: "tree" | "chat" | "gitH" | "docsH", startVal: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     // eslint-disable-next-line react-hooks/refs -- 이벤트 핸들러 내 ref 쓰기(렌더 중 아님)
     dragRef.current = { kind, startX: e.clientX, startY: e.clientY, startVal };
-    document.body.style.cursor = (kind === "gitH" || kind === "docsH" || kind === "docViewH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
+    document.body.style.cursor = (kind === "gitH" || kind === "docsH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
   };
+
+  // 중앙 도킹 트리 동기화·영속(#716) — 존재 패널(터미널 항상·코드=탭·문서=열림)에 맞춰 트리 유지.
+  // 레포 전환 시 그 레포의 저장 트리를 base로 로드(레포별 영속), 아니면 이전 트리 유지. 리프 집합 같으면 배치·비율 보존, 다르면 prune 후 필요 시 기본.
+  const hasCode = codeTabs.length > 0;
+  const hasDoc = !!(docsRoot && activeDoc && docTabs.length);
+  const dockRepoRef = useRef<string | null>(null); // 현재 dockTree가 로드된 레포 — 전환 감지·저장 게이트
+  useEffect(() => {
+    if (!mounted || !path) return;
+    const has: Record<PanelId, boolean> = { terminal: true, code: hasCode, doc: hasDoc };
+    const switched = dockRepoRef.current !== path;
+    let stored: DockNode | null = null;
+    if (switched) { try { const j = JSON.parse(localStorage.getItem(`nunopi:ws:${path}:dock-tree`) || "null"); if (isDockNode(j)) stored = j; } catch { /* ignore */ } dockRepoRef.current = path; }
+    setDockTree((prev) => {
+      const base = switched ? stored : prev;
+      const pruned = base ? pruneTree(base, has) : null;
+      const cur = pruned ? leavesOf(pruned) : new Set<PanelId>();
+      const need = (["terminal", "code", "doc"] as PanelId[]).filter((p) => has[p]);
+      const same = pruned && need.length === cur.size && need.every((p) => cur.has(p));
+      return same ? pruned : defaultTree(has);
+    });
+  }, [path, hasCode, hasDoc, mounted]);
+  // 도킹 트리 저장(#716) — 로드된 레포와 현재 path 일치할 때만(전환 오염 방지).
+  useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree]); // eslint-disable-line react-hooks/exhaustive-deps -- path 제외: 전환 커밋에 옛 트리를 새 레포 키에 쓰는 오염 방지(dockTree 변할 때만 저장)
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
@@ -319,8 +328,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   // 코드/diff 노드(멀티탭, #714) — 문서 뷰어(DocViewer)와 동형 탭 바 + 활성 pane. 코드 영역 분할 배치에 재사용(#693).
   const codeNode = codeTabs.length ? (
     <div className="flex h-full min-h-0 flex-col">
-      {/* 탭 바(스크롤) — 파일/diff 각 탭. × 로 닫기, 클릭으로 전환. */}
-      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-[#15161d]">
+      {/* 탭 바(스크롤) — 파일/diff 각 탭. × 로 닫기, 클릭으로 전환. pr-6: 우상단 이동 그립 자리 예약(#716). */}
+      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-[17px] dark:border-zinc-800 dark:bg-[#15161d]">
         <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
           {codeTabs.map((tb) => {
             const key = codeTabKey(tb);
@@ -352,26 +361,16 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       </div>
     </div>
   ) : null;
-  // 문서 뷰어 — dock된 region에 따라 코드/터미널 영역에 배치(#693).
-  const docOpen = !!(docsRoot && activeDoc && docTabs.length);
-  const docInCode = docOpen && docDock.region === "code";
-  const docInTerminal = docOpen && docDock.region === "terminal";
-  // dock 변경은 토글에서만 → 여기서 바로 영속(마운트 시 write로 restore 덮어쓰는 것 방지).
-  const persistDock = (d: { region: "terminal" | "code"; pos: "top" | "bottom" }) => { try { localStorage.setItem("nunopi:ws-doc-dock", JSON.stringify(d)); } catch { /* ignore */ } };
-  const togglePos = () => setDocDock((d) => { const n = { ...d, pos: (d.pos === "top" ? "bottom" : "top") as "top" | "bottom" }; persistDock(n); return n; });
-  const toggleRegion = () => setDocDock((d) => { const n = { ...d, region: (d.region === "code" ? "terminal" : "code") as "terminal" | "code" }; persistDock(n); return n; });
-  // split=상하 공존(pos 토글 노출). region 토글은 항상.
-  const makeDoc = (split: boolean) => (
-    <DocViewer root={docsRoot!} tabs={docTabs} activeDoc={activeDoc!} onActivate={setActiveDoc} onCloseTab={closeDocTab}
-      pos={split ? docDock.pos : undefined} onTogglePos={split ? togglePos : undefined}
-      region={docDock.region} onToggleRegion={toggleRegion} />
-  );
-  // 문서↔코드 경계(잡기 쉽게 8px 히트영역 + 가운데 그립). 좌측 문서 브라우저 핸들과 헷갈리지 않게 명확히.
-  const rowDrag = (
-    <div onMouseDown={startDrag("docViewH", docViewH)} className="group relative h-2 shrink-0 cursor-row-resize" title={t("workspace.docResize")}>
-      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-zinc-200 transition group-hover:bg-[#3B34E2]/60 dark:bg-zinc-800 dark:group-hover:bg-[#8b86f5]/60" />
-    </div>
-  );
+  // 문서 노드(#716) — 배치는 도킹 트리가 담당하므로 DocViewer의 dock 토글은 넘기지 않음(디자인·탭은 그대로).
+  const docNode = hasDoc ? (
+    <DocViewer root={docsRoot!} tabs={docTabs} activeDoc={activeDoc!} onActivate={setActiveDoc} onCloseTab={closeDocTab} />
+  ) : null;
+  // 도킹 트리에 넘길 패널 3종(존재하는 것만 트리 리프로 렌더됨). 기존 컴포넌트 그대로.
+  const dockPanels: Record<PanelId, ReactNode> = {
+    terminal: <TerminalPane cwd={path} />,
+    code: codeNode,
+    doc: docNode,
+  };
 
   // 4존 셸.
   return (
@@ -380,8 +379,13 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <IconFiles size={15} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
         <span className="truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{folderName}</span>
         <button type="button" onClick={pick} disabled={picking}
-          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-[12px] font-medium text-zinc-600 transition hover:border-[#3B34E2] hover:text-[#3B34E2] disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300">
+          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-[12px] font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100">
           <IconFolderOpen size={14} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
+        </button>
+        {/* 우측 챗 패널 접기/펴기(#716·#695) — 헤더 토글. 열림=collapse 아이콘, 접힘=expand 아이콘. */}
+        <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
+          className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+          {chatOpen ? <IconLayoutSidebarRightCollapse size={16} stroke={2} aria-hidden /> : <IconLayoutSidebarRightExpand size={16} stroke={2} aria-hidden />}
         </button>
       </header>
       <div className="relative flex min-h-0 flex-1">
@@ -440,56 +444,9 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
           </button>
         </aside>
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-        {/* 가운데: 터미널 | (파일 열면) 코드 */}
+        {/* 가운데: 커스텀 도킹 분할 트리(터미널·코드·문서 자유 배치, #716). 기존 패널 그대로 렌더만 재배치. */}
         <section className="flex min-w-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
-            {docInTerminal ? (
-              // 문서를 터미널 영역과 상하 분할.
-              docDock.pos === "top" ? (
-                <>
-                  <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
-                  {rowDrag}
-                  <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
-                </>
-              ) : (
-                <>
-                  <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
-                  {rowDrag}
-                  <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
-                </>
-              )
-            ) : (
-              <div className="min-h-0 flex-1"><TerminalPane cwd={path} /></div>
-            )}
-          </div>
-          {(codeNode || docInCode) && (
-            <>
-              <div onMouseDown={startDrag("code", codeW)} className="w-1 shrink-0 cursor-col-resize border-l border-zinc-200 transition hover:bg-[#3B34E2]/40 dark:border-zinc-800 dark:hover:bg-[#8b86f5]/40" />
-              <div style={{ width: codeW }} className="flex shrink-0 flex-col">
-                {codeNode && docInCode ? (
-                  // 코드/diff + 문서 상하 공존 — pos로 순서, docViewH로 문서 높이.
-                  docDock.pos === "top" ? (
-                    <>
-                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
-                      {rowDrag}
-                      <div className="min-h-0 flex-1">{codeNode}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="min-h-0 flex-1">{codeNode}</div>
-                      {rowDrag}
-                      <div style={{ height: docViewH }} className="min-h-0 shrink-0 overflow-hidden">{makeDoc(true)}</div>
-                    </>
-                  )
-                ) : codeNode ? (
-                  <div className="min-h-0 flex-1">{codeNode}</div>
-                ) : (
-                  // 코드/diff 없이 문서만 코드 영역 → 그 열 전체.
-                  <div className="min-h-0 flex-1">{makeDoc(false)}</div>
-                )}
-              </div>
-            </>
-          )}
+          {dockTree && <WorkspaceDockLayout tree={dockTree} panels={dockPanels} onTreeChange={setDockTree} />}
         </section>
         {/* 우: 챗룸(접기/펴기 #695) — 접힘 시 aside·divider 미렌더(폭 0). 토글은 아래 플로팅 엣지 탭. */}
         {chatOpen && (
@@ -500,11 +457,6 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             </aside>
           </>
         )}
-        {/* 단일 플로팅 엣지 탭(공통 PanelEdgeToggle) — 레이아웃 폭 안 먹음(absolute). 열림:챗 좌경계(right=chatW+2) / 접힘:우측 끝(right=0). */}
-        <PanelEdgeToggle collapsed={!chatOpen} onToggle={toggleChat} collapsedDir="left" orientation="vertical"
-          title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
-          style={{ right: chatOpen ? chatW + 2 : 0 }}
-          className="absolute top-1/2 -translate-y-1/2 rounded-l-md border-y border-l border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#0b0c12]" />
       </div>
     </div>
   );
