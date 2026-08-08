@@ -107,6 +107,30 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   };
 
   const graphW = useMemo(() => (model ? Math.max(1, model.laneCount) * LANE_W : LANE_W), [model]);
+  // 그래프 열 가시 폭(#718) — 브랜치 많으면 그래프가 커밋메세지를 밀어내므로 기본 ~3레인만 보이게 클립, divider로 넓혀 확인.
+  // graphColW=유저가 지정한 폭(null=기본). colW=실제 적용 폭(graphW 넘지 않게 clamp). colW<graphW면 divider 노출.
+  const [graphColW, setGraphColW] = useState<number | null>(null);
+  const DEFAULT_COL = 3 * LANE_W + 12, MIN_COL = LANE_W + 8;
+  const colW = graphColW != null ? Math.min(Math.max(graphColW, MIN_COL), graphW) : Math.min(graphW, DEFAULT_COL);
+  const graphWRef = useRef(graphW); // 드래그 move서 최신 graphW
+  useEffect(() => { graphWRef.current = graphW; }, [graphW]);
+  // 그래프 열 폭 레포별 영속(#718) — root(레포) 바뀌면 그 레포 저장분 로드, graphColW 변경 시 저장. colRepoRef로 전환 오염 방지.
+  const colRepoRef = useRef<string | null>(null);
+  useEffect(() => {
+    colRepoRef.current = root;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- root 변경 시 그 레포 폭 복원
+    try { const s = Number(localStorage.getItem(`nunopi:ws:${root}:git-graph-col-w`)); setGraphColW(Number.isFinite(s) && s > 0 ? s : null); } catch { setGraphColW(null); }
+  }, [root]);
+  useEffect(() => { if (colRepoRef.current !== root) return; const k = `nunopi:ws:${root}:git-graph-col-w`; try { if (graphColW != null) localStorage.setItem(k, String(graphColW)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [graphColW]); // eslint-disable-line react-hooks/exhaustive-deps -- root 제외: 전환 커밋에 옛 폭을 새 레포 키에 쓰는 오염 방지
+  const startColDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const wrap = e.currentTarget.parentElement; if (!wrap) return;
+    const left = wrap.getBoundingClientRect().left;
+    const move = (ev: PointerEvent) => setGraphColW(Math.min(Math.max(ev.clientX - left, MIN_COL), graphWRef.current));
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
+  };
 
   // 브랜치 색(#707) — "브랜치 정체성" 기준. 첫 tip(HEAD 계열)=트렁크 색, 첫 부모로 이어지는 커밋은 같은 색 승계 → 한 브랜치=한 색.
   // 새 tip(위에서 아무도 안 기다리던 커밋)이 나올 때마다 accent 순환. 레인 재사용해도 브랜치마다 다른 색.
@@ -211,8 +235,13 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
               )}
             </div>
           )}
-          {/* 커밋 그래프 — 나머지 공간, 자체 스크롤 */}
-          <div className="nunopi-scroll min-h-0 flex-1 overflow-auto">
+          {/* 커밋 그래프 — 나머지 공간. 그래프 열은 colW로 고정(클립), 우측 divider로 넓힘(#718). */}
+          <div className="relative min-h-0 flex-1">
+          {colW < graphW && (
+            <div onPointerDown={startColDrag} style={{ left: colW }} title={t("workspace.gitGraphResize")}
+              className="absolute inset-y-0 z-10 -ml-0.5 w-1 cursor-col-resize bg-transparent transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
+          )}
+          <div className="nunopi-scroll h-full overflow-auto">
           {model?.rows.map((row, idx) => {
             const dotY = ROW_H / 2;
             // 각 부모로 향하는 선을 "점→점" 곡선으로(#707) — 반행 stub 없이 점에서 점까지 한 번에 부드럽게(orca식).
@@ -240,16 +269,18 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                     hoverTimer.current = setTimeout(() => setHover(payload), HOVER_DELAY_MS); // 머물러야 뜸
                   }}
                   onMouseLeave={clearHover}
-                  className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
-                  {/* overflow visible — 점→점 곡선이 이 행 아래(부모 행)까지 뻗어도 잘리지 않게. 레이아웃은 ROW_H만 차지. */}
-                  <svg width={graphW} height={ROW_H} className="shrink-0" style={{ minWidth: graphW, overflow: "visible" }} aria-hidden>
-                    {edges.map((l, k) => <path key={k} d={linkPath(l.x1, l.y1, l.x2, l.y2)} stroke={l.color} strokeWidth={2} fill="none" strokeLinecap="round" />)}
-                    {row.lane === 0
-                      ? <circle cx={cx(row.lane)} cy={dotY} r={4} className="fill-white dark:fill-[#0b0c12]" stroke={colorOf(row.commit.hash)} strokeWidth={2} />
-                      : <circle cx={cx(row.lane)} cy={dotY} r={3.5} fill={colorOf(row.commit.hash)} />}
-                  </svg>
+                  className="flex w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
+                  {/* 그래프 셀 — 가로는 colW로 클립(overflow-x:clip), 세로는 visible(점→점 곡선이 부모 행까지 뻗음, #707). */}
+                  <div className="shrink-0" style={{ width: colW, height: ROW_H, overflowX: "clip", overflowY: "visible" }}>
+                    <svg width={graphW} height={ROW_H} style={{ minWidth: graphW, overflow: "visible" }} aria-hidden>
+                      {edges.map((l, k) => <path key={k} d={linkPath(l.x1, l.y1, l.x2, l.y2)} stroke={l.color} strokeWidth={2} fill="none" strokeLinecap="round" />)}
+                      {row.lane === 0
+                        ? <circle cx={cx(row.lane)} cy={dotY} r={4} className="fill-white dark:fill-[#0b0c12]" stroke={colorOf(row.commit.hash)} strokeWidth={2} />
+                        : <circle cx={cx(row.lane)} cy={dotY} r={3.5} fill={colorOf(row.commit.hash)} />}
+                    </svg>
+                  </div>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
-                  <span className="flex items-baseline gap-1.5 whitespace-nowrap pr-3 text-[11px]">
+                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden pr-3 text-[11px]">
                     {row.commit.refs.map((rf) => {
                       const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
                       const b = refBadge(rf, branch);
@@ -265,24 +296,24 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         </span>
                       );
                     })}
-                    {/* 순서: 커밋메세지 → 이름 → 해시. nowrap로 흐르고, 좁으면 뒤가 잘려 패널 드래그·가로스크롤로 봄(#685). */}
-                    <span className="text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
-                    {(() => { const login = githubLogin(row.commit.email); return <span className="text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
-                    <span className="font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
+                    {/* 순서: 커밋메세지 → 이름 → 해시. 좁으면 subject가 truncate(전체는 호버 툴팁, #685). */}
+                    <span className="min-w-0 truncate text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
+                    {(() => { const login = githubLogin(row.commit.email); return <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
+                    <span className="shrink-0 font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
                   </span>
                 </button>
                 {isOpen && (
                   <div>
                     {files == null ? (
-                      <div className="flex items-center pl-[var(--gw)] text-zinc-400" style={{ height: FILE_H, ["--gw" as string]: `${graphW}px` }}><IconLoader2 size={11} stroke={2} className="ml-3 animate-spin" aria-hidden /></div>
+                      <div className="flex items-center text-zinc-400" style={{ height: FILE_H }}><span style={{ width: colW }} className="shrink-0" /><IconLoader2 size={11} stroke={2} className="ml-3 animate-spin" aria-hidden /></div>
                     ) : files.length === 0 ? (
-                      <div className="flex items-center text-[10px] text-zinc-400" style={{ height: FILE_H }}><span style={{ width: graphW }} className="shrink-0" /><span className="pl-3">(변경 없음)</span></div>
+                      <div className="flex items-center text-[10px] text-zinc-400" style={{ height: FILE_H }}><span style={{ width: colW }} className="shrink-0" /><span className="pl-3">(변경 없음)</span></div>
                     ) : files.map((f) => {
                       const [badge, cls] = STATUS[f.status as keyof typeof STATUS] ?? ["?", "text-zinc-400"];
                       return (
                         <button key={f.path} type="button" onClick={() => onOpenDiff(row.commit.hash, f.path)} className="flex w-full items-center text-left hover:bg-zinc-100 dark:hover:bg-zinc-800" style={{ height: FILE_H }}>
-                          {/* 그래프 열 스페이서 — 선은 위 커밋의 점→점 곡선이 이 구간을 가로질러 지나가므로 여기선 자리만 확보(#707). */}
-                          <span style={{ width: graphW }} className="shrink-0" aria-hidden />
+                          {/* 그래프 열 스페이서(colW) — 선은 위 커밋의 점→점 곡선이 이 구간을 가로질러 지나감(#707). */}
+                          <span style={{ width: colW }} className="shrink-0" aria-hidden />
                           <span className="flex min-w-0 flex-1 items-baseline gap-1.5 pl-3 pr-2 text-[11px]">
                             <span className={`shrink-0 font-mono text-[9px] font-bold ${cls}`}>{badge}</span>
                             <span className="truncate text-zinc-600 dark:text-zinc-300">{f.path.split("/").pop()}</span>
@@ -296,6 +327,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
               </div>
             );
           })}
+          </div>
           </div>
         </div>
       )}
