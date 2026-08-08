@@ -2,8 +2,9 @@
 // 중앙 3패널 커스텀 도킹 레이아웃(#716) — 라이브러리 없이 "분할 트리"로 배치.
 // 기존 패널(터미널·코드·문서) 컴포넌트를 그대로 렌더만 재배치. 디자인 변경 0.
 // 커밋1: 트리 렌더 + split 리사이즈(기본 배치=현재와 동일). 드래그 도킹은 커밋2.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { IconGripVertical } from "@tabler/icons-react";
 
 export type PanelId = "terminal" | "code" | "doc";
 export type DockNode =
@@ -48,6 +49,38 @@ function setRatioAt(node: DockNode, path: ("a" | "b")[], ratio: number): DockNod
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const MIN_RATIO = 0.12;
 
+// ── 드래그 도킹 트리 조작(#716) ──
+type Edge = "left" | "right" | "top" | "bottom";
+// 트리에서 한 패널 리프 제거 후 형제 승격(없으면 null).
+function removeLeaf(node: DockNode, panel: PanelId): DockNode | null {
+  if (node.t === "leaf") return node.panel === panel ? null : node;
+  const a = removeLeaf(node.a, panel), b = removeLeaf(node.b, panel);
+  return a && b ? { ...node, a, b } : (a ?? b);
+}
+// target 리프를 edge 방향으로 split해 dragged를 새 형제로 삽입.
+function insertBeside(node: DockNode, target: PanelId, dragged: PanelId, edge: Edge): DockNode {
+  if (node.t === "leaf") {
+    if (node.panel !== target) return node;
+    const dir: "row" | "col" = edge === "left" || edge === "right" ? "row" : "col";
+    const dl: DockNode = { t: "leaf", panel: dragged };
+    const before = edge === "left" || edge === "top";
+    return { t: "split", dir, a: before ? dl : node, b: before ? node : dl, ratio: 0.5 };
+  }
+  return { ...node, a: insertBeside(node.a, target, dragged, edge), b: insertBeside(node.b, target, dragged, edge) };
+}
+// dragged 패널을 target 패널의 edge 쪽으로 도킹.
+function dockTo(tree: DockNode, dragged: PanelId, target: PanelId, edge: Edge): DockNode {
+  if (dragged === target) return tree;
+  const removed = removeLeaf(tree, dragged);
+  return removed ? insertBeside(removed, target, dragged, edge) : tree;
+}
+// 포인터 위치 → 가장 가까운 가장자리(사분면).
+function edgeOf(rect: DOMRect, x: number, y: number): Edge {
+  const px = (x - rect.left) / rect.width, py = (y - rect.top) / rect.height;
+  const dl = px, dr = 1 - px, dt = py, db = 1 - py, m = Math.min(dl, dr, dt, db);
+  return m === dl ? "left" : m === dr ? "right" : m === dt ? "top" : "bottom";
+}
+
 export default function WorkspaceDockLayout({ tree, panels, onTreeChange }: {
   tree: DockNode;
   panels: Record<PanelId, ReactNode>;
@@ -55,9 +88,36 @@ export default function WorkspaceDockLayout({ tree, panels, onTreeChange }: {
 }) {
   const treeRef = useRef(tree); // 드래그 move에서 최신 트리 읽기(closure stale 방지)
   useEffect(() => { treeRef.current = tree; }, [tree]);
+  const [drag, setDrag] = useState<PanelId | null>(null);      // 드래그 중인 패널
+  const [over, setOver] = useState<{ panel: PanelId; edge: Edge } | null>(null); // 현재 드롭 대상·가장자리
 
   const renderNode = (node: DockNode, path: ("a" | "b")[]): ReactNode => {
-    if (node.t === "leaf") return <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">{panels[node.panel]}</div>;
+    if (node.t === "leaf") {
+      const panel = node.panel;
+      const showOver = over && over.panel === panel && drag && drag !== panel;
+      const ov = over?.edge;
+      return (
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          {panels[panel]}
+          {/* 이동 핸들(우상단 그립) — 잡아서 다른 패널 가장자리로 드롭하면 그 방향으로 도킹. 패널 내부 조작과 안 겹치게 작게. */}
+          <div draggable
+            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", panel); setDrag(panel); }}
+            onDragEnd={() => { setDrag(null); setOver(null); }}
+            title="패널 이동" aria-label="패널 이동"
+            className="absolute right-1 top-1 z-20 flex h-5 w-5 cursor-grab items-center justify-center rounded text-zinc-400 opacity-40 transition hover:bg-zinc-200 hover:opacity-100 active:cursor-grabbing dark:hover:bg-zinc-700">
+            <IconGripVertical size={13} stroke={2} aria-hidden />
+          </div>
+          {/* 드래그 중: 다른 패널 위에 드롭 오버레이(이벤트 안정 캡처 + 가장자리 하이라이트). 자기 자신엔 안 뜸. */}
+          {drag && drag !== panel && (
+            <div className="absolute inset-0 z-30"
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver({ panel, edge: edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY) }); }}
+              onDrop={(e) => { e.preventDefault(); const edge = edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY); onTreeChange(dockTo(treeRef.current, drag, panel, edge)); setDrag(null); setOver(null); }}>
+              {showOver && <div className={`pointer-events-none absolute bg-[#3B34E2]/30 dark:bg-[#8b86f5]/30 ${ov === "left" ? "inset-y-0 left-0 w-1/2" : ov === "right" ? "inset-y-0 right-0 w-1/2" : ov === "top" ? "inset-x-0 top-0 h-1/2" : "inset-x-0 bottom-0 h-1/2"}`} />}
+            </div>
+          )}
+        </div>
+      );
+    }
     const isRow = node.dir === "row";
     const aBasis = `${node.ratio * 100}%`;
     const bBasis = `${(1 - node.ratio) * 100}%`;
