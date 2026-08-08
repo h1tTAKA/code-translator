@@ -114,6 +114,14 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   const colW = graphColW != null ? Math.min(Math.max(graphColW, MIN_COL), graphW) : Math.min(graphW, DEFAULT_COL);
   const graphWRef = useRef(graphW); // 드래그 move서 최신 graphW
   useEffect(() => { graphWRef.current = graphW; }, [graphW]);
+  // 그래프 열 폭 레포별 영속(#718) — root(레포) 바뀌면 그 레포 저장분 로드, graphColW 변경 시 저장. colRepoRef로 전환 오염 방지.
+  const colRepoRef = useRef<string | null>(null);
+  useEffect(() => {
+    colRepoRef.current = root;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- root 변경 시 그 레포 폭 복원
+    try { const s = Number(localStorage.getItem(`nunopi:ws:${root}:git-graph-col-w`)); setGraphColW(Number.isFinite(s) && s > 0 ? s : null); } catch { setGraphColW(null); }
+  }, [root]);
+  useEffect(() => { if (colRepoRef.current !== root) return; const k = `nunopi:ws:${root}:git-graph-col-w`; try { if (graphColW != null) localStorage.setItem(k, String(graphColW)); else localStorage.removeItem(k); } catch { /* ignore */ } }, [graphColW]); // eslint-disable-line react-hooks/exhaustive-deps -- root 제외: 전환 커밋에 옛 폭을 새 레포 키에 쓰는 오염 방지
   const startColDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const wrap = e.currentTarget.parentElement; if (!wrap) return;
