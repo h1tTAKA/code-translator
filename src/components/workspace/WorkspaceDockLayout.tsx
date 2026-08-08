@@ -21,6 +21,15 @@ export function defaultTree(has: Record<PanelId, boolean>): DockNode {
   return right ? { t: "split", dir: "row", a: term, b: right, ratio: 0.58 } : term;
 }
 
+// 저장된 JSON이 유효한 DockNode인지 검증(영속 복원 방어, #716).
+export function isDockNode(x: unknown): x is DockNode {
+  if (!x || typeof x !== "object") return false;
+  const n = x as Record<string, unknown>;
+  if (n.t === "leaf") return n.panel === "terminal" || n.panel === "code" || n.panel === "doc";
+  if (n.t === "split") return (n.dir === "row" || n.dir === "col") && typeof n.ratio === "number" && isDockNode(n.a) && isDockNode(n.b);
+  return false;
+}
+
 // 트리에 있는 리프 패널 집합.
 export function leavesOf(node: DockNode): Set<PanelId> {
   const out = new Set<PanelId>();

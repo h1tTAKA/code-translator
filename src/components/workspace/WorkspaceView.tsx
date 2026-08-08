@@ -11,7 +11,7 @@ import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
-import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
+import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, isDockNode, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const WS_PATH_KEY = "nunopi:workspace-path"; // 마지막 연 레포(전역). 나머지 열린 상태는 레포별 nunopi:ws:${path}:* (#712)
@@ -161,21 +161,28 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     document.body.style.cursor = (kind === "gitH" || kind === "docsH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
   };
 
-  // 중앙 도킹 트리 동기화(#716) — 존재하는 패널(터미널 항상·코드=탭 있을 때·문서=열림)에 맞춰 트리 유지.
-  // 리프 집합이 그대로면 기존 배치(비율)·유지, 패널이 새로 생기거나 없어지면 prune 후 필요 시 기본 트리로.
+  // 중앙 도킹 트리 동기화·영속(#716) — 존재 패널(터미널 항상·코드=탭·문서=열림)에 맞춰 트리 유지.
+  // 레포 전환 시 그 레포의 저장 트리를 base로 로드(레포별 영속), 아니면 이전 트리 유지. 리프 집합 같으면 배치·비율 보존, 다르면 prune 후 필요 시 기본.
   const hasCode = codeTabs.length > 0;
   const hasDoc = !!(docsRoot && activeDoc && docTabs.length);
+  const dockRepoRef = useRef<string | null>(null); // 현재 dockTree가 로드된 레포 — 전환 감지·저장 게이트
   useEffect(() => {
+    if (!mounted || !path) return;
     const has: Record<PanelId, boolean> = { terminal: true, code: hasCode, doc: hasDoc };
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 패널 존재 변화에 트리 동기화
+    const switched = dockRepoRef.current !== path;
+    let stored: DockNode | null = null;
+    if (switched) { try { const j = JSON.parse(localStorage.getItem(`nunopi:ws:${path}:dock-tree`) || "null"); if (isDockNode(j)) stored = j; } catch { /* ignore */ } dockRepoRef.current = path; }
     setDockTree((prev) => {
-      const pruned = prev ? pruneTree(prev, has) : null;
+      const base = switched ? stored : prev;
+      const pruned = base ? pruneTree(base, has) : null;
       const cur = pruned ? leavesOf(pruned) : new Set<PanelId>();
       const need = (["terminal", "code", "doc"] as PanelId[]).filter((p) => has[p]);
       const same = pruned && need.length === cur.size && need.every((p) => cur.has(p));
       return same ? pruned : defaultTree(has);
     });
-  }, [hasCode, hasDoc]);
+  }, [path, hasCode, hasDoc, mounted]);
+  // 도킹 트리 저장(#716) — 로드된 레포와 현재 path 일치할 때만(전환 오염 방지).
+  useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree, path]);
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
