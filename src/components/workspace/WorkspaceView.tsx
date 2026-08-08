@@ -72,6 +72,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const dragRef = useRef<{ kind: "tree" | "code" | "chat" | "gitH" | "docsH" | "docViewH"; startX: number; startY: number; startVal: number } | null>(null);
   const wRef = useRef({ tree: 240, chat: 320, code: 480, gitH: 220, docsH: 220, docViewH: 300 }); // 최신 폭·높이 미러(드래그 종료 시 영속용)
   const [mounted, setMounted] = useState(false);
+  const [hydrated, setHydrated] = useState(false); // 저장 상태 복원 완료 후 true — 이후에만 저장(마운트 초기값이 저장분 덮어쓰는 것 방지, #712)
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
   useEffect(() => setMounted(true), []);
   const desktop = mounted ? window.nunopiDesktop : undefined;
@@ -97,8 +98,16 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       try { const p = JSON.parse(localStorage.getItem("nunopi:ws-doc-dock") || "null"); if (p && (p.region === "terminal" || p.region === "code") && (p.pos === "top" || p.pos === "bottom")) setDocDock(p); } catch { /* ignore */ } // 문서 dock 복원(#693)
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
+      // 열린 코드 파일·diff 복원(#712). 경로는 repo 상대 — 같은 repo가 함께 복원되므로 유효.
+      const of = localStorage.getItem("nunopi:ws-open-file"); if (of) setOpenFile(of);
+      try { const od = JSON.parse(localStorage.getItem("nunopi:ws-open-diff") || "null"); if (od && typeof od.file === "string") setOpenDiff(od); } catch { /* ignore */ }
     } catch { /* ignore */ }
+    setHydrated(true); // 복원 끝 — 이제부터 저장 허용(#712)
   }, [mounted]);
+
+  // 열린 코드 파일·diff 영속(#712) — 복원 완료(hydrated) 후에만 저장. 값 없으면 키 제거.
+  useEffect(() => { if (!hydrated) return; try { if (openFile) localStorage.setItem("nunopi:ws-open-file", openFile); else localStorage.removeItem("nunopi:ws-open-file"); } catch { /* ignore */ } }, [openFile, hydrated]);
+  useEffect(() => { if (!hydrated) return; try { if (openDiff) localStorage.setItem("nunopi:ws-open-diff", JSON.stringify(openDiff)); else localStorage.removeItem("nunopi:ws-open-diff"); } catch { /* ignore */ } }, [openDiff, hydrated]);
 
   // 드래그 리사이즈 — 전역 mousemove/up 리스너.
   useEffect(() => {
@@ -162,7 +171,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
     if (!path) { setFiles([]); setFileStatus({}); return; }
     let cancelled = false;
-    setTreeLoading(true); setOpenFile(null);
+    setTreeLoading(true); // 열린 파일 초기화는 여기서 안 함 — 새로고침 시 복원 유지. 레포 전환 시엔 pick()이 클리어(#712).
     (async () => {
       try {
         const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
@@ -197,7 +206,11 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
     setPicking(true);
     try {
       const r = await desktop.pickRepoFolder();
-      if (!r.canceled && r.path) { setPath(r.path); try { localStorage.setItem(WS_PATH_KEY, r.path); } catch { /* ignore */ } }
+      if (!r.canceled && r.path) {
+        setPath(r.path);
+        setOpenFile(null); setOpenDiff(null); // 새 레포 = 이전 열린 파일/diff 무효(#712)
+        try { localStorage.setItem(WS_PATH_KEY, r.path); localStorage.removeItem("nunopi:ws-open-file"); localStorage.removeItem("nunopi:ws-open-diff"); } catch { /* ignore */ }
+      }
     } catch { /* 무시 */ } finally { setPicking(false); }
   }
 
