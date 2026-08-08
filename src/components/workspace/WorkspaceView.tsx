@@ -326,7 +326,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             {treeLoading ? (
               <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : files.length > 0 ? (
-              <FileTree files={files} status={fileStatus} selected={openFile} onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
+              <FileTree files={files} status={fileStatus} selected={openFile} storageKey="nunopi:ws-tree-open" onSelect={(id) => { setOpenFile(id); setOpenDiff(null); focusChat(`file:${id}`, "file", id.split("/").pop() ?? id); }} />
             ) : (
               <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
             )}
@@ -355,7 +355,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
                     <button type="button" onClick={pickDocs} className="ml-auto shrink-0 rounded px-1 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800">{t("workspace.docsChangeFolder")}</button>
                   </div>
                   <div className="min-h-0 flex-1">
-                    <FileTree files={docsFiles} selected={activeDoc} onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) openDoc(id); }} />
+                    <FileTree files={docsFiles} selected={activeDoc} storageKey="nunopi:ws-docs-tree-open" onSelect={(id) => { if (/\.(md|markdown|txt)$/i.test(id)) openDoc(id); }} />
                   </div>
                 </>
               ) : (

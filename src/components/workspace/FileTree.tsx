@@ -1,6 +1,6 @@
 "use client";
 // 워크스페이스 파일트리(#647) — scan이 준 flat 경로 목록을 중첩 트리로. 폴더 접기 + 파일 클릭.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IconChevronRight } from "@tabler/icons-react";
 import { fileGlyph, folderGlyph } from "@/lib/repo/fileIcon";
 
@@ -66,7 +66,7 @@ function Node({ node, depth, open, toggle, selected, onSelect, status, folderSta
   );
 }
 
-export default function FileTree({ files, selected, onSelect, status = {} }: { files: string[]; selected: string | null; onSelect: (path: string) => void; status?: Record<string, "added" | "modified"> }) {
+export default function FileTree({ files, selected, onSelect, status = {}, storageKey }: { files: string[]; selected: string | null; onSelect: (path: string) => void; status?: Record<string, "added" | "modified">; storageKey?: string }) {
   const tree = useMemo(() => buildTree(files), [files]);
   // 변경 파일의 조상 폴더별 집계(modified 우선) + 변경 포함 폴더 경로 집합(자동 펼침용).
   const { folderStatus, changedAncestors } = useMemo(() => {
@@ -89,6 +89,18 @@ export default function FileTree({ files, selected, onSelect, status = {} }: { f
   // 변경 파일이 있는 폴더는 자동으로 펼쳐 그 파일이 드러나게(status 로드 시). 유저 접기는 안 덮게 union만.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- status 변경 시 변경 조상 폴더 펼침(union)
   useEffect(() => { if (changedAncestors.size) setOpen((prev) => { const n = new Set(prev); for (const p of changedAncestors) n.add(p); return n; }); }, [changedAncestors]);
+  // 펼침 상태 영속(#712) — storageKey 있으면 마운트 시 저장분 복원(union), 이후 변경 시 저장. restoredRef로 복원 전 저장(빈 덮어쓰기) 방지.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!storageKey) { restoredRef.current = true; return; }
+    try {
+      const s = JSON.parse(localStorage.getItem(storageKey) || "null");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 시 저장된 펼침 복원(1회, union)
+      if (Array.isArray(s)) setOpen((prev) => new Set([...prev, ...s.filter((x): x is string => typeof x === "string")]));
+    } catch { /* ignore */ }
+    restoredRef.current = true;
+  }, [storageKey]);
+  useEffect(() => { if (!restoredRef.current || !storageKey) return; try { localStorage.setItem(storageKey, JSON.stringify([...open])); } catch { /* ignore */ } }, [open, storageKey]);
   return (
     <div className="nunopi-scroll h-full overflow-auto py-1">
       {tree.map((n) => <Node key={n.path} node={n} depth={0} open={open} toggle={toggle} selected={selected} onSelect={onSelect} status={status} folderStatus={folderStatus} />)}
