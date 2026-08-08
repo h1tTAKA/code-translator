@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconGitCommit, IconX } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -11,7 +11,6 @@ import TerminalPane from "@/components/workspace/TerminalPane";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
-import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
@@ -323,7 +322,7 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const codeNode = codeTabs.length ? (
     <div className="flex h-full min-h-0 flex-col">
       {/* 탭 바(스크롤) — 파일/diff 각 탭. × 로 닫기, 클릭으로 전환. pr-6: 우상단 이동 그립 자리 예약(#716). */}
-      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-6 dark:border-zinc-800 dark:bg-[#15161d]">
+      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-[17px] dark:border-zinc-800 dark:bg-[#15161d]">
         <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
           {codeTabs.map((tb) => {
             const key = codeTabKey(tb);
@@ -375,6 +374,11 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
         <button type="button" onClick={pick} disabled={picking}
           className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-[12px] font-medium text-zinc-600 transition hover:border-[#3B34E2] hover:text-[#3B34E2] disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300">
           <IconFolderOpen size={14} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
+        </button>
+        {/* 우측 챗 패널 접기/펴기(#716·#695) — 헤더 토글. 열림=collapse 아이콘, 접힘=expand 아이콘. */}
+        <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
+          className="shrink-0 rounded-lg border border-zinc-200 p-1.5 text-zinc-500 transition hover:border-[#3B34E2] hover:text-[#3B34E2] dark:border-zinc-700 dark:text-zinc-400">
+          {chatOpen ? <IconLayoutSidebarRightCollapse size={16} stroke={2} aria-hidden /> : <IconLayoutSidebarRightExpand size={16} stroke={2} aria-hidden />}
         </button>
       </header>
       <div className="relative flex min-h-0 flex-1">
@@ -446,11 +450,6 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
             </aside>
           </>
         )}
-        {/* 단일 플로팅 엣지 탭(공통 PanelEdgeToggle) — 레이아웃 폭 안 먹음(absolute). 열림:챗 좌경계(right=chatW+2) / 접힘:우측 끝(right=0). */}
-        <PanelEdgeToggle collapsed={!chatOpen} onToggle={toggleChat} collapsedDir="left" orientation="vertical"
-          title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
-          style={{ right: chatOpen ? chatW + 2 : 0 }}
-          className="absolute top-1/2 -translate-y-1/2 rounded-l-md border-y border-l border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-[#0b0c12]" />
       </div>
     </div>
   );

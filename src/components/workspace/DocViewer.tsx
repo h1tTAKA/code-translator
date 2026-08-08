@@ -17,7 +17,7 @@ export default function DocViewer({ root, tabs, activeDoc, onActivate, onCloseTa
   const t = useT();
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-6 dark:border-zinc-800 dark:bg-[#15161d]">
+      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-[17px] dark:border-zinc-800 dark:bg-[#15161d]">
         {/* 탭 바(스크롤) */}
         <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
           {tabs.map((f) => {

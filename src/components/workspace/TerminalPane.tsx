@@ -72,7 +72,7 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 터미널 탭 바 — 에디터 탭 느낌(활성 상단 강조선·구분선·닫기). pr-6 외곽: 우상단 이동 그립 자리 예약(#716). */}
-      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-6 dark:border-zinc-800 dark:bg-[#15161d]">
+      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 pr-[17px] dark:border-zinc-800 dark:bg-[#15161d]">
       <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
         {tabs.map((tab) => {
           const on = tab.id === activeId;
