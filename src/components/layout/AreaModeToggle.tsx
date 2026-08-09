@@ -46,7 +46,7 @@ export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQ
         <IconBrain size={16} stroke={2} aria-hidden />
         {t("mode.memorize")}
         {memorizeBadge > 0 && (
-          <span aria-label={`오늘 복습 ${memorizeBadge}`}
+          <span aria-label={`${t("mem.modeDue")} ${memorizeBadge}`}
             className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white">
             {memorizeBadge > 99 ? "99+" : memorizeBadge}
           </span>
