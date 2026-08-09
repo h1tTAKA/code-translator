@@ -9,6 +9,8 @@ interface AppShellProps {
   editor: React.ReactNode;
   learningPanel: React.ReactNode;
   modeToggle?: React.ReactNode;
+  // 질문·분석 하위 세그(홈·질문·코드·글) — 스트립 가운데 배치(#725). modeToggle(1차)은 우측.
+  subToggle?: React.ReactNode;
   onOpenSettings: () => void;
   // 입력 패널 접기 — 접힘+챗닫힘이면 왼쪽 영역을 통째로 숨겨 학습패널 풀와이드.
   // 접힘+챗열림이면 영역은 유지(내용은 EditorChatColumn이 챗만 렌더).
@@ -43,7 +45,7 @@ function clampPct(value: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, value));
 }
 
-export default function AppShell({ editor, learningPanel, modeToggle, onOpenSettings, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
+export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
   const t = useT();
   const mainRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState(DEFAULT_LEFT_PCT);
@@ -143,19 +145,23 @@ export default function AppShell({ editor, learningPanel, modeToggle, onOpenSett
       {/* 질문·분석 영역: full-width 헤더 바 대신 얇은 상단 스트립에 우측 정렬 pill(모드 토글+설정) — orca식.
           투명 배경·최소 높이라 옛 헤더보다 얇고, 콘텐츠는 아래로 흘러 뷰 툴바와 안 겹침(#723). 워크스페이스는 자체 컨트롤(#721)이라 미표시. */}
       {!workspace && (
-        <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-1.5 dark:border-zinc-800">
+        <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-zinc-200 px-4 py-1.5 dark:border-zinc-800">
           {/* 좌: 브랜드 로고(짤린 느낌 방지·균형). 라이트=네이비, 다크=흰 워드마크. */}
-          <span className="flex shrink-0 items-center">
+          <span className="flex shrink-0 items-center justify-self-start">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto dark:hidden" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto dark:block" />
           </span>
-          {/* 우: 모드 토글 pill + 설정 */}
-          <div className="flex items-center gap-1.5">
+          {/* 가운데: 질문·분석 하위 세그(홈·질문·코드·글) — 원래 중앙 위치(#725). 암기 뷰에선 숨김(하위 없음). */}
+          <div className="justify-self-center">{!memorize && subToggle}</div>
+          {/* 우: 영역 전환 토글(워크스페이스│질문·분석│암기) │ 설정(테두리 없는 아이콘) */}
+          <div className="flex items-center gap-1.5 justify-self-end">
             {modeToggle}
+            {/* 영역 nav ↔ 유틸 구분선 */}
+            <span className="mx-1 h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
             <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
-              className="rounded-lg border border-zinc-200 bg-zinc-100 p-2 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+              className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
               <IconSettings size={18} stroke={2} aria-hidden />
             </button>
           </div>
