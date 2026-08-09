@@ -199,6 +199,7 @@ export default function Home() {
   const [editorCollapsed, setEditorCollapsed] = useState(false);
   // 화면 전환 축(코드/글/암기). code·text는 분석 모드(mode)와 연동, memorize는 분석 안 함.
   const [viewMode, setViewMode] = useState<ViewMode>("code");
+  const lastQAViewRef = useRef<ViewMode>("history"); // 워크스페이스 나갈 때 복귀할 직전 질문·분석 뷰(#721)
   // Ask 출처 이동 타깃(암기 갤러리 등에서). nonce로 재트리거.
   const [askGoTarget, setAskGoTarget] = useState<{ sessionId: string; subId?: string; quizId?: string; nonce: number } | undefined>(undefined);
   const askGoNonceRef = useRef(0);
@@ -264,11 +265,14 @@ export default function Home() {
 
   function handleViewModeChange(next: ViewMode) {
     if (next === viewMode) return;
+    if (next !== "workspace") lastQAViewRef.current = next; // 워크스페이스 나갈 때 복귀할 직전 질문·분석 뷰 기억(#721)
     setViewMode(next);
     try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
     // 코드/글은 분석 모드와 연동(암기는 분석 상태 보존).
     if (next === "code" || next === "text") handleModeChange(next);
   }
+  // 워크스페이스 → 질문·분석 영역 복귀(직전 뷰, 없으면 history).
+  const exitWorkspace = () => handleViewModeChange(lastQAViewRef.current);
   function toggleEditorCollapsed() {
     setEditorCollapsed((v) => {
       const next = !v;
@@ -1205,7 +1209,7 @@ export default function Home() {
         history={viewMode === "history"}
         historyView={<HistoryView active={viewMode === "history"} onNavigate={handleGoToHistory} providerId={providerId} providerSettings={providerSettings} />}
         workspace={viewMode === "workspace"}
-        workspaceView={<WorkspaceView active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} />}
+        workspaceView={<WorkspaceView active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={exitWorkspace} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
         modeToggle={
           <ModeToggle
             viewMode={viewMode}
