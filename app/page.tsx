@@ -1199,6 +1199,8 @@ export default function Home() {
     <ToastProvider>
       <AppShell
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenMemorize={() => handleViewModeChange("memorize")}
+        memorizeBadge={memorizeDue}
         editorCollapsed={editorCollapsed}
         chatOpen={chatOpen}
         onToggleEditorCollapsed={toggleEditorCollapsed}
