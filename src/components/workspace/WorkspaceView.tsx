@@ -409,14 +409,14 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             </>
           )}
           {/* 하단 아이콘 바(#733) — git·문서 패널 토글. 전체폭 토글 줄 2개를 아이콘 한 줄로 대체(공간 회수). */}
-          <div className="flex shrink-0 items-center gap-0.5 border-t border-zinc-200 px-1.5 py-1 dark:border-zinc-800">
+          <div className="flex shrink-0 items-center gap-0.5 border-t border-zinc-200 px-1.5 py-0.5 dark:border-zinc-800">
             <button type="button" onClick={toggleGit} title="git" aria-label="git" aria-pressed={gitOpen}
-              className={`rounded-md p-1.5 transition ${gitOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
-              <IconGitBranch size={15} stroke={2} aria-hidden />
+              className={`rounded-md p-1 transition ${gitOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
+              <IconGitBranch size={14} stroke={2} aria-hidden />
             </button>
             <button type="button" onClick={() => setDocsOpen((v) => !v)} title={t("workspace.docs")} aria-label={t("workspace.docs")} aria-pressed={docsOpen}
-              className={`rounded-md p-1.5 transition ${docsOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
-              <IconFileText size={15} stroke={2} aria-hidden />
+              className={`rounded-md p-1 transition ${docsOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
+              <IconFileText size={14} stroke={2} aria-hidden />
             </button>
           </div>
         </aside>
