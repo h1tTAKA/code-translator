@@ -68,11 +68,17 @@ export default function DeckStatPicker({
         )}
       </div>
       {!customId && deck === "code" && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-4 pl-1">
           {CODE_SRC.map(({ src, tKey }) => (
-            <button key={src} type="button" onClick={() => toggleSource(src)} className={pill(codeSources.has(src))}>
+            <label key={src} className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+              <input
+                type="checkbox"
+                checked={codeSources.has(src)}
+                onChange={() => toggleSource(src)}
+                className="h-4 w-4 rounded accent-lime-500"
+              />
               {t(tKey)}
-            </button>
+            </label>
           ))}
         </div>
       )}
