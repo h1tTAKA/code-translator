@@ -91,6 +91,12 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     } catch { /* ignore */ }
   }, [mounted]);
 
+  // 좌측 최소 하나 보장(#733) — 저장된 상태가 트리·git·문서 전부 닫힘이면 트리를 연다(빈 사이드바 방지·구 상태 복구).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (mounted && !treeOpen && !gitOpen && !docsOpen) setTreeOpen(true);
+  }, [mounted, treeOpen, gitOpen, docsOpen]);
+
   // 레포별 열린 상태 복원(#712) — path(레포) 바뀔 때마다 그 레포의 저장분을 로드(챗처럼 레포 스코프). 없으면 초기화.
   useEffect(() => {
     if (!mounted) return;
@@ -178,8 +184,11 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   // 도킹 트리 저장(#716) — 로드된 레포와 현재 path 일치할 때만(전환 오염 방지).
   useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree]); // eslint-disable-line react-hooks/exhaustive-deps -- path 제외: 전환 커밋에 옛 트리를 새 레포 키에 쓰는 오염 방지(dockTree 변할 때만 저장)
 
-  const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
-  const toggleTree = () => setTreeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-tree-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  // 좌측 3섹션(트리·git·문서) 중 최소 하나는 열려 있어야 — 빈 사이드바 방지(#733). 마지막 하나는 못 끔.
+  const leftOpenCount = (treeOpen ? 1 : 0) + (gitOpen ? 1 : 0) + (docsOpen ? 1 : 0);
+  const toggleGit = () => { if (gitOpen && leftOpenCount === 1) return; setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
+  const toggleTree = () => { if (treeOpen && leftOpenCount === 1) return; setTreeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-tree-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
+  const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
 
   // 워킹트리 변경 상태맵 로드(#687 도트 + #689 챗 승계 트리거). 경로 로드·깃 새로고침 시 호출.
@@ -421,7 +430,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
               className={`rounded-md p-1 transition ${gitOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
               <IconGitBranch size={14} stroke={2} aria-hidden />
             </button>
-            <button type="button" onClick={() => setDocsOpen((v) => !v)} title={t("workspace.docs")} aria-label={t("workspace.docs")} aria-pressed={docsOpen}
+            <button type="button" onClick={toggleDocs} title={t("workspace.docs")} aria-label={t("workspace.docs")} aria-pressed={docsOpen}
               className={`rounded-md p-1 transition ${docsOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
               <IconFileText size={14} stroke={2} aria-hidden />
             </button>
