@@ -186,6 +186,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
 
   // 좌측 3섹션(트리·git·문서) 중 최소 하나는 열려 있어야 — 빈 사이드바 방지(#733). 마지막 하나는 못 끔.
   const leftOpenCount = (treeOpen ? 1 : 0) + (gitOpen ? 1 : 0) + (docsOpen ? 1 : 0);
+  // 남는 세로 공간을 채우는(flex-1) 섹션 = 열린 것 중 최상위(트리>git>문서). 나머지는 고정 높이+리사이즈(#733).
+  const leftFill: "tree" | "git" | "docs" = treeOpen ? "tree" : gitOpen ? "git" : "docs";
   const toggleGit = () => { if (gitOpen && leftOpenCount === 1) return; setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleTree = () => { if (treeOpen && leftOpenCount === 1) return; setTreeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-tree-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
@@ -379,26 +381,28 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       <div className="relative flex min-h-0 flex-1">
         {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
         <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {!treeOpen ? null : treeLoading ? (
-              <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
-            ) : files.length > 0 ? (
-              <FileTree key={path} files={files} status={fileStatus} selected={activeFile} storageKey={path ? `nunopi:ws:${path}:tree-open` : undefined} onSelect={(id) => openCodeTab({ kind: "file", file: id })} />
-            ) : (
-              <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
-            )}
-          </div>
+          {treeOpen && (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {treeLoading ? (
+                <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
+              ) : files.length > 0 ? (
+                <FileTree key={path} files={files} status={fileStatus} selected={activeFile} storageKey={path ? `nunopi:ws:${path}:tree-open` : undefined} onSelect={(id) => openCodeTab({ kind: "file", file: id })} />
+              ) : (
+                <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
+              )}
+            </div>
+          )}
           {gitOpen && (
             <>
-              <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-              <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => openCodeTab({ kind: "diff", hash, file })} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => openCodeTab({ kind: "diff", file, worktree })} onRefreshed={handleGitRefreshed} /></div>
+              {leftFill !== "git" && <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+              <div style={leftFill === "git" ? undefined : { height: gitH }} className={`overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "git" ? "min-h-0 flex-1" : "shrink-0"}`}><GitGraph root={path} onOpenDiff={(hash, file) => openCodeTab({ kind: "diff", hash, file })} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => openCodeTab({ kind: "diff", file, worktree })} onRefreshed={handleGitRefreshed} /></div>
             </>
           )}
           {/* 문서 폴더 브라우저(#693) — .md/.txt 클릭 시 뷰어에 표시(뷰어는 커밋2). */}
           {docsOpen && (
             <>
-            <div onMouseDown={startDrag("docsH", docsH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
-            <div style={{ height: docsH }} className="flex shrink-0 flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800">
+            {leftFill !== "docs" && <div onMouseDown={startDrag("docsH", docsH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+            <div style={leftFill === "docs" ? undefined : { height: docsH }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "docs" ? "min-h-0 flex-1" : "shrink-0"}`}>
               {docsRoot ? (
                 <>
                   <div className="flex shrink-0 items-center gap-1 border-b border-zinc-200 px-2.5 py-1 text-[10px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
