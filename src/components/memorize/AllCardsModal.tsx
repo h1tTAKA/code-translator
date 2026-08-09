@@ -339,7 +339,7 @@ export default function AllCardsModal({ now, active = true, autoThrowCardKey, au
               <button
                 type="button"
                 onClick={onOpenDeckReview}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#3B34E2] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#322bc9]"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-lime-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-lime-600"
               >
                 <IconCards size={15} stroke={2} aria-hidden />
                 {t("mem.reviewStudy")}
