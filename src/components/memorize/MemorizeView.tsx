@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui/Toast";
 import { askSourceExists } from "@/lib/askStore";
 import DeckSelect from "./DeckSelect";
 import CardSession from "./CardSession";
+import MemorizeStats from "./MemorizeStats";
 import { FlyCardProvider } from "./FlyCard";
 import AllCardsModal from "./AllCardsModal";
 import MemModal from "./MemModal";
@@ -24,6 +25,7 @@ export default function MemorizeView({ active = true, providerId, providerSettin
   const [phase, setPhase] = useState<MemPhase>("gallery");
   // 복습 암기(덱선택) 모달 열림 — 세션 시작 후에도 유지해, 학습 끝/뒤로 시 이 모달이 떠 있던 화면으로 복귀.
   const [deckModalOpen, setDeckModalOpen] = useState(false);
+  const [statsModalOpen, setStatsModalOpen] = useState(false); // 복습 통계 모달
   const [autoThrowKey, setAutoThrowKey] = useState<string | undefined>(undefined);
   const [autoThrowChat, setAutoThrowChat] = useState(false); // peek 시 챗룸 자동 열기(히스토리 카드챗 이동)
 
@@ -76,6 +78,8 @@ export default function MemorizeView({ active = true, providerId, providerSettin
     setCodeSourcesRaw(s);
     try { localStorage.setItem("nunopi:mem-code-sources", JSON.stringify([...s])); } catch { /* ignore */ }
   }
+  // 선택된 커스텀 덱(없으면 null) — 통계 모달이 그 덱의 카드/이름 반영.
+  const activeCustom = customId ? customDecks.find((d) => d.id === customId) ?? null : null;
   // 커스텀 덱이 삭제되면 선택 해제.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -129,6 +133,7 @@ export default function MemorizeView({ active = true, providerId, providerSettin
           providerId={providerId}
           providerSettings={providerSettings}
           onOpenDeckReview={() => setDeckModalOpen(true)}
+          onOpenStats={() => setStatsModalOpen(true)}
           onClose={() => { setAutoThrowKey(undefined); setAutoThrowChat(false); }}
         />
         {deckModalOpen && (
@@ -142,6 +147,16 @@ export default function MemorizeView({ active = true, providerId, providerSettin
               onSelectCustom={setCustomId}
               onStart={handleStart}
               onStartCustom={handleStartCustom}
+            />
+          </MemModal>
+        )}
+        {statsModalOpen && (
+          <MemModal title={t("mem.statsTitle")} onClose={() => setStatsModalOpen(false)}>
+            <MemorizeStats
+              deck={deck}
+              sources={deck === "code" ? [...codeSources] : undefined}
+              cardKeys={activeCustom?.cardKeys}
+              deckName={activeCustom?.name}
             />
           </MemModal>
         )}
