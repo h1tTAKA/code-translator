@@ -7,6 +7,7 @@ import { askSourceExists } from "@/lib/askStore";
 import DeckSelect from "./DeckSelect";
 import CardSession from "./CardSession";
 import MemorizeStats from "./MemorizeStats";
+import DeckStatPicker from "./DeckStatPicker";
 import { FlyCardProvider } from "./FlyCard";
 import AllCardsModal from "./AllCardsModal";
 import MemModal from "./MemModal";
@@ -152,6 +153,16 @@ export default function MemorizeView({ active = true, providerId, providerSettin
         )}
         {statsModalOpen && (
           <MemModal title={t("mem.statsTitle")} onClose={() => setStatsModalOpen(false)}>
+            {/* 어느 덱 통계인지 여기서 선택(복습 암기 모달과 상태 공유). */}
+            <DeckStatPicker
+              deck={deck}
+              codeSources={codeSources}
+              customId={customId}
+              customDecks={customDecks}
+              onDeckChange={setDeck}
+              onCodeSourcesChange={setCodeSources}
+              onSelectCustom={setCustomId}
+            />
             <MemorizeStats
               deck={deck}
               sources={deck === "code" ? [...codeSources] : undefined}
