@@ -45,7 +45,7 @@ export default function ModeToggle({ viewMode, onViewModeChange, disabled = fals
             title={label}
             disabled={disabled}
             onClick={() => onViewModeChange(opt.value)}
-            className={`relative flex items-center justify-center rounded-lg px-7 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            className={`relative flex items-center justify-center rounded-lg px-3 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${
               selected
                 ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50"
                 : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
