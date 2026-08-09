@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import ModeToggle from "@/components/layout/ModeToggle";
+import AreaModeToggle from "@/components/layout/AreaModeToggle";
 import LearningPanel from "@/components/learning/LearningPanel";
 import SettingsDrawer from "@/components/settings/SettingsDrawer";
 import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
@@ -265,14 +265,15 @@ export default function Home() {
 
   function handleViewModeChange(next: ViewMode) {
     if (next === viewMode) return;
-    if (next !== "workspace") lastQAViewRef.current = next; // 워크스페이스 나갈 때 복귀할 직전 질문·분석 뷰 기억(#721)
+    // 질문·분석 하위뷰만 기억(#725) — memorize는 상시 퀵이라 복귀 타깃에서 제외(1차 질문·분석은 하위 세그로 안착).
+    if (next === "history" || next === "ask" || next === "code" || next === "text") lastQAViewRef.current = next;
     setViewMode(next);
     try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
     // 코드/글은 분석 모드와 연동(암기는 분석 상태 보존).
     if (next === "code" || next === "text") handleModeChange(next);
   }
-  // 워크스페이스 → 질문·분석 영역 복귀(직전 뷰, 없으면 history).
-  const exitWorkspace = () => handleViewModeChange(lastQAViewRef.current);
+  // 질문·분석 영역 진입/복귀 — 직전 하위뷰(없으면 history). 워크스페이스 나가기 + 1차 "질문·분석" 세그 공용(#725).
+  const enterQAArea = () => handleViewModeChange(lastQAViewRef.current);
   function toggleEditorCollapsed() {
     setEditorCollapsed((v) => {
       const next = !v;
@@ -1211,13 +1212,13 @@ export default function Home() {
         history={viewMode === "history"}
         historyView={<HistoryView active={viewMode === "history"} onNavigate={handleGoToHistory} providerId={providerId} providerSettings={providerSettings} />}
         workspace={viewMode === "workspace"}
-        workspaceView={<WorkspaceView active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={exitWorkspace} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
+        workspaceView={<WorkspaceView active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={enterQAArea} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
         modeToggle={
-          <ModeToggle
+          <AreaModeToggle
             viewMode={viewMode}
             onViewModeChange={handleViewModeChange}
+            onEnterQA={enterQAArea}
             disabled={isLoading}
-            memorizeBadge={memorizeDue}
           />
         }
         learningPanel={
