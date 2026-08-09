@@ -1,55 +1,52 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { IconLayoutGrid } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useToast } from "@/components/ui/Toast";
 import { askSourceExists } from "@/lib/askStore";
 import DeckSelect from "./DeckSelect";
 import CardSession from "./CardSession";
 import MemorizeStats from "./MemorizeStats";
-import DeckFan from "./DeckFan";
+import DeckStatPicker from "./DeckStatPicker";
 import { FlyCardProvider } from "./FlyCard";
 import AllCardsModal from "./AllCardsModal";
-import { DECK_SOURCES, type Card, type CardOrder, type Deck, type SrsSource } from "@/lib/srs/types";
-import { collectCards, collectCardsByKeys } from "@/lib/srs/collect";
+import MemModal from "./MemModal";
+import { type Card, type CardOrder, type Deck, type SrsSource } from "@/lib/srs/types";
 import { loadCustomDecks, CUSTOM_DECKS_CHANGED_EVENT, type CustomDeck } from "@/lib/srs/customDeck";
-import { CARDS_CHANGED_EVENT } from "@/lib/chatCard";
 import { type CardCategory } from "@/lib/srs/due";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
-type MemPhase = "select" | "session";
+type MemPhase = "gallery" | "session";
 type ReviewMode = "due" | "all";
 
-// 암기 모드 최상위 뷰 — 덱 선택(③) → 카드 세션(④). active: 헤더에서 암기 탭이 켜진 상태.
+// 암기 모드 최상위 뷰 — 카드 갤러리(랜딩) → 복습 암기(덱선택 모달) → 카드 세션(④). active: 암기 영역이 켜진 상태.
 export default function MemorizeView({ active = true, providerId, providerSettings, sourceIds, onGoToSource, onGoToAskSource, goToCard }: { active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; sourceIds: Set<string>; onGoToSource: (sourceId: string, sessionId?: string) => void; onGoToAskSource?: (sessionId: string, subId?: string) => void; goToCard?: { cardKey: string; nonce: number } }) {
   const t = useT();
   const toast = useToast();
-  const [phase, setPhase] = useState<MemPhase>("select");
-  const [showAllCards, setShowAllCards] = useState(false);
+  const [phase, setPhase] = useState<MemPhase>("gallery");
+  // 복습 암기(덱선택) 모달 열림 — 세션 시작 후에도 유지해, 학습 끝/뒤로 시 이 모달이 떠 있던 화면으로 복귀.
+  const [deckModalOpen, setDeckModalOpen] = useState(false);
+  const [statsModalOpen, setStatsModalOpen] = useState(false); // 복습 통계 모달
   const [autoThrowKey, setAutoThrowKey] = useState<string | undefined>(undefined);
   const [autoThrowChat, setAutoThrowChat] = useState(false); // peek 시 챗룸 자동 열기(히스토리 카드챗 이동)
 
-  // 카드 "출처로 이동" — 출처 종류별 분기. analysis=분석+챗세션 복원(부모),
-  // card=전체 카드 보기 열고 생성처 카드를 바로 띄운다(peek).
+  // 카드 "출처로 이동" — 출처 종류별 분기. card=갤러리에서 생성처 카드 peek, ask=Ask로, analysis=코드/글로.
   function goToCardSource(card: Card) {
     if (card.sourceKind === "card" && card.originCardKey) {
-      setPhase("select"); // 세션 중이면 선택 화면으로 나와 갤러리 표시
+      setPhase("gallery"); // 세션 중이면 갤러리로 나와 peek
       setAutoThrowKey(card.originCardKey);
       setAutoThrowChat(false); // 생성처 카드 peek — 챗 자동 열기 아님
-      setShowAllCards(true);
     } else if (card.sourceKind === "ask" && card.sourceSessionId) {
-      // 질문발 — 출처(세션/질문)가 남아 있을 때만 Ask로 전환·이동. 삭제됐으면 여기서 안내(모드 전환 X).
+      // 질문발 — 출처(세션/질문)가 남아 있을 때만 Ask로 전환·이동. 삭제됐으면 안내.
       if (askSourceExists(card.sourceSessionId, card.sourceSubId)) onGoToAskSource?.(card.sourceSessionId, card.sourceSubId);
       else toast(t("ask.sourceDeleted"), "error");
     } else if (card.sourceId) {
-      // 분석발 — 다른 뷰(코드/글)로 전환만. 갤러리는 열린 채 두고(active=false로 자동 숨김),
-      // 암기로 돌아오면 갤러리 그대로 복귀. (닫으면 상태 유실)
+      // 분석발 — 다른 뷰(코드/글)로 전환만.
       onGoToSource(card.sourceId, card.sourceSessionId);
     }
   }
   const [session, setSession] = useState<{ deck: Deck; sources: SrsSource[]; mode: ReviewMode; resume: boolean; order: CardOrder; categories: CardCategory[]; cardKeys?: string[]; customDeckId?: string } | null>(null);
-  // 선택된 커스텀 덱 id(null=고정 덱). 커스텀 선택 시 왼쪽 통계/부채꼴이 그 덱 반영.
+  // 선택된 커스텀 덱 id(null=고정 덱). DeckSelect가 controlled로 공유.
   const [customId, setCustomId] = useState<string | null>(null);
   const [customDecks, setCustomDecks] = useState<CustomDeck[]>([]);
   useEffect(() => {
@@ -58,8 +55,7 @@ export default function MemorizeView({ active = true, providerId, providerSettin
     window.addEventListener(CUSTOM_DECKS_CHANGED_EVENT, load);
     return () => window.removeEventListener(CUSTOM_DECKS_CHANGED_EVENT, load);
   }, []);
-  // 덱/세부출처는 여기서 소유 — 왼쪽 통계 패널과 오른쪽 DeckSelect가 실시간 공유(controlled).
-  // typeof window 가드: 마운트 게이트로 서버엔 안 그려지지만 useState 초기화는 서버서도 실행됨.
+  // 덱/세부출처 — DeckSelect controlled 소유. localStorage 영속.
   const [deck, setDeckRaw] = useState<Deck>(() => {
     if (typeof window === "undefined") return "code";
     const d = localStorage.getItem("nunopi:mem-deck");
@@ -83,48 +79,27 @@ export default function MemorizeView({ active = true, providerId, providerSettin
     setCodeSourcesRaw(s);
     try { localStorage.setItem("nunopi:mem-code-sources", JSON.stringify([...s])); } catch { /* ignore */ }
   }
-  const now = useMemo(() => new Date(), []);
-  // 카드가 바뀌면(북마크 추가/삭제 → CARDS_CHANGED) 부채꼴 카드도 다시 모은다(#509).
-  const [cardsNonce, setCardsNonce] = useState(0);
-  useEffect(() => {
-    const bump = () => setCardsNonce((n) => n + 1);
-    window.addEventListener(CARDS_CHANGED_EVENT, bump);
-    return () => window.removeEventListener(CARDS_CHANGED_EVENT, bump);
-  }, []);
-  // 부채꼴에 쓸 실제 카드 — 선택 덱 출처(코드덱은 세부 토글 반영). 클릭 시 이 중 랜덤 1장이 날아온다.
-  const fanCards = useMemo(() => {
-    const deckSources = DECK_SOURCES[deck];
-    const effective = deck === "code" ? deckSources.filter((s) => codeSources.has(s)) : deckSources;
-    return collectCards(effective, now);
-    // cardsNonce: CARDS_CHANGED 시 재수집 강제(콜백은 localStorage를 읽어 직접 참조 안 함).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deck, codeSources, now, cardsNonce]);
-  // 선택된 커스텀 덱(없으면 null). 삭제되면 선택 해제.
+  // 선택된 커스텀 덱(없으면 null) — 통계 모달이 그 덱의 카드/이름 반영.
   const activeCustom = customId ? customDecks.find((d) => d.id === customId) ?? null : null;
+  // 커스텀 덱이 삭제되면 선택 해제.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (customId && !customDecks.some((d) => d.id === customId)) setCustomId(null);
   }, [customDecks, customId]);
-  // 커스텀 부채꼴 카드(선택 시). cardsNonce: 커스텀 덱 내 카드가 삭제되면 반영(#509).
-  const customFanCards = useMemo(
-    () => (activeCustom ? collectCardsByKeys(activeCustom.cardKeys, now) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeCustom, now, cardsNonce],
-  );
-  // 항상 마운트되지만 localStorage(deckStats)를 읽으므로 서버/첫 렌더에선 비운다(하이드레이션 불일치 방지).
+  // 항상 마운트되지만 localStorage를 읽으므로 서버/첫 렌더에선 비운다(하이드레이션 불일치 방지).
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
-  // 전역 히스토리 등에서 특정 카드로 이동 — 갤러리 열고 그 카드를 peek(챗룸 접근점). nonce로 재트리거.
+  const now = useState(() => new Date())[0];
+  // 전역 히스토리 등에서 특정 카드로 이동 — 갤러리에서 그 카드를 peek(챗룸 접근점). nonce로 재트리거.
   useEffect(() => {
     if (!goToCard) return;
     /* eslint-disable react-hooks/set-state-in-effect */
-    setPhase("select");
+    setPhase("gallery");
     setAutoThrowKey(goToCard.cardKey);
     setAutoThrowChat(true); // 히스토리 카드챗 이동 — 챗룸 자동 열기
-    setShowAllCards(true);
     /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goToCard?.nonce]);
@@ -132,7 +107,7 @@ export default function MemorizeView({ active = true, providerId, providerSettin
 
   function handleStart(deck: Deck, sources: SrsSource[], mode: ReviewMode, resume: boolean, order: CardOrder, categories: CardCategory[]) {
     setSession({ deck, sources, mode, resume, order, categories });
-    setPhase("session");
+    setPhase("session"); // deckModalOpen은 유지 — 세션 끝나면 이 모달로 복귀.
   }
 
   // 커스텀 덱 시작 — cardKeys로 세션(sources 무관, deck placeholder "all"). customDeckId로 이어하기 키.
@@ -142,51 +117,59 @@ export default function MemorizeView({ active = true, providerId, providerSettin
   }
 
   if (phase === "session" && session) {
-    return <CardSession active={active} deck={session.deck} resume={session.resume} order={session.order} categories={session.categories} cardKeys={session.cardKeys} customDeckId={session.customDeckId} sources={session.sources} mode={session.mode} providerId={providerId} providerSettings={providerSettings} sourceIds={sourceIds} onGoToSource={goToCardSource} onExit={() => setPhase("select")} />;
+    return <CardSession active={active} deck={session.deck} resume={session.resume} order={session.order} categories={session.categories} cardKeys={session.cardKeys} customDeckId={session.customDeckId} sources={session.sources} mode={session.mode} providerId={providerId} providerSettings={providerSettings} sourceIds={sourceIds} onGoToSource={goToCardSource} onExit={() => setPhase("gallery")} />;
   }
 
-  // 덱 선택 — 우측 패널 + 왼쪽 학습 통계(xl+). 덱/출처를 공유해 통계가 선택 덱 따라 실시간.
-  // FlyCardProvider로 감싸 DeckFan·MemorizeInsights가 같은 카드 던지기 연출을 공유.
+  // 갤러리 랜딩 — AllCardsModal을 인라인(asBase)으로. relative 컨테이너라 모달(absolute inset-0)이 갤러리를 덮는다.
+  // FlyCardProvider로 감싸 갤러리 카드 던지기 연출 공유.
   return (
     <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={sourceIds} onGoToSource={goToCardSource}>
-    <div className="flex h-full w-full items-stretch justify-center gap-8 overflow-hidden px-8 py-6">
-      {/* 왼쪽: 학습 통계 (선택 덱 실시간) — 남는 폭 전부, 상단 정렬(오른쪽 덱 패널과 top 맞춤) */}
-      <div className="hidden min-h-0 flex-1 flex-col justify-start xl:flex">
-        <MemorizeStats
-          deck={deck}
-          sources={deck === "code" ? [...codeSources] : undefined}
-          cardKeys={activeCustom?.cardKeys}
-          deckName={activeCustom?.name}
+      <div className="relative h-full w-full">
+        <AllCardsModal
+          asBase
+          now={now}
+          active={active}
+          autoThrowCardKey={autoThrowKey}
+          autoThrowOpenChat={autoThrowChat}
+          providerId={providerId}
+          providerSettings={providerSettings}
+          onOpenDeckReview={() => setDeckModalOpen(true)}
+          onOpenStats={() => setStatsModalOpen(true)}
+          onClose={() => { setAutoThrowKey(undefined); setAutoThrowChat(false); }}
         />
+        {deckModalOpen && (
+          <MemModal title={t("mem.reviewStudy")} onClose={() => setDeckModalOpen(false)} panelClassName="w-[min(94vw,560px)]">
+            <DeckSelect
+              deck={deck}
+              onDeckChange={setDeck}
+              codeSources={codeSources}
+              onCodeSourcesChange={setCodeSources}
+              selectedCustomId={customId}
+              onSelectCustom={setCustomId}
+              onStart={handleStart}
+              onStartCustom={handleStartCustom}
+            />
+          </MemModal>
+        )}
+        {statsModalOpen && (
+          <MemModal title={t("mem.statsTitle")} onClose={() => setStatsModalOpen(false)}>
+            {/* 어느 덱 통계인지 여기서 선택(복습 암기 모달과 상태 공유). */}
+            <DeckStatPicker
+              deck={deck}
+              customId={customId}
+              customDecks={customDecks}
+              onDeckChange={setDeck}
+              onSelectCustom={setCustomId}
+            />
+            <MemorizeStats
+              deck={deck}
+              sources={deck === "code" ? [...codeSources] : undefined}
+              cardKeys={activeCustom?.cardKeys}
+              deckName={activeCustom?.name}
+            />
+          </MemModal>
+        )}
       </div>
-      {/* 오른쪽: 덱 선택 + 부채꼴 — 왼쪽과 같은 세로 범위(h-full), 덱패널 위·부채꼴 남는공간 채움. */}
-      <div className="mx-auto flex w-full max-w-lg shrink-0 flex-col xl:mx-0 xl:h-full xl:w-[33rem] xl:max-w-none">
-        <DeckSelect
-          deck={deck}
-          onDeckChange={setDeck}
-          codeSources={codeSources}
-          onCodeSourcesChange={setCodeSources}
-          selectedCustomId={customId}
-          onSelectCustom={setCustomId}
-          onStart={handleStart}
-          onStartCustom={handleStartCustom}
-        />
-        {/* 덱 패널 밑 부채꼴 장식 — 남는 세로 공간 채워 중앙 배치(넓은 화면만, 넘치면 클립). */}
-        <div className="relative hidden min-h-0 flex-1 items-center justify-center overflow-hidden xl:flex">
-          {/* 좌상단 — 전체 카드 보기 */}
-          <button
-            type="button"
-            onClick={() => setShowAllCards(true)}
-            className="absolute left-0 top-2 z-10 flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-zinc-600 backdrop-blur transition hover:border-[#3B34E2] hover:text-[#3B34E2] dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:text-[#8b86f5]"
-          >
-            <IconLayoutGrid size={14} stroke={2} aria-hidden />
-            {t("mem.allCards")}
-          </button>
-          <DeckFan key={customId ?? deck} cards={customFanCards ?? fanCards} />
-        </div>
-      </div>
-    </div>
-    {showAllCards && <AllCardsModal now={now} active={active} autoThrowCardKey={autoThrowKey} autoThrowOpenChat={autoThrowChat} providerId={providerId} providerSettings={providerSettings} onClose={() => { setShowAllCards(false); setAutoThrowKey(undefined); setAutoThrowChat(false); }} />}
     </FlyCardProvider>
   );
 }
