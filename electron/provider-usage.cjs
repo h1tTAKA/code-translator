@@ -148,13 +148,19 @@ async function fetchCodexUsage() {
   if (error) return { provider: "codex", status: statusForError(error) };
   if (!data) return { provider: "codex", status: "error" };
   const rl = data.rate_limit ?? data.rateLimits ?? {};
-  // primary_window=세션(짧은 창), secondary_window=주간. reset_at은 초 단위(mapWindow가 판별).
-  return {
-    provider: "codex",
-    status: "ok",
-    session: mapWindow(rl.primary_window ?? rl.primary, 300),
-    weekly: mapWindow(rl.secondary_window ?? rl.secondary, 10080),
-  };
+  // Codex 창은 plan마다 다름(team=주간만, 그 외=세션+주간). primary/secondary 위치가 아니라
+  // limit_window_seconds(창 길이)로 세션(≤6h)/주간을 분류. 없는 창은 null(UI서 숨김).
+  let session = null;
+  let weekly = null;
+  for (const raw of [rl.primary_window, rl.secondary_window]) {
+    if (!raw || typeof raw.used_percent !== "number") continue;
+    const secs = typeof raw.limit_window_seconds === "number" && raw.limit_window_seconds > 0 ? raw.limit_window_seconds : null;
+    const windowMinutes = secs ? Math.round(secs / 60) : 10080;
+    const w = mapWindow(raw, windowMinutes);
+    if (!w) continue;
+    if (windowMinutes <= 360) session = w; else weekly = w;
+  }
+  return { provider: "codex", status: "ok", session, weekly };
 }
 
 // 둘 병렬. 개별 실패는 status로 격리(전체 실패로 안 번지게).
