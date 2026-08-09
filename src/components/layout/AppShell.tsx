@@ -140,15 +140,25 @@ export default function AppShell({ editor, learningPanel, modeToggle, onOpenSett
 
   return (
     <div className="relative flex h-screen min-h-0 flex-col bg-white dark:bg-[#111219]">
-      {/* 질문·분석 영역: full-width 헤더 바 대신 상단 구석 플로팅 pill(모드 토글+설정). 레이아웃 높이 0 → 세로공간 회수(#723).
-          워크스페이스 영역은 자체 헤더 줄 컨트롤(#721)이라 pill 미표시. */}
+      {/* 질문·분석 영역: full-width 헤더 바 대신 얇은 상단 스트립에 우측 정렬 pill(모드 토글+설정) — orca식.
+          투명 배경·최소 높이라 옛 헤더보다 얇고, 콘텐츠는 아래로 흘러 뷰 툴바와 안 겹침(#723). 워크스페이스는 자체 컨트롤(#721)이라 미표시. */}
       {!workspace && (
-        <div className="absolute right-3 top-2 z-50 flex items-center gap-1.5">
-          {modeToggle}
-          <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
-            className="rounded-lg border border-zinc-200 bg-zinc-100 p-2 text-zinc-500 shadow-sm transition hover:bg-zinc-200 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-            <IconSettings size={18} stroke={2} aria-hidden />
-          </button>
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-1.5 dark:border-zinc-800">
+          {/* 좌: 브랜드 로고(짤린 느낌 방지·균형). 라이트=네이비, 다크=흰 워드마크. */}
+          <span className="flex shrink-0 items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto dark:hidden" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto dark:block" />
+          </span>
+          {/* 우: 모드 토글 pill + 설정 */}
+          <div className="flex items-center gap-1.5">
+            {modeToggle}
+            <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
+              className="rounded-lg border border-zinc-200 bg-zinc-100 p-2 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+              <IconSettings size={18} stroke={2} aria-hidden />
+            </button>
+          </div>
         </div>
       )}
 
