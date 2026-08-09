@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Header from "./Header";
+import { IconSettings } from "@tabler/icons-react";
 import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -139,9 +139,18 @@ export default function AppShell({ editor, learningPanel, modeToggle, onOpenSett
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-white dark:bg-[#111219]">
-      {/* 워크스페이스 영역은 상단 헤더 미렌더 — 세로공간 회수. 컨트롤은 WorkspaceView 자체 헤더 줄로(#720). */}
-      {!workspace && <Header modeToggle={modeToggle} onOpenSettings={onOpenSettings} />}
+    <div className="relative flex h-screen min-h-0 flex-col bg-white dark:bg-[#111219]">
+      {/* 질문·분석 영역: full-width 헤더 바 대신 상단 구석 플로팅 pill(모드 토글+설정). 레이아웃 높이 0 → 세로공간 회수(#723).
+          워크스페이스 영역은 자체 헤더 줄 컨트롤(#721)이라 pill 미표시. */}
+      {!workspace && (
+        <div className="absolute right-3 top-2 z-50 flex items-center gap-1.5">
+          {modeToggle}
+          <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
+            className="rounded-lg border border-zinc-200 bg-zinc-100 p-2 text-zinc-500 shadow-sm transition hover:bg-zinc-200 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+            <IconSettings size={18} stroke={2} aria-hidden />
+          </button>
+        </div>
+      )}
 
       {/* 암기 뷰 — 항상 마운트하고 비활성 시 hidden(세션/카드 상태 보존 #374).
           Tailwind flex와 hidden 충돌 때문에 display를 조건부 클래스로 토글. */}
