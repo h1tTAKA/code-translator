@@ -278,8 +278,6 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const activeTab = codeTabs.find((tb) => codeTabKey(tb) === activeCode) ?? null;
   const activeFile = activeTab?.kind === "file" ? activeTab.file : null; // FileTree 선택 하이라이트용
 
-  const folderName = path.split("/").filter(Boolean).pop() ?? path;
-
   // 웹(비데스크톱): 터미널·폴더접근 불가 → 안내.
   if (mounted && !desktop) {
     return (
@@ -337,11 +335,11 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   // 4존 셸.
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <header className="flex items-center gap-2 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
-        <IconFiles size={15} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
-        <span className="truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{folderName}</span>
-        {/* 영역 컨트롤(#721) — 워크스페이스엔 상단 헤더가 없어 여기서: 질문·분석으로 나가기 / 암기(카드덱) / 설정. */}
-        {(onExitWorkspace || onOpenMemorize || onOpenSettings) && <span className="ml-auto mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
+      {/* 헤더 한 줄(#731) — 좌: 워크스페이스 탭(이름이 탭에 있어 별도 폴더명 줄 없음), 우: 영역 컨트롤. */}
+      <header className="flex items-center gap-2 border-b border-zinc-200 pr-2 dark:border-zinc-800">
+        {tabStrip}
+        {/* 영역 컨트롤(#721) — 질문·분석으로 나가기 / 암기(카드덱) / 설정 / 챗 토글. */}
+        {(onExitWorkspace || onOpenMemorize || onOpenSettings) && <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
         {onExitWorkspace && (
           <button type="button" onClick={onExitWorkspace} title={t("workspace.toQA")} aria-label={t("workspace.toQA")}
             className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
@@ -366,8 +364,6 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           {chatOpen ? <IconLayoutSidebarRightCollapse size={16} stroke={2} aria-hidden /> : <IconLayoutSidebarRightExpand size={16} stroke={2} aria-hidden />}
         </button>
       </header>
-      {/* 워크스페이스 탭 스트립(#731) — 메뉴 헤더 아래에 위치. WorkspaceTabs가 만들어 내려준다. */}
-      {tabStrip}
       <div className="relative flex min-h-0 flex-1">
         {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
         <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">

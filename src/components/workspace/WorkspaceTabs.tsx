@@ -83,31 +83,28 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     return <div className="flex h-full flex-1 items-center justify-center p-8 text-center text-[13px] text-zinc-400 dark:text-zinc-500">{t("workspace.desktopOnly")}</div>;
   }
 
-  // 탭 스트립 — WorkspaceView의 메뉴 헤더 "아래"에 렌더되도록 prop로 내려준다(#731).
+  // 탭 스트립 — WorkspaceView 헤더 한 줄의 좌측에 pill 형태로(#731). 헤더가 border-b 제공, 자체 bar 없음.
   const tabStrip = (
-    <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-[#15161d]">
-      <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
-        {paths.map((p) => {
-          const on = p === activePath;
-          return (
-            <div key={p} onClick={() => activate(p)} title={p}
-              className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}>
-              {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-[#3B34E2] dark:bg-[#8b86f5]" aria-hidden />}
-              <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
-              <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
-              <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(p); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
-                className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
-                <IconX size={12} stroke={2.5} aria-hidden />
-              </button>
-            </div>
-          );
-        })}
-        {/* 새 워크스페이스 추가 — 마지막 탭 바로 옆(#731). */}
-        <button type="button" onClick={addWorkspace} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
-          className="flex shrink-0 items-center justify-center px-3 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-          <IconPlus size={16} stroke={2} aria-hidden />
-        </button>
-      </div>
+    <div className="nunopi-scroll flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2 py-1.5">
+      {paths.map((p) => {
+        const on = p === activePath;
+        return (
+          <div key={p} onClick={() => activate(p)} title={p}
+            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] transition ${on ? "border-zinc-300 bg-white text-zinc-800 shadow-sm dark:border-zinc-600 dark:bg-[#0b0c12] dark:text-zinc-100" : "border-transparent text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
+            <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
+            <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(p); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
+              className={`ml-0.5 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
+              <IconX size={12} stroke={2.5} aria-hidden />
+            </button>
+          </div>
+        );
+      })}
+      {/* 새 워크스페이스 추가 — 마지막 탭 바로 옆(#731). */}
+      <button type="button" onClick={addWorkspace} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
+        className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-200/60 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-200">
+        <IconPlus size={16} stroke={2} aria-hidden />
+      </button>
     </div>
   );
 
