@@ -66,7 +66,7 @@ export function QASubToggle({ viewMode, onViewModeChange, disabled = false }: QA
         return (
           <button key={opt.value} type="button" role="tab" aria-selected={selected} aria-label={label} title={label} disabled={disabled}
             onClick={() => onViewModeChange(opt.value)}
-            className={`flex items-center justify-center rounded-lg px-3 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${selected ? SEG_ON : SEG_OFF}`}>
+            className={`flex items-center justify-center rounded-lg px-6 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${selected ? SEG_ON : SEG_OFF}`}>
             <Icon size={18} stroke={2} aria-hidden />
           </button>
         );
