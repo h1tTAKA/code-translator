@@ -1200,8 +1200,6 @@ export default function Home() {
     <ToastProvider>
       <AppShell
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenMemorize={() => handleViewModeChange("memorize")}
-        memorizeBadge={memorizeDue}
         editorCollapsed={editorCollapsed}
         chatOpen={chatOpen}
         onToggleEditorCollapsed={toggleEditorCollapsed}
@@ -1218,6 +1216,7 @@ export default function Home() {
             viewMode={viewMode}
             onViewModeChange={handleViewModeChange}
             onEnterQA={enterQAArea}
+            memorizeBadge={memorizeDue}
             disabled={isLoading}
           />
         }

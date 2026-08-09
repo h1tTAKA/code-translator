@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconSettings, IconBrain } from "@tabler/icons-react";
+import { IconSettings } from "@tabler/icons-react";
 import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -12,10 +12,6 @@ interface AppShellProps {
   // 질문·분석 하위 세그(홈·질문·코드·글) — 스트립 가운데 배치(#725). modeToggle(1차)은 우측.
   subToggle?: React.ReactNode;
   onOpenSettings: () => void;
-  // 암기(카드덱) 상시 퀵 — 질문·분석 스트립에서 토글 밖 아이콘으로. 양 영역 공유 진입로(#725).
-  onOpenMemorize?: () => void;
-  // 오늘 복습 due 수 — 암기 아이콘 배지(0이면 숨김). 토글에서 여기로 이동(#725).
-  memorizeBadge?: number;
   // 입력 패널 접기 — 접힘+챗닫힘이면 왼쪽 영역을 통째로 숨겨 학습패널 풀와이드.
   // 접힘+챗열림이면 영역은 유지(내용은 EditorChatColumn이 챗만 렌더).
   editorCollapsed?: boolean;
@@ -49,7 +45,7 @@ function clampPct(value: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, value));
 }
 
-export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onOpenMemorize, memorizeBadge = 0, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
+export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
   const t = useT();
   const mainRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState(DEFAULT_LEFT_PCT);
@@ -157,25 +153,15 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto dark:block" />
           </span>
-          {/* 가운데: 질문·분석 하위 세그(홈·질문·코드·글) — 원래 중앙 위치(#725). */}
-          <div className="justify-self-center">{subToggle}</div>
-          {/* 우: 영역 전환 토글(워크스페이스|질문·분석) + 암기(상시 퀵·배지) + 설정 */}
+          {/* 가운데: 질문·분석 하위 세그(홈·질문·코드·글) — 원래 중앙 위치(#725). 암기 뷰에선 숨김(하위 없음). */}
+          <div className="justify-self-center">{!memorize && subToggle}</div>
+          {/* 우: 영역 전환 토글(워크스페이스│질문·분석│암기) │ 설정(테두리 없는 아이콘) */}
           <div className="flex items-center gap-1.5 justify-self-end">
             {modeToggle}
-            {onOpenMemorize && (
-              <button type="button" onClick={onOpenMemorize} title={t("mode.memorize")} aria-label={t("mode.memorize")}
-                className="relative rounded-lg border border-zinc-200 bg-zinc-100 p-2 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-                <IconBrain size={18} stroke={2} aria-hidden />
-                {memorizeBadge > 0 && (
-                  <span aria-label={`오늘 복습 ${memorizeBadge}`}
-                    className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white">
-                    {memorizeBadge > 99 ? "99+" : memorizeBadge}
-                  </span>
-                )}
-              </button>
-            )}
+            {/* 영역 nav ↔ 유틸 구분선 */}
+            <span className="mx-1 h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
             <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
-              className="rounded-lg border border-zinc-200 bg-zinc-100 p-2 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+              className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
               <IconSettings size={18} stroke={2} aria-hidden />
             </button>
           </div>
