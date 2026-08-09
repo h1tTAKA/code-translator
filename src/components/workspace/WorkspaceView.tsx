@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconChevronUp, IconChevronDown, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconMessages, IconBrain, IconSettings } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconMessages, IconBrain, IconSettings } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -382,11 +382,6 @@ export default function WorkspaceView({ path, active = true, providerId, provide
               <div style={{ height: gitH }} className="shrink-0 overflow-hidden border-t border-zinc-200 dark:border-zinc-800"><GitGraph root={path} onOpenDiff={(hash, file) => openCodeTab({ kind: "diff", hash, file })} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => openCodeTab({ kind: "diff", file, worktree })} onRefreshed={handleGitRefreshed} /></div>
             </>
           )}
-          <button type="button" onClick={toggleGit} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
-            <IconGitBranch size={12} stroke={2} aria-hidden />
-            <span>git</span>
-            {gitOpen ? <IconChevronDown size={12} stroke={2} className="ml-auto" aria-hidden /> : <IconChevronUp size={12} stroke={2} className="ml-auto" aria-hidden />}
-          </button>
           {/* 문서 폴더 브라우저(#693) — .md/.txt 클릭 시 뷰어에 표시(뷰어는 커밋2). */}
           {docsOpen && (
             <>
@@ -413,11 +408,17 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             </div>
             </>
           )}
-          <button type="button" onClick={() => setDocsOpen((v) => !v)} className="flex shrink-0 items-center gap-1.5 border-t border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800">
-            <IconFileText size={12} stroke={2} aria-hidden />
-            <span>{t("workspace.docs")}</span>
-            {docsOpen ? <IconChevronDown size={12} stroke={2} className="ml-auto" aria-hidden /> : <IconChevronUp size={12} stroke={2} className="ml-auto" aria-hidden />}
-          </button>
+          {/* 하단 아이콘 바(#733) — git·문서 패널 토글. 전체폭 토글 줄 2개를 아이콘 한 줄로 대체(공간 회수). */}
+          <div className="flex shrink-0 items-center gap-0.5 border-t border-zinc-200 px-1.5 py-1 dark:border-zinc-800">
+            <button type="button" onClick={toggleGit} title="git" aria-label="git" aria-pressed={gitOpen}
+              className={`rounded-md p-1.5 transition ${gitOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
+              <IconGitBranch size={15} stroke={2} aria-hidden />
+            </button>
+            <button type="button" onClick={() => setDocsOpen((v) => !v)} title={t("workspace.docs")} aria-label={t("workspace.docs")} aria-pressed={docsOpen}
+              className={`rounded-md p-1.5 transition ${docsOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
+              <IconFileText size={15} stroke={2} aria-hidden />
+            </button>
+          </div>
         </aside>
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
         {/* 가운데: 커스텀 도킹 분할 트리(터미널·코드·문서 자유 배치, #716). 기존 패널 그대로 렌더만 재배치. */}
