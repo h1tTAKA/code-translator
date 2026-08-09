@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { IconX, IconSearch, IconTrash, IconCheck, IconSquareCheck, IconSparkles, IconHandFinger, IconCirclePlus, IconCircleMinus, IconCopyCheck } from "@tabler/icons-react";
+import { IconX, IconSearch, IconTrash, IconCheck, IconSquareCheck, IconSparkles, IconHandFinger, IconCirclePlus, IconCircleMinus, IconCopyCheck, IconCards, IconChartBar } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { collectCards } from "@/lib/srs/collect";
@@ -53,7 +53,7 @@ const CAT_DOT: Record<CardCategory, string> = {
 };
 
 // 전체 보유 카드 갤러리 — 검색·출처/분류 필터·정렬. 타일 클릭 시 카드가 날아온다(peek 재사용).
-export default function AllCardsModal({ now, active = true, autoThrowCardKey, autoThrowOpenChat = false, providerId, providerSettings, onClose }: { now: Date; active?: boolean; autoThrowCardKey?: string; autoThrowOpenChat?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onClose: () => void }) {
+export default function AllCardsModal({ now, active = true, autoThrowCardKey, autoThrowOpenChat = false, providerId, providerSettings, onClose, asBase = false, onOpenStats, onOpenDeckReview }: { now: Date; active?: boolean; autoThrowCardKey?: string; autoThrowOpenChat?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onClose: () => void; asBase?: boolean; onOpenStats?: () => void; onOpenDeckReview?: () => void }) {
   const t = useT();
   const confirm = useConfirm();
   const { throwCard } = useFlyCard();
@@ -217,8 +217,12 @@ export default function AllCardsModal({ now, active = true, autoThrowCardKey, au
     exitAll();
   }
 
-  return createPortal(
-    <div className={`fixed inset-x-0 bottom-0 top-14 z-[60] flex-col bg-zinc-50/95 backdrop-blur-sm dark:bg-[#0b0c10]/95 ${active ? "flex" : "hidden"}`}>
+  // asBase: 암기 랜딩 화면으로 부모 영역을 인라인으로 채운다(포털·풀스크린 래퍼 없음).
+  // 부모(MemorizeView)가 relative라 내부 오버레이 모달(absolute inset-0)이 갤러리를 덮는다.
+  const shell = (
+    <div className={asBase
+      ? `relative flex h-full w-full flex-col ${active ? "" : "hidden"}`
+      : `fixed inset-x-0 bottom-0 top-14 z-[60] flex-col bg-zinc-50/95 backdrop-blur-sm dark:bg-[#0b0c10]/95 ${active ? "flex" : "hidden"}`}>
       {/* 헤더 — 제목 + 검색 + 닫기 */}
       <div className="flex items-center gap-3 border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
         <h2 className="shrink-0 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
@@ -330,6 +334,28 @@ export default function AllCardsModal({ now, active = true, autoThrowCardKey, au
           </>
         ) : (
           <>
+            {/* 복습 진입(랜딩 전용) — 복습 암기(플래시카드) + 복습 통계. 갤러리에서 바로. */}
+            {asBase && onOpenDeckReview && (
+              <button
+                type="button"
+                onClick={onOpenDeckReview}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#3B34E2] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#322bc9]"
+              >
+                <IconCards size={15} stroke={2} aria-hidden />
+                {t("mem.reviewStudy")}
+              </button>
+            )}
+            {asBase && onOpenStats && (
+              <button
+                type="button"
+                onClick={onOpenStats}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:border-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              >
+                <IconChartBar size={15} stroke={2} aria-hidden />
+                {t("mem.statsTitle")}
+              </button>
+            )}
+            {asBase && <span className="h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" />}
             {/* 카드 관리: 선택(삭제·덱추가 통합) */}
             <button
               type="button"
@@ -357,17 +383,21 @@ export default function AllCardsModal({ now, active = true, autoThrowCardKey, au
               <IconCopyCheck size={15} stroke={2} aria-hidden />
               {t("mem.dedup")}
             </button>
-            <span className="h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" />
-            {/* 닫기 */}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={t("mem.exit")}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:border-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-            >
-              <IconX size={15} stroke={2} aria-hidden />
-              {t("mem.exit")}
-            </button>
+            {/* 닫기 — 랜딩(asBase)에선 없음(암기 영역 자체가 갤러리). */}
+            {!asBase && (
+              <>
+                <span className="h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" />
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label={t("mem.exit")}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:border-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                >
+                  <IconX size={15} stroke={2} aria-hidden />
+                  {t("mem.exit")}
+                </button>
+              </>
+            )}
           </>
         )}
       </div>
@@ -523,9 +553,9 @@ export default function AllCardsModal({ now, active = true, autoThrowCardKey, au
           onClose={() => setCustomize(null)}
         />
       )}
-    </div>,
-    document.body,
+    </div>
   );
+  return asBase ? shell : createPortal(shell, document.body);
 }
 
 function Chip({ on, onClick, label, dot }: { on: boolean; onClick: () => void; label: string; dot?: string }) {
