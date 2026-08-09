@@ -18,7 +18,7 @@ import { removeSuggestedCard, stripCardBlock, type SuggestedCard } from "@/lib/c
 import MemorizeView from "@/components/memorize/MemorizeView";
 import AskView from "@/components/ask/AskView";
 import HistoryView from "@/components/history/HistoryView";
-import WorkspaceView from "@/components/workspace/WorkspaceView";
+import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
 import type { HistoryNav } from "@/lib/history/types";
 import { type ViewMode, VIEW_MODE_KEY } from "@/lib/viewMode";
 import { deckStats } from "@/lib/srs/due";
@@ -1211,7 +1211,7 @@ export default function Home() {
         history={viewMode === "history"}
         historyView={<HistoryView active={viewMode === "history"} onNavigate={handleGoToHistory} providerId={providerId} providerSettings={providerSettings} />}
         workspace={viewMode === "workspace"}
-        workspaceView={<WorkspaceView active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={enterQAArea} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
+        workspaceView={<WorkspaceTabs active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={enterQAArea} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
         modeToggle={
           <AreaPrimaryToggle
             viewMode={viewMode}
