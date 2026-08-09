@@ -136,7 +136,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
                 onExitWorkspace={onExitWorkspace}
                 onOpenMemorize={onOpenMemorize}
                 onOpenSettings={onOpenSettings}
-                tabStrip={tabStrip}
+                tabStrip={p === activePath ? tabStrip : undefined}
               />
             </div>
           ))
