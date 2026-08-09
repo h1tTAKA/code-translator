@@ -14,15 +14,30 @@ function barColor(pct: number): string {
   return "bg-emerald-500";
 }
 
-// 사용 한도 윈도우 한 줄 — 라벨 + %·리셋 + 진행 바.
+// 리셋까지 남은 시간을 상대 표기("6d 23h" / "5h 43m" / "53m"). 절대 시각은 요일이 빠져 모호해 상대로(#735).
+function remaining(resetsAt: number | null | undefined): string | null {
+  if (resetsAt == null) return null;
+  const ms = resetsAt - Date.now();
+  if (ms <= 0) return "now";
+  const totalMin = Math.floor(ms / 60000);
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+// 사용 한도 윈도우 한 줄 — 라벨 + %·리셋까지 남은 시간 + 진행 바.
 function WinRow({ label, w }: { label: string; w: UsageWindow | null | undefined }) {
   if (!w) return null;
+  const rem = remaining(w.resetsAt) ?? w.resetLabel;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between text-[11px]">
         <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
         <span className="font-medium text-zinc-700 dark:text-zinc-200">
-          {Math.round(w.usedPercent)}%{w.resetLabel ? <span className="ml-1 font-normal text-zinc-400 dark:text-zinc-500">· {w.resetLabel}</span> : null}
+          {Math.round(w.usedPercent)}%{rem ? <span className="ml-1 font-normal text-zinc-400 dark:text-zinc-500">· {rem}</span> : null}
         </span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
