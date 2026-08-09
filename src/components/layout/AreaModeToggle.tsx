@@ -1,6 +1,6 @@
 "use client";
 
-import { IconCode, IconFileText, IconMessage2, IconHome, IconLayoutColumns, IconMessages, IconBrain } from "@tabler/icons-react";
+import { IconCode, IconFileText, IconMessage2, IconLayoutColumns, IconMessages, IconBrain } from "@tabler/icons-react";
 import type { ViewMode } from "@/lib/viewMode";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -24,7 +24,8 @@ export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQ
   const t = useT();
   const isWorkspace = viewMode === "workspace";
   const isMemorize = viewMode === "memorize";
-  const inQA = !isWorkspace && !isMemorize; // 질문·분석 하위뷰(홈·질문·코드·글)일 때
+  const isHistory = viewMode === "history"; // 홈(전역 대시보드) — 로고 진입, 영역 중립(#729)
+  const inQA = !isWorkspace && !isMemorize && !isHistory; // 질문·분석 하위뷰(질문·코드·글)일 때만
   const base = "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
   return (
     <div role="tablist" aria-label={t("nav.area")} className={SEG_WRAP}>
@@ -56,10 +57,9 @@ export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQ
   );
 }
 
-// ── 2차: 질문·분석 하위 뷰(홈·질문·코드분석·글분석). 스트립 가운데에 배치(#725). ──
-// memorize는 상시 퀵으로 빠져 여기 없음.
+// ── 2차: 질문·분석 하위 뷰(질문·코드분석·글분석). 스트립 가운데에 배치(#725). ──
+// memorize는 상시 퀵, 홈(history)은 로고 진입 전역 대시보드(#729)라 여기 없음.
 const SUB_OPTIONS: { value: ViewMode; tKey: string; Icon: typeof IconCode }[] = [
-  { value: "history", tKey: "mode.history", Icon: IconHome },
   { value: "ask", tKey: "mode.ask", Icon: IconMessage2 },
   { value: "code", tKey: "mode.code", Icon: IconCode },
   { value: "text", tKey: "mode.text", Icon: IconFileText },

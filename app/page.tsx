@@ -199,7 +199,7 @@ export default function Home() {
   const [editorCollapsed, setEditorCollapsed] = useState(false);
   // 화면 전환 축(코드/글/암기). code·text는 분석 모드(mode)와 연동, memorize는 분석 안 함.
   const [viewMode, setViewMode] = useState<ViewMode>("code");
-  const lastQAViewRef = useRef<ViewMode>("history"); // 워크스페이스 나갈 때 복귀할 직전 질문·분석 뷰(#721)
+  const lastQAViewRef = useRef<ViewMode>("code"); // 질문·분석 진입 시 복귀할 직전 하위뷰(ask/code/text). 홈은 로고 진입이라 제외(#721·#729)
   // Ask 출처 이동 타깃(암기 갤러리 등에서). nonce로 재트리거.
   const [askGoTarget, setAskGoTarget] = useState<{ sessionId: string; subId?: string; quizId?: string; nonce: number } | undefined>(undefined);
   const askGoNonceRef = useRef(0);
@@ -265,8 +265,8 @@ export default function Home() {
 
   function handleViewModeChange(next: ViewMode) {
     if (next === viewMode) return;
-    // 질문·분석 하위뷰만 기억(#725) — memorize는 상시 퀵이라 복귀 타깃에서 제외(1차 질문·분석은 하위 세그로 안착).
-    if (next === "history" || next === "ask" || next === "code" || next === "text") lastQAViewRef.current = next;
+    // 질문·분석 하위뷰만 기억(#725·#729) — memorize=상시 퀵, history=로고 진입 전역 홈이라 복귀 타깃에서 제외(1차 질문·분석은 하위 세그로 안착).
+    if (next === "ask" || next === "code" || next === "text") lastQAViewRef.current = next;
     setViewMode(next);
     try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
     // 코드/글은 분석 모드와 연동(암기는 분석 상태 보존).
@@ -1200,6 +1200,7 @@ export default function Home() {
     <ToastProvider>
       <AppShell
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onLogoClick={() => handleViewModeChange("history")}
         editorCollapsed={editorCollapsed}
         chatOpen={chatOpen}
         onToggleEditorCollapsed={toggleEditorCollapsed}
