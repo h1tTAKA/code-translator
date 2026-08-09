@@ -9,9 +9,11 @@ interface AppShellProps {
   editor: React.ReactNode;
   learningPanel: React.ReactNode;
   modeToggle?: React.ReactNode;
-  // 질문·분석 하위 세그(홈·질문·코드·글) — 스트립 가운데 배치(#725). modeToggle(1차)은 우측.
+  // 질문·분석 하위 세그(질문·코드·글) — 스트립 가운데 배치(#725). modeToggle(1차)은 우측.
   subToggle?: React.ReactNode;
   onOpenSettings: () => void;
+  // 좌상단 로고 클릭 = 홈(전역 대시보드) 진입(#729). 표준 UX.
+  onLogoClick?: () => void;
   // 입력 패널 접기 — 접힘+챗닫힘이면 왼쪽 영역을 통째로 숨겨 학습패널 풀와이드.
   // 접힘+챗열림이면 영역은 유지(내용은 EditorChatColumn이 챗만 렌더).
   editorCollapsed?: boolean;
@@ -45,7 +47,7 @@ function clampPct(value: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, value));
 }
 
-export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
+export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
   const t = useT();
   const mainRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState(DEFAULT_LEFT_PCT);
@@ -146,13 +148,14 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
           투명 배경·최소 높이라 옛 헤더보다 얇고, 콘텐츠는 아래로 흘러 뷰 툴바와 안 겹침(#723). 워크스페이스는 자체 컨트롤(#721)이라 미표시. */}
       {!workspace && (
         <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-zinc-200 px-4 py-1.5 dark:border-zinc-800">
-          {/* 좌: 브랜드 로고(짤린 느낌 방지·균형). 라이트=네이비, 다크=흰 워드마크. */}
-          <span className="flex shrink-0 items-center justify-self-start">
+          {/* 좌: 브랜드 로고 — 클릭 시 홈(전역 대시보드)(#729). 라이트=네이비, 다크=흰 워드마크. */}
+          <button type="button" onClick={onLogoClick} title={t("mode.history")} aria-label={t("mode.history")}
+            className="flex shrink-0 items-center justify-self-start rounded-lg p-0.5 transition hover:opacity-80">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto dark:hidden" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto dark:block" />
-          </span>
+          </button>
           {/* 가운데: 질문·분석 하위 세그(홈·질문·코드·글) — 원래 중앙 위치(#725). 암기 뷰에선 숨김(하위 없음). */}
           <div className="justify-self-center">{!memorize && subToggle}</div>
           {/* 우: 영역 전환 토글(워크스페이스│질문·분석│암기) │ 설정(테두리 없는 아이콘) */}

@@ -1200,6 +1200,7 @@ export default function Home() {
     <ToastProvider>
       <AppShell
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onLogoClick={() => handleViewModeChange("history")}
         editorCollapsed={editorCollapsed}
         chatOpen={chatOpen}
         onToggleEditorCollapsed={toggleEditorCollapsed}
