@@ -11,8 +11,8 @@ const ACTIVE_KEY = "nunopi:ws-active";   // 활성 경로
 const OLD_PATH_KEY = "nunopi:workspace-path"; // 구 단일 워크스페이스 경로 — 최초 1회 마이그레이션
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
-// 누노피 브랜드 그라디언트(시안→블루→바이올렛) — 활성 탭 pill 배경.
-const BRAND_GRADIENT = "linear-gradient(90deg, #22d3ee 0%, #3b82f6 55%, #8b5cf6 100%)";
+// 누노피 브랜드 그라디언트의 딥 톤(시안→블루→바이올렛) — 활성 탭 pill 배경(전체 다크 UI에 맞춰 어둡게).
+const BRAND_GRADIENT = "linear-gradient(90deg, #0e7490 0%, #1e40af 55%, #6d28d9 100%)";
 
 // 멀티 워크스페이스 탭(#731) — 여러 레포를 탭으로 열고 전환. 각 탭 = WorkspaceView 인스턴스(key=path).
 // 방문한 탭은 숨긴 채 계속 마운트(lazy keep-alive) — 전환해도 도킹/에디터/터미널 상태 보존.
