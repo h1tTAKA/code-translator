@@ -140,7 +140,8 @@ export default function AppShell({ editor, learningPanel, modeToggle, onOpenSett
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-white dark:bg-[#111219]">
-      <Header modeToggle={modeToggle} onOpenSettings={onOpenSettings} />
+      {/* 워크스페이스 영역은 상단 헤더 미렌더 — 세로공간 회수. 컨트롤은 WorkspaceView 자체 헤더 줄로(#720). */}
+      {!workspace && <Header modeToggle={modeToggle} onOpenSettings={onOpenSettings} />}
 
       {/* 암기 뷰 — 항상 마운트하고 비활성 시 hidden(세션/카드 상태 보존 #374).
           Tailwind flex와 hidden 충돌 때문에 display를 조건부 클래스로 토글. */}
