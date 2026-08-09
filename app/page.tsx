@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import AreaModeToggle from "@/components/layout/AreaModeToggle";
+import AreaPrimaryToggle, { QASubToggle } from "@/components/layout/AreaModeToggle";
 import LearningPanel from "@/components/learning/LearningPanel";
 import SettingsDrawer from "@/components/settings/SettingsDrawer";
 import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
@@ -1214,10 +1214,17 @@ export default function Home() {
         workspace={viewMode === "workspace"}
         workspaceView={<WorkspaceView active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={enterQAArea} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
         modeToggle={
-          <AreaModeToggle
+          <AreaPrimaryToggle
             viewMode={viewMode}
             onViewModeChange={handleViewModeChange}
             onEnterQA={enterQAArea}
+            disabled={isLoading}
+          />
+        }
+        subToggle={
+          <QASubToggle
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
             disabled={isLoading}
           />
         }

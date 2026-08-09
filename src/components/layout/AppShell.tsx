@@ -9,6 +9,8 @@ interface AppShellProps {
   editor: React.ReactNode;
   learningPanel: React.ReactNode;
   modeToggle?: React.ReactNode;
+  // 질문·분석 하위 세그(홈·질문·코드·글) — 스트립 가운데 배치(#725). modeToggle(1차)은 우측.
+  subToggle?: React.ReactNode;
   onOpenSettings: () => void;
   // 암기(카드덱) 상시 퀵 — 질문·분석 스트립에서 토글 밖 아이콘으로. 양 영역 공유 진입로(#725).
   onOpenMemorize?: () => void;
@@ -47,7 +49,7 @@ function clampPct(value: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, value));
 }
 
-export default function AppShell({ editor, learningPanel, modeToggle, onOpenSettings, onOpenMemorize, memorizeBadge = 0, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
+export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onOpenMemorize, memorizeBadge = 0, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
   const t = useT();
   const mainRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState(DEFAULT_LEFT_PCT);
@@ -147,16 +149,18 @@ export default function AppShell({ editor, learningPanel, modeToggle, onOpenSett
       {/* 질문·분석 영역: full-width 헤더 바 대신 얇은 상단 스트립에 우측 정렬 pill(모드 토글+설정) — orca식.
           투명 배경·최소 높이라 옛 헤더보다 얇고, 콘텐츠는 아래로 흘러 뷰 툴바와 안 겹침(#723). 워크스페이스는 자체 컨트롤(#721)이라 미표시. */}
       {!workspace && (
-        <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-1.5 dark:border-zinc-800">
+        <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-zinc-200 px-4 py-1.5 dark:border-zinc-800">
           {/* 좌: 브랜드 로고(짤린 느낌 방지·균형). 라이트=네이비, 다크=흰 워드마크. */}
-          <span className="flex shrink-0 items-center">
+          <span className="flex shrink-0 items-center justify-self-start">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto dark:hidden" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto dark:block" />
           </span>
-          {/* 우: 모드 토글 pill + 암기(상시 퀵·배지) + 설정 */}
-          <div className="flex items-center gap-1.5">
+          {/* 가운데: 질문·분석 하위 세그(홈·질문·코드·글) — 원래 중앙 위치(#725). */}
+          <div className="justify-self-center">{subToggle}</div>
+          {/* 우: 영역 전환 토글(워크스페이스|질문·분석) + 암기(상시 퀵·배지) + 설정 */}
+          <div className="flex items-center gap-1.5 justify-self-end">
             {modeToggle}
             {onOpenMemorize && (
               <button type="button" onClick={onOpenMemorize} title={t("mode.memorize")} aria-label={t("mode.memorize")}
