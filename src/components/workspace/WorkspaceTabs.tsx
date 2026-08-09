@@ -11,6 +11,8 @@ const ACTIVE_KEY = "nunopi:ws-active";   // 활성 경로
 const OLD_PATH_KEY = "nunopi:workspace-path"; // 구 단일 워크스페이스 경로 — 최초 1회 마이그레이션
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
+// 누노피 브랜드 그라디언트(시안→블루→바이올렛) — 활성 탭 pill 배경.
+const BRAND_GRADIENT = "linear-gradient(90deg, #22d3ee 0%, #3b82f6 55%, #8b5cf6 100%)";
 
 // 멀티 워크스페이스 탭(#731) — 여러 레포를 탭으로 열고 전환. 각 탭 = WorkspaceView 인스턴스(key=path).
 // 방문한 탭은 숨긴 채 계속 마운트(lazy keep-alive) — 전환해도 도킹/에디터/터미널 상태 보존.
@@ -90,11 +92,12 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         const on = p === activePath;
         return (
           <div key={p} onClick={() => activate(p)} title={p}
-            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
-            <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
+            style={on ? { backgroundImage: BRAND_GRADIENT } : undefined}
+            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "text-white shadow-sm" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
+            <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-white" : "text-zinc-400"}`} aria-hidden />
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
             <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(p); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
-              className={`ml-0.5 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
+              className={`ml-0.5 shrink-0 rounded p-0.5 transition ${on ? "text-white/80 hover:bg-white/20 hover:text-white" : "text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"}`}>
               <IconX size={12} stroke={2.5} aria-hidden />
             </button>
           </div>
