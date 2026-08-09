@@ -99,6 +99,17 @@ function statusForError(error) {
   return error === "http-401" || error === "http-403" ? "unavailable" : "error";
 }
 
+// Fable은 top-level 필드가 아니라 limits[] 배열의 weekly_scoped 항목(scope.model.display_name="Fable").
+// 비활성(is_active=false)이어도 percent/resets_at를 가지므로 그대로 노출.
+function fableFromLimits(data) {
+  const limits = Array.isArray(data.limits) ? data.limits : [];
+  const f = limits.find(
+    (l) => l && l.kind === "weekly_scoped" && String(l.scope?.model?.display_name ?? "").trim().toLowerCase() === "fable",
+  );
+  if (!f || typeof f.percent !== "number") return null;
+  return mapWindow({ used_percentage: f.percent, resets_at: f.resets_at }, 10080);
+}
+
 async function fetchClaudeUsage() {
   const token = await readClaudeToken();
   if (!token) return { provider: "claude", status: "unavailable" };
@@ -109,8 +120,8 @@ async function fetchClaudeUsage() {
   });
   if (error) return { provider: "claude", status: statusForError(error) };
   if (!data) return { provider: "claude", status: "error" };
-  // Fable 주간: 응답 필드명이 여러 형태 → 순차 폴백.
-  const fableWeekly = mapWindow(data.fable_weekly, 10080) ?? mapWindow(data.fable_seven_day, 10080) ?? mapWindow(data.seven_day_fable, 10080) ?? null;
+  // Fable 주간: limits[] 스코프 항목 우선, 없으면 옛 top-level 필드명 폴백.
+  const fableWeekly = fableFromLimits(data) ?? mapWindow(data.fable_weekly, 10080) ?? mapWindow(data.fable_seven_day, 10080) ?? mapWindow(data.seven_day_fable, 10080) ?? null;
   return {
     provider: "claude",
     status: "ok",
