@@ -90,11 +90,11 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         const on = p === activePath;
         return (
           <div key={p} onClick={() => activate(p)} title={p}
-            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "bg-zinc-200 text-zinc-800 shadow-sm dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
+            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
             <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
             <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(p); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
-              className={`ml-0.5 shrink-0 rounded p-0.5 transition ${on ? "text-zinc-500 hover:bg-zinc-300 hover:text-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600 dark:hover:text-zinc-100" : "text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"}`}>
+              className={`ml-0.5 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
               <IconX size={12} stroke={2.5} aria-hidden />
             </button>
           </div>
