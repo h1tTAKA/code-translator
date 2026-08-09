@@ -156,11 +156,9 @@ export default function MemorizeView({ active = true, providerId, providerSettin
             {/* 어느 덱 통계인지 여기서 선택(복습 암기 모달과 상태 공유). */}
             <DeckStatPicker
               deck={deck}
-              codeSources={codeSources}
               customId={customId}
               customDecks={customDecks}
               onDeckChange={setDeck}
-              onCodeSourcesChange={setCodeSources}
               onSelectCustom={setCustomId}
             />
             <MemorizeStats
