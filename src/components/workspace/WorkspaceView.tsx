@@ -39,7 +39,7 @@ function ZonePlaceholder({ Icon, label }: { Icon: typeof IconFiles; label: strin
 }
 
 // path(레포)는 WorkspaceTabs가 소유해 prop로 내려준다(#731). key={path}로 탭마다 인스턴스 분리.
-export default function WorkspaceView({ path, active = true, providerId, providerSettings, onExitWorkspace, onOpenMemorize, onOpenSettings }: { path: string; active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onExitWorkspace?: () => void; onOpenMemorize?: () => void; onOpenSettings?: () => void }) {
+export default function WorkspaceView({ path, active = true, providerId, providerSettings, onExitWorkspace, onOpenMemorize, onOpenSettings, tabStrip }: { path: string; active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onExitWorkspace?: () => void; onOpenMemorize?: () => void; onOpenSettings?: () => void; tabStrip?: ReactNode }) {
   const t = useT();
   const [picking, setPicking] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
@@ -366,6 +366,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           {chatOpen ? <IconLayoutSidebarRightCollapse size={16} stroke={2} aria-hidden /> : <IconLayoutSidebarRightExpand size={16} stroke={2} aria-hidden />}
         </button>
       </header>
+      {/* 워크스페이스 탭 스트립(#731) — 메뉴 헤더 아래에 위치. WorkspaceTabs가 만들어 내려준다. */}
+      {tabStrip}
       <div className="relative flex min-h-0 flex-1">
         {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
         <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">

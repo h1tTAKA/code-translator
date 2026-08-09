@@ -83,35 +83,37 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     return <div className="flex h-full flex-1 items-center justify-center p-8 text-center text-[13px] text-zinc-400 dark:text-zinc-500">{t("workspace.desktopOnly")}</div>;
   }
 
+  // 탭 스트립 — WorkspaceView의 메뉴 헤더 "아래"에 렌더되도록 prop로 내려준다(#731).
+  const tabStrip = (
+    <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-[#15161d]">
+      <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
+        {paths.map((p) => {
+          const on = p === activePath;
+          return (
+            <div key={p} onClick={() => activate(p)} title={p}
+              className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}>
+              {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-[#3B34E2] dark:bg-[#8b86f5]" aria-hidden />}
+              <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
+              <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
+              <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(p); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
+                className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
+                <IconX size={12} stroke={2.5} aria-hidden />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {/* 새 워크스페이스 추가 */}
+      <button type="button" onClick={addWorkspace} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
+        className="flex shrink-0 items-center justify-center px-3 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+        <IconPlus size={16} stroke={2} aria-hidden />
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      {/* 상단 탭 스트립 — 워크스페이스 영역 최상단(AppShell 스트립은 워크스페이스서 숨김 #721). */}
-      <div className="flex shrink-0 items-stretch border-b border-zinc-200 bg-zinc-100/70 dark:border-zinc-800 dark:bg-[#15161d]">
-        <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
-          {paths.map((p) => {
-            const on = p === activePath;
-            return (
-              <div key={p} onClick={() => activate(p)} title={p}
-                className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}>
-                {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-[#3B34E2] dark:bg-[#8b86f5]" aria-hidden />}
-                <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
-                <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
-                <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(p); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
-                  className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
-                  <IconX size={12} stroke={2.5} aria-hidden />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        {/* 새 워크스페이스 추가 */}
-        <button type="button" onClick={addWorkspace} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
-          className="flex shrink-0 items-center justify-center px-3 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-          <IconPlus size={16} stroke={2} aria-hidden />
-        </button>
-      </div>
-
-      {/* 본문 — 방문한 탭들 keep-alive(활성만 보임). 탭 없으면 빈 상태. */}
+      {/* 본문 — 방문한 탭들 keep-alive(활성만 보임). 탭 스트립은 각 WorkspaceView 헤더 아래에. 탭 없으면 빈 상태. */}
       <div className="relative flex min-h-0 flex-1">
         {paths.length === 0 ? (
           <div className="flex h-full flex-1 items-center justify-center p-8">
@@ -137,6 +139,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
                 onExitWorkspace={onExitWorkspace}
                 onOpenMemorize={onOpenMemorize}
                 onOpenSettings={onOpenSettings}
+                tabStrip={tabStrip}
               />
             </div>
           ))
