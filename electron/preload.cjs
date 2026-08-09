@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
   relaunch: () => ipcRenderer.invoke("app:relaunch"),
   notify: (payload) => ipcRenderer.invoke("notify", payload),
   pickRepoFolder: () => ipcRenderer.invoke("repo:pickFolder"),
+  // Claude·Codex 구독 사용 한도(세션/주간/Fable) 조회(#735).
+  getProviderUsage: () => ipcRenderer.invoke("provider-usage:get"),
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {
     ensure: (opts) => ipcRenderer.invoke("terminal:ensure", opts),

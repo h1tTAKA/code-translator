@@ -11,6 +11,7 @@ const {
 } = require("@sna-sdk/core/electron");
 const { spawn } = require("node:child_process");
 const { createDaemonClient } = require("./daemon-client.cjs");
+const { getProviderUsage } = require("./provider-usage.cjs");
 const { join } = require("node:path");
 const net = require("node:net");
 
@@ -196,6 +197,8 @@ async function boot() {
 ipcMain.handle("runtime-paths:get", () => loadSavedRuntimePaths());
 ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRuntimePaths(paths) }));
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
+// Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
+ipcMain.handle("provider-usage:get", () => getProviderUsage());
 
 // 알림 아이콘 경로 — dev=public, 패키지=standalone/public(존재하는 첫 후보).
 function notifyIconPath() {
