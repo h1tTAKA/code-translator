@@ -156,8 +156,8 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto dark:block" />
           </button>
-          {/* 가운데: 질문·분석 하위 세그(홈·질문·코드·글) — 원래 중앙 위치(#725). 암기 뷰에선 숨김(하위 없음). */}
-          <div className="justify-self-center">{!memorize && subToggle}</div>
+          {/* 가운데: 질문·분석 하위 세그(질문·코드·글) — 원래 중앙 위치(#725). 암기·홈 뷰에선 숨김(하위 없음)(#729). */}
+          <div className="justify-self-center">{!memorize && !history && subToggle}</div>
           {/* 우: 영역 전환 토글(워크스페이스│질문·분석│암기) │ 설정(테두리 없는 아이콘) */}
           <div className="flex items-center gap-1.5 justify-self-end">
             {modeToggle}
