@@ -102,12 +102,12 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
             </div>
           );
         })}
+        {/* 새 워크스페이스 추가 — 마지막 탭 바로 옆(#731). */}
+        <button type="button" onClick={addWorkspace} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
+          className="flex shrink-0 items-center justify-center px-3 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+          <IconPlus size={16} stroke={2} aria-hidden />
+        </button>
       </div>
-      {/* 새 워크스페이스 추가 */}
-      <button type="button" onClick={addWorkspace} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
-        className="flex shrink-0 items-center justify-center px-3 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-        <IconPlus size={16} stroke={2} aria-hidden />
-      </button>
     </div>
   );
 
