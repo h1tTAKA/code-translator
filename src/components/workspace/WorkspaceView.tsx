@@ -14,8 +14,6 @@ import DocViewer from "@/components/workspace/DocViewer";
 import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, isDockNode, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
-const WS_PATH_KEY = "nunopi:workspace-path"; // 마지막 연 레포(전역). 나머지 열린 상태는 레포별 nunopi:ws:${path}:* (#712)
-
 // 코드/diff 멀티탭 한 건(#714) — 파일 또는 diff(커밋 diff는 hash, 워킹트리 diff는 worktree).
 type CodeTab = { kind: "file"; file: string } | { kind: "diff"; hash?: string; file: string; worktree?: "staged" | "unstaged" | "untracked" };
 // 탭 식별 키(중복 열기 방지·활성 지정). file / diff(hash) / diff(워킹트리) 구분.
@@ -40,9 +38,9 @@ function ZonePlaceholder({ Icon, label }: { Icon: typeof IconFiles; label: strin
   );
 }
 
-export default function WorkspaceView({ active = true, providerId, providerSettings, onExitWorkspace, onOpenMemorize, onOpenSettings }: { active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onExitWorkspace?: () => void; onOpenMemorize?: () => void; onOpenSettings?: () => void }) {
+// path(레포)는 WorkspaceTabs가 소유해 prop로 내려준다(#731). key={path}로 탭마다 인스턴스 분리.
+export default function WorkspaceView({ path, active = true, providerId, providerSettings, onExitWorkspace, onOpenMemorize, onOpenSettings }: { path: string; active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onExitWorkspace?: () => void; onOpenMemorize?: () => void; onOpenSettings?: () => void }) {
   const t = useT();
-  const [path, setPath] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
   const [fileStatus, setFileStatus] = useState<Record<string, "added" | "modified">>({}); // 변경 파일 도트(#687)
@@ -76,12 +74,6 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
   useEffect(() => setMounted(true), []);
   const desktop = mounted ? window.nunopiDesktop : undefined;
-
-  useEffect(() => {
-    if (!mounted) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 경로 복원(1회)
-    try { const s = localStorage.getItem(WS_PATH_KEY); if (s) setPath(s); } catch { /* ignore */ } // docsRoot·열린상태는 레포별 — 아래 path 이펙트가 복원(#712)
-  }, [mounted]);
 
   // 저장된 패널 폭 복원.
   useEffect(() => {
@@ -241,18 +233,6 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
 
   void active;
 
-  async function pick() {
-    if (!desktop?.pickRepoFolder || picking) return;
-    setPicking(true);
-    try {
-      const r = await desktop.pickRepoFolder();
-      if (!r.canceled && r.path) {
-        setPath(r.path); // path 변경 → 위 이펙트가 그 레포의 열린 상태를 로드(없으면 초기화)(#712)
-        try { localStorage.setItem(WS_PATH_KEY, r.path); } catch { /* ignore */ }
-      }
-    } catch { /* 무시 */ } finally { setPicking(false); }
-  }
-
   // 문서 폴더 선택(#693) — 범용 폴더 선택기 재사용.
   async function pickDocs() {
     if (!desktop?.pickRepoFolder || picking) return;
@@ -298,30 +278,12 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
   const activeTab = codeTabs.find((tb) => codeTabKey(tb) === activeCode) ?? null;
   const activeFile = activeTab?.kind === "file" ? activeTab.file : null; // FileTree 선택 하이라이트용
 
-  const folderName = path ? path.split("/").filter(Boolean).pop() ?? path : null;
+  const folderName = path.split("/").filter(Boolean).pop() ?? path;
 
   // 웹(비데스크톱): 터미널·폴더접근 불가 → 안내.
   if (mounted && !desktop) {
     return (
       <div className="flex h-full flex-1 items-center justify-center p-8 text-center text-[13px] text-zinc-400 dark:text-zinc-500">{t("workspace.desktopOnly")}</div>
-    );
-  }
-
-  // 폴더 미선택: 선택 유도.
-  if (!path) {
-    return (
-      <div className="flex h-full flex-1 items-center justify-center p-8">
-        <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50 text-[#3B34E2] dark:border-zinc-800 dark:bg-zinc-900 dark:text-[#8b86f5]">
-            <IconFiles size={26} stroke={1.75} aria-hidden />
-          </div>
-          <p className="text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400">{t("workspace.intro")}</p>
-          <button type="button" onClick={pick} disabled={picking || !mounted}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#3B34E2] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-[#322bc9] disabled:opacity-50 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
-            <IconFolderOpen size={16} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
-          </button>
-        </div>
-      </div>
     );
   }
 
@@ -378,12 +340,8 @@ export default function WorkspaceView({ active = true, providerId, providerSetti
       <header className="flex items-center gap-2 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
         <IconFiles size={15} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
         <span className="truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{folderName}</span>
-        <button type="button" onClick={pick} disabled={picking}
-          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-[12px] font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100">
-          <IconFolderOpen size={14} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
-        </button>
         {/* 영역 컨트롤(#721) — 워크스페이스엔 상단 헤더가 없어 여기서: 질문·분석으로 나가기 / 암기(카드덱) / 설정. */}
-        {(onExitWorkspace || onOpenMemorize || onOpenSettings) && <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
+        {(onExitWorkspace || onOpenMemorize || onOpenSettings) && <span className="ml-auto mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
         {onExitWorkspace && (
           <button type="button" onClick={onExitWorkspace} title={t("workspace.toQA")} aria-label={t("workspace.toQA")}
             className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
