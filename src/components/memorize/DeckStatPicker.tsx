@@ -40,6 +40,7 @@ export default function DeckStatPicker({
       {customDecks.length > 0 && (
         <select
           value={customId ?? ""}
+          aria-label={t("mem.customDecks")}
           onChange={(e) => (e.target.value ? onSelectCustom(e.target.value) : onDeckChange(deck))}
           className={`ml-1 shrink-0 rounded-lg border px-2.5 py-1.5 text-xs outline-none transition focus:border-[#3B34E2] ${
             customId

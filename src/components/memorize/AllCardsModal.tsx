@@ -241,6 +241,8 @@ export default function AllCardsModal({ now, active = true, autoThrowCardKey, au
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as Sort)}
+          title={t("mem.sortLabel")}
+          aria-label={t("mem.sortLabel")}
           className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-600 outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
         >
           {SORTS.map((s) => <option key={s.key} value={s.key}>{t(s.label)}</option>)}
