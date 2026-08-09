@@ -5,7 +5,8 @@ import { IconGauge, IconRefresh, IconSparkles, IconTerminal2 } from "@tabler/ico
 import { useT } from "@/lib/i18n/I18nProvider";
 import type { ProviderUsage, ProviderUsageResult, UsageWindow } from "@/lib/usage/types";
 
-const STALE_MS = 30_000; // 최근 결과 재사용(호버마다 재호출 방지)
+const STALE_MS = 30_000; // 최근 결과 재사용(호버/활성전환 시 과호출 방지)
+const POLL_MS = 60_000;  // 활성 워크스페이스에서 자동 갱신 주기(5h/주간 윈도우라 분 단위면 충분)
 
 function barColor(pct: number): string {
   if (pct >= 90) return "bg-rose-500";
@@ -56,7 +57,8 @@ function ProviderBlock({ u, name, Icon, t }: { u: ProviderUsage; name: string; I
 }
 
 // 하단 바 우측 사용량 모니터(#735) — 아이콘 호버 시 Claude·Codex 한도 팝오버. 데스크톱에서만.
-export default function UsageMonitor() {
+// active(=이 워크스페이스가 화면에 보임)일 때만 폴링 — keep-alive로 여러 탭 마운트 시 N중복 폴링 방지.
+export default function UsageMonitor({ active = true }: { active?: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<ProviderUsageResult | null>(null);
@@ -69,10 +71,11 @@ export default function UsageMonitor() {
 
   const api = ready && typeof window !== "undefined" ? window.nunopiDesktop : undefined;
 
+  // load는 참조 안정(useCallback []) — fetchedAt ref로 staleness 판정. 폴링 인터벌이 매번 재설정되지 않게.
   const load = useCallback(async (force: boolean) => {
     const fn = window.nunopiDesktop?.getProviderUsage;
     if (!fn) return;
-    if (!force && data && Date.now() - fetchedAt.current < STALE_MS) return;
+    if (!force && Date.now() - fetchedAt.current < STALE_MS) return;
     setLoading(true);
     setErr(null);
     try {
@@ -85,11 +88,16 @@ export default function UsageMonitor() {
     } finally {
       setLoading(false);
     }
-  }, [data]);
+  }, []);
 
-  // 마운트 시 1회 자동 로드 — 호버 전에 미리 채워 팝오버가 바로 뜨게.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- 비동기 로드(내부 setState는 이펙트 동기 실행 아님)
-  useEffect(() => { if (api?.getProviderUsage) void load(false); }, [api, load]);
+  // 활성 워크스페이스에서 자동 갱신 — 진입 즉시 1회 + POLL_MS마다. 호버·수동 새로고침 없이 상시 최신.
+  useEffect(() => {
+    if (!active || !api?.getProviderUsage) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 비동기 로드(내부 setState는 이펙트 동기 실행 아님)
+    void load(false);
+    const id = setInterval(() => void load(true), POLL_MS);
+    return () => clearInterval(id);
+  }, [active, api, load]);
 
   if (ready && !api?.getProviderUsage) return null; // 웹 등 미지원(마운트 전엔 렌더해 깜빡임 방지)
 
