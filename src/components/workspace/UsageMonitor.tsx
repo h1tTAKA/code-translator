@@ -61,6 +61,7 @@ export default function UsageMonitor() {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<ProviderUsageResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const fetchedAt = useRef(0);
   const [ready, setReady] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(데스크톱 API 판별은 클라에서만)
@@ -73,18 +74,24 @@ export default function UsageMonitor() {
     if (!fn) return;
     if (!force && data && Date.now() - fetchedAt.current < STALE_MS) return;
     setLoading(true);
+    setErr(null);
     try {
       const r = await fn();
       setData(r);
       fetchedAt.current = Date.now();
-    } catch {
-      /* 무시 — 상태는 provider별 status로 */
+    } catch (e) {
+      // IPC 실패(예: 앱 완전 재시작 안 해 핸들러 없음) 등 — "loading"에 갇히지 않게 에러로 노출.
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, [data]);
 
-  if (!api?.getProviderUsage) return null; // 웹 등 미지원
+  // 마운트 시 1회 자동 로드 — 호버 전에 미리 채워 팝오버가 바로 뜨게.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 비동기 로드(내부 setState는 이펙트 동기 실행 아님)
+  useEffect(() => { if (api?.getProviderUsage) void load(false); }, [api, load]);
+
+  if (ready && !api?.getProviderUsage) return null; // 웹 등 미지원(마운트 전엔 렌더해 깜빡임 방지)
 
   return (
     <div className="relative" onMouseEnter={() => { setOpen(true); void load(false); }} onMouseLeave={() => setOpen(false)}>
@@ -106,6 +113,11 @@ export default function UsageMonitor() {
               <ProviderBlock u={data.claude} name="Claude" Icon={IconSparkles} t={t} />
               <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
               <ProviderBlock u={data.codex} name="Codex" Icon={IconTerminal2} t={t} />
+            </div>
+          ) : err ? (
+            <div className="flex flex-col gap-1">
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t("usage.error")}</p>
+              <p className="break-words text-[10px] text-zinc-400 dark:text-zinc-600">{err}</p>
             </div>
           ) : (
             <p className="text-[11px] text-zinc-400 dark:text-zinc-500">{t("usage.loading")}</p>

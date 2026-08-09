@@ -4,6 +4,10 @@
 const { readFile } = require("node:fs/promises");
 const { homedir } = require("node:os");
 const { join } = require("node:path");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
+const { net } = require("electron");
+const execFileAsync = promisify(execFile);
 
 const CLAUDE_OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -44,11 +48,12 @@ function mapWindow(raw, windowMinutes) {
   return { usedPercent: Math.min(100, Math.max(0, pct)), windowMinutes, resetsAt, resetLabel: resetLabel(resetsAt) };
 }
 
+// Electron net.fetch — main에서 OS 프록시/인증서 스택 사용(Node 전역 fetch보다 견고). app ready 후 호출됨.
 async function fetchJson(url, headers) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { headers, signal: ctrl.signal });
+    const res = await net.fetch(url, { headers, signal: ctrl.signal });
     if (!res.ok) return { error: `http-${res.status}` };
     return { data: await res.json() };
   } catch {
@@ -58,15 +63,35 @@ async function fetchJson(url, headers) {
   }
 }
 
-async function readClaudeToken() {
+function extractClaudeAccessToken(raw) {
   try {
-    const raw = await readFile(join(homedir(), ".claude", ".credentials.json"), "utf8");
     const j = JSON.parse(raw);
     const tok = j?.claudeAiOauth?.accessToken;
     return typeof tok === "string" && tok.trim() ? tok : null;
   } catch {
     return null;
   }
+}
+
+// macOS는 Claude Code 크레덴셜을 키체인(service "Claude Code-credentials")에 저장 — 파일이 없을 때 폴백.
+async function readClaudeTokenFromKeychain() {
+  if (process.platform !== "darwin") return null;
+  try {
+    const user = process.env.USER || process.env.USERNAME || "user";
+    const { stdout } = await execFileAsync("security", ["find-generic-password", "-s", "Claude Code-credentials", "-a", user, "-w"], { timeout: 5000 });
+    return extractClaudeAccessToken(stdout.trim());
+  } catch {
+    return null;
+  }
+}
+
+async function readClaudeToken() {
+  try {
+    const raw = await readFile(join(homedir(), ".claude", ".credentials.json"), "utf8");
+    const fromFile = extractClaudeAccessToken(raw);
+    if (fromFile) return fromFile;
+  } catch { /* 파일 없음 → 키체인 시도 */ }
+  return readClaudeTokenFromKeychain();
 }
 
 async function fetchClaudeUsage() {
