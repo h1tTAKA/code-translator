@@ -26,7 +26,7 @@ export default function DocViewer({ root, tabs, activeDoc, onActivate, onCloseTa
             return (
               <div key={f} onClick={() => onActivate(f)}
                 className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}>
-                {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-[#3B34E2] dark:bg-[#8b86f5]" aria-hidden />}
+                {on && <span className="absolute inset-x-0 top-0 h-0.5" style={{ backgroundImage: "linear-gradient(90deg, #22d3ee 0%, #3b82f6 55%, #8b5cf6 100%)" }} aria-hidden />}
                 <IconFileText size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
                 <span className="whitespace-nowrap">{name}</span>
                 <button type="button" onClick={(e) => { e.stopPropagation(); onCloseTab(f); }}
