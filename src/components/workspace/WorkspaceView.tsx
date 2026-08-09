@@ -65,6 +65,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [chatW, setChatW] = useState(320);
   const [chatOpen, setChatOpen] = useState(true);  // 우측 챗 패널 열림(#695)
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
+  const [treeOpen, setTreeOpen] = useState(true);  // 파일 트리 열림(#733) — 하단 아이콘 바 토글, 기본 열림
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
   const dragRef = useRef<{ kind: "tree" | "chat" | "gitH" | "docsH"; startX: number; startY: number; startVal: number } | null>(null);
@@ -85,6 +86,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
       const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
+      setTreeOpen(localStorage.getItem("nunopi:ws-tree-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#733)
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
     } catch { /* ignore */ }
   }, [mounted]);
@@ -177,6 +179,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree]); // eslint-disable-line react-hooks/exhaustive-deps -- path 제외: 전환 커밋에 옛 트리를 새 레포 키에 쓰는 오염 방지(dockTree 변할 때만 저장)
 
   const toggleGit = () => setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  const toggleTree = () => setTreeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-tree-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
 
   // 워킹트리 변경 상태맵 로드(#687 도트 + #689 챗 승계 트리거). 경로 로드·깃 새로고침 시 호출.
@@ -368,7 +371,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
         {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
         <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
           <div className="min-h-0 flex-1 overflow-hidden">
-            {treeLoading ? (
+            {!treeOpen ? null : treeLoading ? (
               <div className="flex h-full items-center justify-center text-zinc-400"><IconLoader2 size={16} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : files.length > 0 ? (
               <FileTree key={path} files={files} status={fileStatus} selected={activeFile} storageKey={path ? `nunopi:ws:${path}:tree-open` : undefined} onSelect={(id) => openCodeTab({ kind: "file", file: id })} />
@@ -410,6 +413,10 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           )}
           {/* 하단 아이콘 바(#733) — git·문서 패널 토글. 전체폭 토글 줄 2개를 아이콘 한 줄로 대체(공간 회수). */}
           <div className="flex shrink-0 items-center gap-0.5 border-t border-zinc-200 px-1.5 py-0.5 dark:border-zinc-800">
+            <button type="button" onClick={toggleTree} title={t("workspace.tree")} aria-label={t("workspace.tree")} aria-pressed={treeOpen}
+              className={`rounded-md p-1 transition ${treeOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
+              <IconFiles size={14} stroke={2} aria-hidden />
+            </button>
             <button type="button" onClick={toggleGit} title="git" aria-label="git" aria-pressed={gitOpen}
               className={`rounded-md p-1 transition ${gitOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
               <IconGitBranch size={14} stroke={2} aria-hidden />
