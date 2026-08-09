@@ -94,6 +94,11 @@ async function readClaudeToken() {
   return readClaudeTokenFromKeychain();
 }
 
+// 401/403 = 인증 만료·무효 → "로그인 필요"(unavailable), 그 외 = error.
+function statusForError(error) {
+  return error === "http-401" || error === "http-403" ? "unavailable" : "error";
+}
+
 async function fetchClaudeUsage() {
   const token = await readClaudeToken();
   if (!token) return { provider: "claude", status: "unavailable" };
@@ -102,7 +107,8 @@ async function fetchClaudeUsage() {
     "anthropic-beta": "oauth-2025-04-20",
     "User-Agent": "claude-code/2.1.0",
   });
-  if (error || !data) return { provider: "claude", status: "error" };
+  if (error) return { provider: "claude", status: statusForError(error) };
+  if (!data) return { provider: "claude", status: "error" };
   // Fable 주간: 응답 필드명이 여러 형태 → 순차 폴백.
   const fableWeekly = mapWindow(data.fable_weekly, 10080) ?? mapWindow(data.fable_seven_day, 10080) ?? mapWindow(data.seven_day_fable, 10080) ?? null;
   return {
@@ -130,11 +136,19 @@ async function readCodexAuth() {
 async function fetchCodexUsage() {
   const auth = await readCodexAuth();
   if (!auth) return { provider: "codex", status: "unavailable" };
-  const headers = { Authorization: `Bearer ${auth.token}` };
+  // Codex 백엔드가 요구하는 헤더(Orca와 동일) — 없으면 인증돼도 거부될 수 있음.
+  const headers = {
+    Authorization: `Bearer ${auth.token}`,
+    "User-Agent": "codex-cli",
+    "OpenAI-Beta": "codex-1",
+    originator: "Codex Desktop",
+  };
   if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
   const { data, error } = await fetchJson(CODEX_USAGE_URL, headers);
-  if (error || !data) return { provider: "codex", status: "error" };
+  if (error) return { provider: "codex", status: statusForError(error) };
+  if (!data) return { provider: "codex", status: "error" };
   const rl = data.rate_limit ?? data.rateLimits ?? {};
+  // primary_window=세션(짧은 창), secondary_window=주간. reset_at은 초 단위(mapWindow가 판별).
   return {
     provider: "codex",
     status: "ok",
