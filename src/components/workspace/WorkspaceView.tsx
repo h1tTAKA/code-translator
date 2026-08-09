@@ -8,6 +8,7 @@ import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceChat";
 import TerminalPane from "@/components/workspace/TerminalPane";
+import UsageMonitor from "@/components/workspace/UsageMonitor";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
@@ -245,8 +246,6 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     return () => { cancelled = true; };
   }, [docsRoot]);
 
-  void active;
-
   // 문서 폴더 선택(#693) — 범용 폴더 선택기 재사용.
   async function pickDocs() {
     if (!desktop?.pickRepoFolder || picking) return;
@@ -438,6 +437,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
               className={`rounded-md p-1 transition ${docsOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
               <IconFileText size={14} stroke={2} aria-hidden />
             </button>
+            {/* 우측 끝 — Claude·Codex 토큰 사용량 모니터(#735). active일 때만 폴링(중복 방지). */}
+            <div className="ml-auto"><UsageMonitor active={active} /></div>
           </div>
         </aside>
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
