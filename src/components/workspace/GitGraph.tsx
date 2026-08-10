@@ -53,7 +53,7 @@ function changeBadge(c: Change): { ch: string; cls: string } {
   return { ch: "M", cls: staged ? "text-emerald-600 dark:text-emerald-500" : "text-amber-600 dark:text-amber-500" };
 }
 
-export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange, onRefreshed }: { root: string; onOpenDiff: (hash: string, file: string) => void; onFocusBranch: (branch: string) => void; onOpenChange?: (file: string, kind: WorktreeKind) => void; onRefreshed?: () => void }) {
+export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange, onRefreshed, refreshNonce }: { root: string; onOpenDiff: (hash: string, file: string) => void; onFocusBranch: (branch: string) => void; onOpenChange?: (file: string, kind: WorktreeKind) => void; onRefreshed?: () => void; refreshNonce?: number }) {
   const t = useT();
   const [model, setModel] = useState<GitGraphModel | null>(null);
   const [isGit, setIsGit] = useState(true);
@@ -72,6 +72,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []); // 언마운트 시 타이머 정리
 
   const load = useCallback(async () => {
+    void refreshNonce; // 재fetch 트리거(#739) — 값 변하면 이 콜백 identity 바뀌어 아래 effect 재실행.
     if (!root) return;
     setLoading(true);
     try {
@@ -88,7 +89,8 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
       setChanges(r.ok && d.isGit && Array.isArray(d.files) ? d.files : []);
     } catch { setChanges([]); }
     onRefreshed?.(); // 상위(파일트리 도트·챗 승계)도 함께 갱신(#687/#689)
-  }, [root, onRefreshed]);
+    // refreshNonce: 상위(WorkspaceView)가 파일 워처 변경 시 증가 → 그래프+변경사항 재fetch(#739).
+  }, [root, onRefreshed, refreshNonce]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load()가 setLoading 동기 호출(마운트/root 변경 시 로드)
   useEffect(() => { void load(); }, [load]);
   // 폴더 바뀌면 펼침·캐시 초기화.
