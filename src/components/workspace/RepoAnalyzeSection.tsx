@@ -7,7 +7,7 @@ import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 // 레포 기능 카테고리(#743) — 에이전트가 파일 목록 보고 나눔.
 export type RepoCategory = { id: string; title: string; blurb?: string };
-type StreamEvent = { type: string; line?: string; response?: { summary?: string } };
+type StreamEvent = { type: string; line?: string; message?: string; response?: { summary?: string } };
 
 // 에이전트 응답(자유 텍스트)에서 첫 JSON 배열만 뽑아 카테고리로. 코드펜스·서두 방어.
 function parseCategories(text: string): RepoCategory[] {
@@ -36,15 +36,20 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
   const [cats, setCats] = useState<RepoCategory[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [detail, setDetail] = useState<string | null>(null); // 실패 원인 상세(디버깅·안내)
 
   const analyze = useCallback(async () => {
     setLoading(true);
     setErr(null);
+    setDetail(null);
+    const fail = (d: string) => { setErr(t("repo.analyzeError")); setDetail(d); };
     try {
       // 1) 레포 파일 목록(컨텍스트) — 노이즈 제외 + 상한(토큰 방어).
       const tr = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root }) });
+      if (!tr.ok) { fail(`tree HTTP ${tr.status}`); return; }
       const td = await tr.json().catch(() => null);
-      const files: string[] = tr.ok && td && Array.isArray(td.files) ? td.files : [];
+      const files: string[] = td && Array.isArray(td.files) ? td.files : [];
+      if (!files.length) { fail("no files (tree empty)"); return; }
       const list = files.filter((f) => !/(^|\/)(node_modules|\.git|dist|build|\.next|\.turbo)(\/|$)/.test(f)).slice(0, 600);
       const name = root.split("/").filter(Boolean).pop() ?? root;
       const ctx = `레포: ${name}\n파일 목록:\n${list.join("\n")}`;
@@ -54,22 +59,29 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId, request: { code: ctx, locale, providerId, mode: "chat", messages: [{ role: "user", content: prompt }], providerSettings } }),
       });
-      if (!res.ok || !res.body) { setErr(t("repo.analyzeError")); return; }
+      if (!res.ok || !res.body) { const b = await res.text().catch(() => ""); fail(`analyze HTTP ${res.status}${b ? ` ${b.slice(0, 160)}` : ""}`); return; }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
-      let buf = "", answer = "";
+      let buf = "", answer = "", streamErr = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
         const ls = buf.split("\n"); buf = ls.pop() ?? "";
-        for (const l of ls) { if (!l.trim()) continue; let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { continue; } if (ev.type === "result") answer = ev.response?.summary ?? ""; }
+        for (const l of ls) {
+          if (!l.trim()) continue;
+          let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { continue; }
+          if (ev.type === "result") answer = ev.response?.summary ?? "";
+          else if (ev.type === "error") streamErr = ev.message ?? "stream error";
+        }
       }
+      if (streamErr) { fail(`agent: ${streamErr}`); return; }
+      if (!answer.trim()) { fail("empty response (provider 설정 확인)"); return; }
       const parsed = parseCategories(answer);
-      if (!parsed.length) { setErr(t("repo.analyzeError")); return; }
+      if (!parsed.length) { fail(`no JSON array — ${answer.slice(0, 160)}`); return; }
       setCats(parsed);
-    } catch {
-      setErr(t("repo.analyzeError"));
+    } catch (e) {
+      fail(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -90,7 +102,10 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
         {loading && !cats ? (
           <p className="px-1 py-2 text-[11px] text-zinc-400 dark:text-zinc-500">{t("repo.analyzing")}</p>
         ) : err ? (
-          <p className="px-1 py-2 text-[11px] text-rose-500">{err}</p>
+          <div className="px-1 py-2">
+            <p className="text-[11px] text-rose-500">{err}</p>
+            {detail && <p className="mt-1 break-words text-[10px] text-zinc-400 dark:text-zinc-500">{detail}</p>}
+          </div>
         ) : cats ? (
           <div className="flex flex-col gap-0.5">
             {cats.map((c) => (
