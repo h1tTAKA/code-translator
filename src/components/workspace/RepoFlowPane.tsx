@@ -343,10 +343,9 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                     const outs = n.next ?? [];
                     const ins = (sections ?? []).flatMap((sec) => sec.nodes).filter((x) => x.next?.some((tt) => nk(tt) === key)).map((x) => x.name);
                     const neigh = Array.from(new Set([...outs, ...ins])).filter((nm) => nk(nm) !== key);
-                    const file = n.file ? t("flow.quoteFile", { file: `${n.file}${n.line ? `:${n.line}` : ""}` }) : "";
                     onQuoteNode(neigh.length
-                      ? t("flow.quoteWith", { name: n.name, neighbors: `「${neigh.join("」·「")}」`, file })
-                      : t("flow.quoteSolo", { name: n.name, file }));
+                      ? t("flow.quoteWith", { name: n.name, neighbors: neigh.join("·") })
+                      : t("flow.quoteSolo", { name: n.name }));
                   };
                   return (
                   // 카드 본문 클릭 = 포커스만(코드 자동 X). 코드/diff 패널은 우상단 아이콘으로만 연다(#743).
