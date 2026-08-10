@@ -10,6 +10,12 @@ interface NunopiDesktopApi {
   pickRepoFolder(): Promise<{ canceled: boolean; path?: string }>;
   // Claude·Codex 구독 사용 한도(세션/주간/Fable) 조회(#735). 상세 타입은 @/lib/usage/types.
   getProviderUsage?(): Promise<import("@/lib/usage/types").ProviderUsageResult>;
+  // 레포 파일 워처(#739) — 활성 레포 변경 감지. recursive 미지원 플랫폼은 supported:false → 폴백.
+  repo?: {
+    watch(opts: { id: string; root: string }): Promise<{ ok: boolean; supported: boolean; error?: string }>;
+    unwatch(opts: { id: string }): Promise<void>;
+    onChanged(cb: (p: { id: string }) => void): () => void;
+  };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {
     ensure(opts: { id: string; cwd: string; cols: number; rows: number }): Promise<{ ok: boolean; buffer?: string; reason?: string }>;

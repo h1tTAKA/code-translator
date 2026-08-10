@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
   pickRepoFolder: () => ipcRenderer.invoke("repo:pickFolder"),
   // Claude·Codex 구독 사용 한도(세션/주간/Fable) 조회(#735).
   getProviderUsage: () => ipcRenderer.invoke("provider-usage:get"),
+  // 레포 파일 워처(#739) — 변경 시 onChanged 콜백. 활성 레포만 watch.
+  repo: {
+    watch: (opts) => ipcRenderer.invoke("repo:watch", opts),
+    unwatch: (opts) => ipcRenderer.invoke("repo:unwatch", opts),
+    onChanged: (cb) => { const h = (_e, p) => cb(p); ipcRenderer.on("repo:changed", h); return () => ipcRenderer.removeListener("repo:changed", h); },
+  },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {
     ensure: (opts) => ipcRenderer.invoke("terminal:ensure", opts),
