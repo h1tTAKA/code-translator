@@ -6,7 +6,7 @@
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory, IconSitemap } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
@@ -19,7 +19,10 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
-type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree";
+type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree" | "arch";
+// 아키텍처(flow) 캐시 shape — #743이 저장한 것을 컨텍스트로 읽기 위한 최소 타입.
+type ArchNode = { name: string; file?: string; line?: number; role?: string; next?: string[] };
+type ArchSection = { layer: string; nodes: ArchNode[] };
 interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). 레거시 저장분은 undefined.
 // baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
 interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
@@ -80,7 +83,7 @@ function loadStore(store: string, repoLabel: string): { sessions: Record<string,
 // 세션 kind별 아이콘 — JSX 직접 반환(렌더 중 컴포넌트 변수 생성 회피: react-hooks/static-components).
 function kindGlyph(k: SessionKind, size: number, className?: string) {
   const p = { size, stroke: 2, className, "aria-hidden": true } as const;
-  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : k === "worktree" ? <IconPencil {...p} /> : <IconFileCode {...p} />;
+  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : k === "worktree" ? <IconPencil {...p} /> : k === "arch" ? <IconSitemap {...p} /> : <IconFileCode {...p} />;
 }
 
 export default function WorkspaceChat({ root, files, focus, changedFiles, providerId, providerSettings }: {
@@ -273,6 +276,37 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   }
 
   // kind별 컨텍스트 빌드(세션키 캐시).
+  // 아키텍처 세션 컨텍스트 — #743이 저장한 flow 캐시(설명 overview + 레이어별 노드)를 사람이 읽는 문자열로.
+  // 캐시 없으면(아직 미생성) feature명 + 안내만. localStorage 동기 읽기(전송 시점).
+  function archContext(feature: string): string {
+    let sections: ArchSection[] = [], overview = "";
+    try {
+      const raw = localStorage.getItem(`nunopi:ws:${root}:flow:${encodeURIComponent(feature)}`);
+      if (raw) {
+        const j = JSON.parse(raw);
+        if (Array.isArray(j)) sections = j as ArchSection[];
+        else { sections = Array.isArray(j?.sections) ? j.sections : []; overview = typeof j?.overview === "string" ? j.overview : ""; }
+      }
+    } catch { /* 캐시 손상 → 폴백 */ }
+    const lines: string[] = [`# 기능(아키텍처): ${feature}`];
+    if (overview) lines.push(`\n## 설명\n${overview}`);
+    if (sections.length) {
+      lines.push(`\n## 구성 요소 (레이어별)`);
+      for (const s of sections) {
+        lines.push(`\n### ${s.layer}`);
+        for (const n of s.nodes ?? []) {
+          const parts = [n.name];
+          if (n.file) parts.push(n.file + (n.line ? `:${n.line}` : ""));
+          if (n.role) parts.push(n.role);
+          if (n.next?.length) parts.push(`→ ${n.next.join(", ")}`);
+          lines.push(`- ${parts.join(" · ")}`);
+        }
+      }
+    }
+    if (!overview && !sections.length) lines.push(`\n(아직 이 기능의 아키텍처 흐름이 생성되지 않았어요. 좌측 "아키텍처"에서 이 기능을 열면 흐름이 만들어져요.)`);
+    return lines.join("\n") + "\n";
+  }
+
   async function buildContext(s: Session): Promise<string> {
     const cached = ctxCache.current.get(s.key);
     if (s.kind !== "worktree" && cached != null) return cached; // worktree는 편집 시 변하니 캐시 무시
@@ -318,6 +352,8 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
           if (d.stat) parts.push(`## ${d.base} 대비 변경 요약\n\`\`\`\n${d.stat}\n\`\`\``);
           ctx = parts.join("\n\n") + "\n";
         }
+      } else if (s.kind === "arch") {
+        ctx = archContext(s.key.slice("arch:".length));
       } else if (s.kind === "repo") {
         ctx = await repoContext();
       }
