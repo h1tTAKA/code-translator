@@ -115,6 +115,22 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
 
   const active = sessions[activeKey] ?? sessions[REPO_KEY];
   const activeSub = active.subs.find((s) => s.id === active.activeSubId) ?? active.subs[0];
+
+  // 레포 파일 basename·stem 집합 — 카드 제안에서 파일/심볼 항목 걸러내기용(#746).
+  const fileStems = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of files) { const base = (f.split("/").pop() ?? f).toLowerCase(); set.add(base); set.add(base.replace(/\.[^.]+$/, "")); }
+    return set;
+  }, [files]);
+  // 카드로 만들 만한가? 파일명·경로·레포 파일 stem·camelCase 심볼(코드 식별자)은 암기카드감 아님 → 제외.
+  const keepCard = useCallback((c: SuggestedCard) => {
+    const term = c.term.trim();
+    if (/[/\\]/.test(term)) return false;                                         // 경로
+    if (/\.(tsx?|jsx?|mjs|cjs|css|scss|json|md|html)$/i.test(term)) return false; // 파일명(확장자)
+    if (fileStems.has(term.toLowerCase())) return false;                          // 레포 파일 basename/stem = 심볼
+    if (/^[A-Za-z][A-Za-z0-9]*$/.test(term) && /[a-z][A-Z]/.test(term)) return false; // camelCase/PascalCase 코드 식별자
+    return true;
+  }, [fileStems]);
   const messages = activeSub.messages;
 
   // 폴더(store) 변경 시에만 재로드. 첫 마운트는 lazy init이 이미 처리했으므로 스킵.
@@ -599,8 +615,10 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
               if (m.role === "user") return (
                 <div key={i} className="self-end max-w-[85%] whitespace-pre-wrap rounded-2xl bg-zinc-100 px-3 py-1.5 text-[12px] leading-relaxed text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100">{m.content}</div>
               );
-              // 어시스턴트 — 본문 + nunopi-cards 칩(다른 챗룸과 동일).
-              const { text, cards } = parseCardSuggestions(m.content);
+              // 어시스턴트 — 본문 + nunopi-cards 칩(다른 챗룸과 동일). 파일/심볼 카드는 제외(#746).
+              const parsedCards = parseCardSuggestions(m.content);
+              const text = parsedCards.text;
+              const cards = parsedCards.cards.filter(keepCard);
               return (
                 <div key={i} className="flex max-w-full flex-col items-start gap-1.5 text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
                   <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{text}</Markdown></div>
