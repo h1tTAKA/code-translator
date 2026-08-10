@@ -2,8 +2,8 @@ import type { CodeToken, ConceptOccurrence, ItTerm } from "@/lib/translator/type
 
 // 출처 종류 — 출처로 이동 목적지 분기용.
 // analysis: 코드/글 분석(챗 세션까지). card: 플래시카드 챗에서 생성(생성처 카드로).
-// ask: 에이전트 질문 모드(세션+질문으로).
-export type SourceKind = "analysis" | "card" | "ask";
+// ask: 에이전트 질문 모드(세션+질문으로). workspace: 워크스페이스 챗(세션별 카드 목록, #750).
+export type SourceKind = "analysis" | "card" | "ask" | "workspace";
 
 // 출처 부가 정보(옵셔널) — sourceTitle/sourceId 외 확장. 챗에서 카드 생성 시 채운다.
 export interface SourceExtra {
