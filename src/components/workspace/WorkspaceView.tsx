@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconMessages, IconBrain, IconSettings } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconMessages, IconBrain, IconSettings, IconSitemap } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -12,7 +12,9 @@ import UsageMonitor from "@/components/workspace/UsageMonitor";
 import GitGraph from "@/components/workspace/GitGraph";
 import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
-import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, isDockNode, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
+import RepoFlowPane from "@/components/workspace/RepoFlowPane";
+import RepoAnalyzeSection from "@/components/workspace/RepoAnalyzeSection";
+import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, isDockNode, appendPanel, removePanel, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 // 코드/diff 멀티탭 한 건(#714) — 파일 또는 diff(커밋 diff는 hash, 워킹트리 diff는 worktree).
@@ -67,10 +69,14 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [chatOpen, setChatOpen] = useState(true);  // 우측 챗 패널 열림(#695)
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
   const [treeOpen, setTreeOpen] = useState(true);  // 파일 트리 열림(#733) — 하단 아이콘 바 토글, 기본 열림
+  const [analyzeOpen, setAnalyzeOpen] = useState(false); // 좌측 "레포 분석하기" 섹션 열림(#743)
+  const [flowFeature, setFlowFeature] = useState<string | null>(null); // 열린 플로우 패널의 기능(null=닫힘). dock에 flow 패널 존재 여부와 동기(#743)
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
-  const dragRef = useRef<{ kind: "tree" | "chat" | "gitH" | "docsH"; startX: number; startY: number; startVal: number } | null>(null);
-  const wRef = useRef({ tree: 240, chat: 320, gitH: 220, docsH: 220 }); // 최신 폭·높이 미러(드래그 종료 시 영속용). 중앙은 도킹 트리 관리.
+  const [analyzeH, setAnalyzeH] = useState(240);   // 레포 분석 섹션 높이(px, #743)
+  const asideRef = useRef<HTMLElement | null>(null); // 좌측 사이드바 — 세로 리사이즈 상한 계산용(#743)
+  const dragRef = useRef<{ kind: "tree" | "chat" | "gitH" | "docsH" | "analyzeH"; startX: number; startY: number; startVal: number } | null>(null);
+  const wRef = useRef({ tree: 240, chat: 320, gitH: 220, docsH: 220, analyzeH: 240 }); // 최신 폭·높이 미러(드래그 종료 시 영속용). 중앙은 도킹 트리 관리.
   const [mounted, setMounted] = useState(false);
   const repoLoadedRef = useRef<string | null>(null); // 현재 열린 상태가 복원된 레포 path — 전환 중 오염 방지·저장 게이트(#712)
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
@@ -84,19 +90,21 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 폭 복원(1회)
       const t = Number(localStorage.getItem("nunopi:ws-tree-w")); if (t) { const v = clamp(t, 140, 560); setTreeW(v); wRef.current.tree = v; }
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
-      const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
-      const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
+      const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 1600); setGitH(v); wRef.current.gitH = v; }
+      const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 1600); setDocsH(v); wRef.current.docsH = v; }
+      const ah = Number(localStorage.getItem("nunopi:ws-analyze-h")); if (ah) { const v = clamp(ah, 80, 1600); setAnalyzeH(v); wRef.current.analyzeH = v; }
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
       setTreeOpen(localStorage.getItem("nunopi:ws-tree-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#733)
+      setAnalyzeOpen(localStorage.getItem("nunopi:ws-analyze-open") === "1"); // 기본 닫힘(#743)
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
     } catch { /* ignore */ }
   }, [mounted]);
 
-  // 좌측 최소 하나 보장(#733) — 저장된 상태가 트리·git·문서 전부 닫힘이면 트리를 연다(빈 사이드바 방지·구 상태 복구).
+  // 좌측 최소 하나 보장(#733·#743) — 트리·git·문서·분석 전부 닫힘이면 트리를 연다(빈 사이드바 방지·구 상태 복구).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (mounted && !treeOpen && !gitOpen && !docsOpen) setTreeOpen(true);
-  }, [mounted, treeOpen, gitOpen, docsOpen]);
+    if (mounted && !treeOpen && !gitOpen && !docsOpen && !analyzeOpen) setTreeOpen(true);
+  }, [mounted, treeOpen, gitOpen, docsOpen, analyzeOpen]);
 
   // 레포별 열린 상태 복원(#712) — path(레포) 바뀔 때마다 그 레포의 저장분을 로드(챗처럼 레포 스코프). 없으면 초기화.
   useEffect(() => {
@@ -135,11 +143,14 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   useEffect(() => {
     const move = (e: MouseEvent) => {
       const d = dragRef.current; if (!d) return;
-      const dx = e.clientX - d.startX;
+      const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
+      // 세로 리사이즈 상한 = 사이드바 높이 - 여유(위 채움 섹션 + 하단 바). 500 고정 캡 제거(#743).
+      const maxH = Math.max(160, (asideRef.current?.clientHeight ?? 800) - 120);
       if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
       else if (d.kind === "chat") { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
-      else if (d.kind === "gitH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // 세로
-      else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setDocsH(v); wRef.current.docsH = v; } // docsH: 세로
+      else if (d.kind === "gitH") { const v = clamp(d.startVal - dy, 80, maxH); setGitH(v); wRef.current.gitH = v; }
+      else if (d.kind === "analyzeH") { const v = clamp(d.startVal - dy, 80, maxH); setAnalyzeH(v); wRef.current.analyzeH = v; }
+      else { const v = clamp(d.startVal - dy, 80, maxH); setDocsH(v); wRef.current.docsH = v; } // docsH
     };
     const up = () => {
       if (!dragRef.current) return;
@@ -149,17 +160,18 @@ export default function WorkspaceView({ path, active = true, providerId, provide
         localStorage.setItem("nunopi:ws-chat-w", String(wRef.current.chat));
         localStorage.setItem("nunopi:ws-git-h", String(wRef.current.gitH));
         localStorage.setItem("nunopi:ws-docs-h", String(wRef.current.docsH));
+        localStorage.setItem("nunopi:ws-analyze-h", String(wRef.current.analyzeH));
       } catch { /* ignore */ }
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, []);
 
-  const startDrag = (kind: "tree" | "chat" | "gitH" | "docsH", startVal: number) => (e: React.MouseEvent) => {
+  const startDrag = (kind: "tree" | "chat" | "gitH" | "docsH" | "analyzeH", startVal: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     // eslint-disable-next-line react-hooks/refs -- 이벤트 핸들러 내 ref 쓰기(렌더 중 아님)
     dragRef.current = { kind, startX: e.clientX, startY: e.clientY, startVal };
-    document.body.style.cursor = (kind === "gitH" || kind === "docsH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
+    document.body.style.cursor = (kind === "gitH" || kind === "docsH" || kind === "analyzeH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
   };
 
   // 중앙 도킹 트리 동기화·영속(#716) — 존재 패널(터미널 항상·코드=탭·문서=열림)에 맞춰 트리 유지.
@@ -167,9 +179,10 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const hasCode = codeTabs.length > 0;
   const hasDoc = !!(docsRoot && activeDoc && docTabs.length);
   const dockRepoRef = useRef<string | null>(null); // 현재 dockTree가 로드된 레포 — 전환 감지·저장 게이트
+  const flowRepoRef = useRef<string | null>(null); // flowFeature가 복원된 레포 — 전환 시 그 레포 저장값으로 복원(#743)
   useEffect(() => {
     if (!mounted || !path) return;
-    const has: Record<PanelId, boolean> = { terminal: true, code: hasCode, doc: hasDoc };
+    const has: Record<PanelId, boolean> = { terminal: true, code: hasCode, doc: hasDoc, flow: flowFeature !== null };
     const switched = dockRepoRef.current !== path;
     let stored: DockNode | null = null;
     if (switched) { try { const j = JSON.parse(localStorage.getItem(`nunopi:ws:${path}:dock-tree`) || "null"); if (isDockNode(j)) stored = j; } catch { /* ignore */ } dockRepoRef.current = path; }
@@ -177,21 +190,48 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       const base = switched ? stored : prev;
       const pruned = base ? pruneTree(base, has) : null;
       const cur = pruned ? leavesOf(pruned) : new Set<PanelId>();
-      const need = (["terminal", "code", "doc"] as PanelId[]).filter((p) => has[p]);
+      const need = (["terminal", "code", "doc", "flow"] as PanelId[]).filter((p) => has[p]);
       const same = pruned && need.length === cur.size && need.every((p) => cur.has(p));
       return same ? pruned : defaultTree(has);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- flowFeature는 아래 전용 이펙트가 증분 삽입/제거(여기 넣으면 배치 재빌드로 커스텀 배치 유실)
   }, [path, hasCode, hasDoc, mounted]);
+  // 플로우 패널 증분 삽입/제거(#743) — flowFeature 토글 시 커스텀 dock 배치를 보존하며 flow 리프만 추가/삭제.
+  useEffect(() => {
+    if (!mounted) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- flowFeature 토글 시 dock 트리 증분 갱신(함수형 업데이트)
+    setDockTree((prev) => {
+      if (!prev) return prev;
+      const inTree = leavesOf(prev).has("flow");
+      if (flowFeature !== null && !inTree) return appendPanel(prev, "flow");
+      if (flowFeature === null && inTree) return removePanel(prev, "flow") ?? prev;
+      return prev;
+    });
+  }, [flowFeature, mounted]);
   // 도킹 트리 저장(#716) — 로드된 레포와 현재 path 일치할 때만(전환 오염 방지).
   useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree]); // eslint-disable-line react-hooks/exhaustive-deps -- path 제외: 전환 커밋에 옛 트리를 새 레포 키에 쓰는 오염 방지(dockTree 변할 때만 저장)
 
-  // 좌측 3섹션(트리·git·문서) 중 최소 하나는 열려 있어야 — 빈 사이드바 방지(#733). 마지막 하나는 못 끔.
-  const leftOpenCount = (treeOpen ? 1 : 0) + (gitOpen ? 1 : 0) + (docsOpen ? 1 : 0);
-  // 남는 세로 공간을 채우는(flex-1) 섹션 = 열린 것 중 최상위(트리>git>문서). 나머지는 고정 높이+리사이즈(#733).
-  const leftFill: "tree" | "git" | "docs" = treeOpen ? "tree" : gitOpen ? "git" : "docs";
+  // 열린 플로우 기능 영속(#743) — 레포 전환/재진입 시 그 레포에 저장된 flowFeature 복원(플로우 패널 자동 복귀).
+  useEffect(() => {
+    if (!mounted || !path || flowRepoRef.current === path) return;
+    flowRepoRef.current = path;
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(`nunopi:ws:${path}:flow-feature`) || null; } catch { /* ignore */ }
+    setFlowFeature(saved);
+  }, [path, mounted]);
+  useEffect(() => {
+    if (!path || flowRepoRef.current !== path) return; // 전환 커밋에 옛 값 오염 방지
+    try { if (flowFeature) localStorage.setItem(`nunopi:ws:${path}:flow-feature`, flowFeature); else localStorage.removeItem(`nunopi:ws:${path}:flow-feature`); } catch { /* ignore */ }
+  }, [flowFeature]); // eslint-disable-line react-hooks/exhaustive-deps -- flowFeature 변할 때만 저장(path 변화는 위 복원 이펙트가 담당)
+
+  // 좌측 4섹션(트리·git·문서·분석) 중 최소 하나는 열려 있어야 — 빈 사이드바 방지(#733·#743). 마지막 하나는 못 끔.
+  const leftOpenCount = (treeOpen ? 1 : 0) + (gitOpen ? 1 : 0) + (docsOpen ? 1 : 0) + (analyzeOpen ? 1 : 0);
+  // 남는 세로 공간을 채우는(flex-1) 섹션 = 열린 것 중 최상위(순서: 폴더>레포분석>깃>문서). 나머지는 고정 높이(#733·#743).
+  const leftFill: "tree" | "analyze" | "git" | "docs" = treeOpen ? "tree" : analyzeOpen ? "analyze" : gitOpen ? "git" : "docs";
   const toggleGit = () => { if (gitOpen && leftOpenCount === 1) return; setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleTree = () => { if (treeOpen && leftOpenCount === 1) return; setTreeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-tree-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
+  const toggleAnalyze = () => { if (analyzeOpen && leftOpenCount === 1) return; setAnalyzeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-analyze-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
 
   // 워킹트리 변경 상태맵 로드(#687 도트 + #689 챗 승계 트리거). 경로 로드·깃 새로고침 시 호출.
@@ -369,6 +409,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     terminal: <TerminalPane cwd={path} />,
     code: codeNode,
     doc: docNode,
+    // 기능별 아키텍처 플로우(#743) — flowFeature 있을 때만 dock에 삽입됨. 노드 클릭 → 코드 탭 열기.
+    flow: <RepoFlowPane feature={flowFeature} root={path} providerId={providerId} providerSettings={providerSettings} onOpenFile={(file) => openCodeTab({ kind: "file", file })} onClose={() => setFlowFeature(null)} />,
   };
 
   // 4존 셸.
@@ -405,7 +447,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       </header>
       <div className="relative flex min-h-0 flex-1">
         {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
-        <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
+        <aside ref={asideRef} style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
           {treeOpen && (
             <div className="min-h-0 flex-1 overflow-hidden">
               {treeLoading ? (
@@ -416,6 +458,15 @@ export default function WorkspaceView({ path, active = true, providerId, provide
                 <ZonePlaceholder Icon={IconFiles} label={t("workspace.tree")} />
               )}
             </div>
+          )}
+          {/* 레포 분석하기 섹션(#743) — [분석하기]→카테고리→기능 플로우. 순서: 폴더 다음. 세로 리사이즈·전체영역. */}
+          {analyzeOpen && (
+            <>
+              {leftFill !== "analyze" && <div onMouseDown={startDrag("analyzeH", analyzeH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+              <div style={leftFill === "analyze" ? undefined : { height: analyzeH }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "analyze" ? "min-h-0 flex-1" : "shrink-0"}`}>
+                <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => setFlowFeature(f)} />
+              </div>
+            </>
           )}
           {gitOpen && (
             <>
@@ -449,11 +500,15 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             </div>
             </>
           )}
-          {/* 하단 아이콘 바(#733) — git·문서 패널 토글. 전체폭 토글 줄 2개를 아이콘 한 줄로 대체(공간 회수). */}
+          {/* 하단 아이콘 바(#733·#743) — 폴더·분석·git·문서 패널 토글(순서 일치). */}
           <div className="flex shrink-0 items-center gap-0.5 border-t border-zinc-200 px-1.5 py-0.5 dark:border-zinc-800">
             <button type="button" onClick={toggleTree} title={t("workspace.tree")} aria-label={t("workspace.tree")} aria-pressed={treeOpen}
               className={`rounded-md p-1 transition ${treeOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
               <IconFiles size={14} stroke={2} aria-hidden />
+            </button>
+            <button type="button" onClick={toggleAnalyze} title={t("repo.analyzeSection")} aria-label={t("repo.analyzeSection")} aria-pressed={analyzeOpen}
+              className={`rounded-md p-1 transition ${analyzeOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
+              <IconSitemap size={14} stroke={2} aria-hidden />
             </button>
             <button type="button" onClick={toggleGit} title="git" aria-label="git" aria-pressed={gitOpen}
               className={`rounded-md p-1 transition ${gitOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>

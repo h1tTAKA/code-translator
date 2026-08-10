@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { IconGripVertical } from "@tabler/icons-react";
 
-export type PanelId = "terminal" | "code" | "doc";
+export type PanelId = "terminal" | "code" | "doc" | "flow";
 export type DockNode =
   | { t: "leaf"; panel: PanelId }
   | { t: "split"; dir: "row" | "col"; a: DockNode; b: DockNode; ratio: number }; // row=좌우, col=상하. ratio=a 자식 비율(0~1)
@@ -18,14 +18,17 @@ export function defaultTree(has: Record<PanelId, boolean>): DockNode {
   if (has.code && has.doc) right = { t: "split", dir: "col", a: { t: "leaf", panel: "code" }, b: { t: "leaf", panel: "doc" }, ratio: 0.62 };
   else if (has.code) right = { t: "leaf", panel: "code" };
   else if (has.doc) right = { t: "leaf", panel: "doc" };
-  return right ? { t: "split", dir: "row", a: term, b: right, ratio: 0.58 } : term;
+  let base: DockNode = right ? { t: "split", dir: "row", a: term, b: right, ratio: 0.58 } : term;
+  // 플로우 패널(#743)은 열려 있을 때 오른쪽 컬럼으로. 기본 3패널엔 미포함.
+  if (has.flow) base = { t: "split", dir: "row", a: base, b: { t: "leaf", panel: "flow" }, ratio: 0.66 };
+  return base;
 }
 
 // 저장된 JSON이 유효한 DockNode인지 검증(영속 복원 방어, #716).
 export function isDockNode(x: unknown): x is DockNode {
   if (!x || typeof x !== "object") return false;
   const n = x as Record<string, unknown>;
-  if (n.t === "leaf") return n.panel === "terminal" || n.panel === "code" || n.panel === "doc";
+  if (n.t === "leaf") return n.panel === "terminal" || n.panel === "code" || n.panel === "doc" || n.panel === "flow";
   if (n.t === "split") return (n.dir === "row" || n.dir === "col") && typeof n.ratio === "number" && isDockNode(n.a) && isDockNode(n.b);
   return false;
 }
@@ -45,6 +48,15 @@ export function pruneTree(node: DockNode, has: Record<PanelId, boolean>): DockNo
   const b = pruneTree(node.b, has);
   if (a && b) return { ...node, a, b };
   return a ?? b; // 한쪽만 남으면 그걸로 승격
+}
+
+// 패널을 트리에 추가/제거(프로그래밍적, #743 플로우 패널 열고 닫기). 드래그 도킹(insertBeside)과 별개.
+export function appendPanel(tree: DockNode, panel: PanelId): DockNode {
+  if (leavesOf(tree).has(panel)) return tree; // 이미 있으면 그대로
+  return { t: "split", dir: "row", a: tree, b: { t: "leaf", panel }, ratio: 0.66 };
+}
+export function removePanel(tree: DockNode, panel: PanelId): DockNode | null {
+  return removeLeaf(tree, panel);
 }
 
 // path("a"/"b" 배열)의 split ratio 갱신(불변).
