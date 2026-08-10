@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode, IconBook2, IconSparkles } from "@tabler/icons-react";
+import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode, IconBook2, IconSparkles, IconMessageCircle } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 import Markdown from "@/components/learning/Markdown";
@@ -88,12 +88,13 @@ function parseOverview(text: string): string {
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim(); // 과도한 빈 줄만 축소
 }
 
-export default function RepoFlowPane({ feature, root, providerId, providerSettings, onOpenFile, onClose }: {
+export default function RepoFlowPane({ feature, root, providerId, providerSettings, onOpenFile, onAskArch, onClose }: {
   feature?: string | null;
   root?: string;
   providerId?: AgentProviderKind;
   providerSettings?: ProviderSettings;
   onOpenFile?: (file: string, line?: number) => void;
+  onAskArch?: (feature: string) => void; // 이 아키텍처에 대해 질문(우측 챗에 arch 세션 열기, #746)
   onClose?: () => void;
 }) {
   const t = useT();
@@ -258,6 +259,13 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
         <span className="mr-auto truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{feature || t("flow.title")}</span>
         {feature && (
           <>
+            {/* 이 아키텍처에 대해 질문 — 우측 챗에 arch 세션 열기(#746). 흐름 미생성이어도 가능(컨텍스트 폴백). */}
+            {onAskArch && (
+              <button type="button" onClick={() => onAskArch(feature)} title={t("flow.ask")} aria-label={t("flow.ask")}
+                className="shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-[#3B34E2] dark:hover:bg-zinc-800 dark:hover:text-[#8b86f5]">
+                <IconMessageCircle size={13} stroke={2} aria-hidden />
+              </button>
+            )}
             {/* 갱신 — 새 노드만 병합 추가(모달 확인). 흐름 없으면 비활성. */}
             <button type="button" onClick={() => setConfirm("update")} disabled={loading || !sections} title={t("flow.updateTitle")} aria-label={t("flow.updateTitle")}
               className="shrink-0 rounded p-1 text-amber-500 transition hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800">
