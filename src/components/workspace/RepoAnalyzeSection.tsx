@@ -9,19 +9,33 @@ import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 export type RepoCategory = { id: string; title: string; blurb?: string };
 type StreamEvent = { type: string; line?: string; message?: string; response?: { summary?: string } };
 
-// 에이전트 응답(자유 텍스트)에서 첫 JSON 배열만 뽑아 카테고리로. 코드펜스·서두 방어.
+// 에이전트 응답 파싱 — 튜터 페르소나가 순수 JSON을 거부하므로(chatMode "Do not output JSON"),
+// ①JSON 배열이 있으면 우선, ②없으면 "`slug` · 제목 · 설명" 라인 형식(튜터가 잘 내는)에서 추출. 이중 방어.
 function parseCategories(text: string): RepoCategory[] {
-  const m = text.match(/\[[\s\S]*\]/);
-  if (!m) return [];
-  try {
-    const arr = JSON.parse(m[0]);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .filter((x) => x && typeof x.title === "string")
-      .map((x, i) => ({ id: typeof x.id === "string" && x.id ? x.id : `cat-${i}`, title: String(x.title), blurb: typeof x.blurb === "string" ? x.blurb : undefined }));
-  } catch {
-    return [];
+  // ① JSON 배열
+  const jm = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+  if (jm) {
+    try {
+      const arr = JSON.parse(jm[0]);
+      if (Array.isArray(arr)) {
+        const r = arr.filter((x) => x && typeof x.title === "string").map((x, i) => ({ id: typeof x.id === "string" && x.id ? x.id : `cat-${i}`, title: String(x.title), blurb: typeof x.blurb === "string" ? x.blurb : undefined }));
+        if (r.length) return r;
+      }
+    } catch { /* 라인 파싱으로 폴백 */ }
   }
+  // ② 라인: (불릿/번호 제거) `slug` <구분자> 제목 [<구분자> 설명]
+  const out: RepoCategory[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim().replace(/^[-*•\d.)\s]+/, "");
+    const m = line.match(/^`([^`]+)`\s*[·|:\-–—]\s*(.+)$/);
+    if (!m) continue;
+    const id = m[1].trim();
+    const parts = m[2].split(/\s*[·|]\s*|\s+[–—-]\s+/); // · | — - 로 제목/설명 분리
+    const title = (parts[0] ?? m[2]).trim();
+    const blurb = parts.length > 1 ? parts.slice(1).join(" · ").trim() : undefined;
+    if (title) out.push({ id, title, blurb });
+  }
+  return out;
 }
 
 // 좌측 "레포 분석하기" 섹션(#743) — [분석하기] → 기능 카테고리 목록 → 클릭 → 플로우 패널(feature=title).
@@ -53,7 +67,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       const list = files.filter((f) => !/(^|\/)(node_modules|\.git|dist|build|\.next|\.turbo)(\/|$)/.test(f)).slice(0, 600);
       const name = root.split("/").filter(Boolean).pop() ?? root;
       const ctx = `레포: ${name}\n파일 목록:\n${list.join("\n")}`;
-      const prompt = `위 레포 파일 목록을 보고, 사용자가 이해할 만한 "기능/영역" 카테고리로 6~12개로 나눠라. 각 항목은 {"id": kebab-case 영문 슬러그, "title": 짧은 제목, "blurb": 한 줄 설명}. **JSON 배열만** 출력하라(코드펜스·다른 설명 금지).`;
+      const prompt = `위 레포 파일 목록을 보고, 사용자가 이해할 만한 "기능/영역"을 6~12개로 나눠줘. 인사·서론·다른 설명 없이 **목록만**, 각 항목을 아래 형식으로 **한 줄씩** 적어줘:\n\`slug\` · 제목 · 한줄설명\n(slug은 kebab-case 영문. 예: \`token-usage\` · 토큰 사용량 모니터 · 로컬 토큰으로 provider usage API 호출)`;
       // 2) chat 모드 재사용(WorkspaceChat과 동일 경로) — 스트림 result.summary = 응답 텍스트.
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
