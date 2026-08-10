@@ -86,10 +86,11 @@ function kindGlyph(k: SessionKind, size: number, className?: string) {
   return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : k === "worktree" ? <IconPencil {...p} /> : k === "arch" ? <IconSitemap {...p} /> : <IconFileCode {...p} />;
 }
 
-export default function WorkspaceChat({ root, files, focus, changedFiles, providerId, providerSettings }: {
+export default function WorkspaceChat({ root, files, focus, prefill, changedFiles, providerId, providerSettings }: {
   root: string;
   files: string[];
   focus: ChatFocus | null;
+  prefill?: { text: string; n: number } | null; // 입력창에 넣을 텍스트(카드→arch 질문 좌표, #746). n=신호 카운터.
   changedFiles?: Set<string>; // 현재 워킹트리 변경 파일 경로(#689 승계 트리거)
   providerId: AgentProviderKind;
   providerSettings: ProviderSettings;
@@ -108,6 +109,7 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   const [streaming, setStreaming] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+  const taRef = useRef<HTMLTextAreaElement>(null); // 입력창 — prefill 시 포커스·캐럿 이동
   const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -175,6 +177,15 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
     openSession(focus.key, focus.kind, focus.label);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- focus만 감시(openSession 넣으면 매 렌더 재실행)
   }, [focus]);
+
+  // 카드→arch 질문 좌표 삽입(#746) — 입력창에 텍스트 넣고(기존 입력 뒤 이어붙임) 포커스+캐럿 끝으로.
+  useEffect(() => {
+    if (!prefill?.text) return;
+    setInput((prev) => (prev.trim() ? prev.replace(/\s+$/, "") + " " + prefill.text : prefill.text));
+    const el = taRef.current;
+    if (el) { el.focus(); const end = el.value.length; try { el.setSelectionRange(end, end); } catch { /* ignore */ } }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prefill.n 신호만 감시
+  }, [prefill?.n]);
 
   // ── 워킹트리 챗 커밋 승계(#689) ──
   // carryOver가 await 사이 최신 sessions를 읽도록 ref 미러(클로저 stale 방지) + 언마운트 가드.
@@ -696,6 +707,7 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
       <div className="border-t border-zinc-200 p-2 dark:border-zinc-800">
         <div className="flex items-end gap-1.5 rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 focus-within:border-[#3B34E2] dark:border-zinc-700 dark:bg-[#0e0f16] dark:focus-within:border-[#8b86f5]">
           <textarea
+            ref={taRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}

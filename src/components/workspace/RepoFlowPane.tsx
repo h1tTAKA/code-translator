@@ -88,13 +88,14 @@ function parseOverview(text: string): string {
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim(); // 과도한 빈 줄만 축소
 }
 
-export default function RepoFlowPane({ feature, root, providerId, providerSettings, onOpenFile, onAskArch, onClose }: {
+export default function RepoFlowPane({ feature, root, providerId, providerSettings, onOpenFile, onAskArch, onQuoteNode, onClose }: {
   feature?: string | null;
   root?: string;
   providerId?: AgentProviderKind;
   providerSettings?: ProviderSettings;
   onOpenFile?: (file: string, line?: number) => void;
   onAskArch?: (feature: string) => void; // 이 아키텍처에 대해 질문(우측 챗에 arch 세션 열기, #746)
+  onQuoteNode?: (text: string) => void;  // 카드 클릭 시 그 노드+연결 노드 지칭 문구를 챗 입력창에(#746)
   onClose?: () => void;
 }) {
   const t = useT();
@@ -336,13 +337,24 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                   const lifted = inFocus(key) || inHover(key);           // 포커스 연결 대상(유지) + 호버 연결 대상 → 빛남
                   const dimmed = !!focused && !inFocus(key) && !inHover(key); // 포커스 시 무관 카드 어둡게(호버 대상은 살림)
                   const toggleFocus = () => setFocused((prev) => (prev === key ? null : key));
+                  // 카드 클릭 시 그 노드 + 연결된 노드(나감 next + 들어옴)를 지칭하는 질문 좌표를 챗 입력창에(#746).
+                  const quote = () => {
+                    if (!onQuoteNode) return;
+                    const outs = n.next ?? [];
+                    const ins = (sections ?? []).flatMap((sec) => sec.nodes).filter((x) => x.next?.some((tt) => nk(tt) === key)).map((x) => x.name);
+                    const neigh = Array.from(new Set([...outs, ...ins])).filter((nm) => nk(nm) !== key);
+                    const file = n.file ? t("flow.quoteFile", { file: `${n.file}${n.line ? `:${n.line}` : ""}` }) : "";
+                    onQuoteNode(neigh.length
+                      ? t("flow.quoteWith", { name: n.name, neighbors: `「${neigh.join("」·「")}」`, file })
+                      : t("flow.quoteSolo", { name: n.name, file }));
+                  };
                   return (
                   // 카드 본문 클릭 = 포커스만(코드 자동 X). 코드/diff 패널은 우상단 아이콘으로만 연다(#743).
                   <div key={j} role="button" tabIndex={0}
                     ref={(el) => { if (el) nodeEls.current.set(key, el); }}
                     onMouseEnter={() => setHovered(key)} onMouseLeave={() => setHovered(null)}
-                    onClick={(e) => { e.stopPropagation(); toggleFocus(); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFocus(); } }}
+                    onClick={(e) => { e.stopPropagation(); toggleFocus(); quote(); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFocus(); quote(); } }}
                     style={{ opacity: dimmed ? 0.3 : 1 }}
                     className={`group relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 pr-7 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-[#3B34E2] shadow-[0_0_16px_0_rgba(59,52,226,0.55)] dark:border-[#8b86f5] dark:shadow-[0_0_18px_0_rgba(139,134,245,0.55)]" : "z-10 border-zinc-200 hover:border-[#3B34E2] dark:border-zinc-700 dark:hover:border-[#8b86f5]"} bg-white dark:bg-zinc-800/60`}>
                     {n.file && (
