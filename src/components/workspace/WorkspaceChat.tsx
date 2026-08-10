@@ -756,7 +756,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
               <div className="flex h-full items-center justify-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("ask.noSessionCards")}</div>
             ) : sessionCards.map((c) => (
               <button key={c.key} type="button"
-                onClick={(e) => { throwCard(c, e.currentTarget.getBoundingClientRect()); setCardsOpen(false); }}
+                onClick={(e) => throwCard(c, e.currentTarget.getBoundingClientRect())}
                 className="mb-1 flex w-full flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-[#3B34E2] dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[#8b86f5]">
                 <span className="w-full truncate text-[12px] font-medium text-zinc-800 dark:text-zinc-100">{c.front}</span>
                 {c.back && <span className="line-clamp-2 text-[11px] text-zinc-500 dark:text-zinc-400">{c.back}</span>}
