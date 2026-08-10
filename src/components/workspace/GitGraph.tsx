@@ -282,27 +282,34 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                     </svg>
                   </div>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
+                  {/* 커밋메세지 → 이름 → 해시. nowrap이라 좁으면 안 잘리고 가로 스크롤로 봄(전체는 호버 툴팁, #685·#737). */}
                   <span className="flex items-baseline gap-1.5 whitespace-nowrap pr-3 text-[11px]">
-                    {row.commit.refs.map((rf) => {
-                      const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
-                      const b = refBadge(rf, branch);
-                      // 브랜치 배지(태그 제외) 클릭 → 그 브랜치 챗 세션(#653). 커밋 토글 전파 차단.
-                      const clickable = !b.tag;
-                      return (
-                        <span key={rf} role={clickable ? "button" : undefined} tabIndex={clickable ? -1 : undefined}
-                          onClick={clickable ? (e) => { e.stopPropagation(); onFocusBranch(rf); } : undefined}
-                          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls} ${clickable ? "cursor-pointer hover:ring-1 hover:ring-current" : ""}`}
-                          title={clickable ? t("workspace.gitAskBranch", { branch: rf }) : undefined}>
-                          {isCur ? <IconGitCommit size={8} stroke={2.5} aria-hidden /> : b.tag ? <IconTag size={8} stroke={2} aria-hidden /> : <IconGitBranch size={8} stroke={2} aria-hidden />}
-                          {isCur && <span className="font-bold">HEAD</span>}{rf}
-                        </span>
-                      );
-                    })}
-                    {/* 순서: 커밋메세지 → 이름 → 해시. nowrap이라 좁으면 잘리지 않고 가로 스크롤로 봄(전체는 호버 툴팁도, #685·#737). */}
                     <span className="whitespace-nowrap text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
                     {(() => { const login = githubLogin(row.commit.email); return <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
                     <span className="shrink-0 font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
                   </span>
+                  {/* 브랜치/태그 배지(refs) — 우측 끝 고정(#741). sticky right-0라 가로 스크롤해도 뷰포트 오른쪽에 떠 있음.
+                      왼쪽 gradient 배경으로 스크롤되는 메세지를 덮음. 긴 이름은 배지에서 max-w+truncate. */}
+                  {row.commit.refs.length > 0 && (
+                    <span className="sticky right-0 z-10 ml-auto flex shrink-0 items-center gap-1 self-center bg-gradient-to-l from-white via-white pl-4 dark:from-[#111219] dark:via-[#111219]">
+                      {row.commit.refs.map((rf) => {
+                        const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
+                        const b = refBadge(rf, branch);
+                        // 브랜치 배지(태그 제외) 클릭 → 그 브랜치 챗 세션(#653). 커밋 토글 전파 차단.
+                        const clickable = !b.tag;
+                        return (
+                          <span key={rf} role={clickable ? "button" : undefined} tabIndex={clickable ? -1 : undefined}
+                            onClick={clickable ? (e) => { e.stopPropagation(); onFocusBranch(rf); } : undefined}
+                            className={`inline-flex max-w-[10rem] shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls} ${clickable ? "cursor-pointer hover:ring-1 hover:ring-current" : ""}`}
+                            title={clickable ? t("workspace.gitAskBranch", { branch: rf }) : rf}>
+                            {isCur ? <IconGitCommit size={8} stroke={2.5} className="shrink-0" aria-hidden /> : b.tag ? <IconTag size={8} stroke={2} className="shrink-0" aria-hidden /> : <IconGitBranch size={8} stroke={2} className="shrink-0" aria-hidden />}
+                            {isCur && <span className="shrink-0 font-bold">HEAD</span>}
+                            <span className="truncate">{rf}</span>
+                          </span>
+                        );
+                      })}
+                    </span>
+                  )}
                 </button>
                 {isOpen && (
                   <div>
