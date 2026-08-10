@@ -644,7 +644,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
               const cards = parsedCards.cards.filter(keepCard);
               return (
                 <div key={i} className="flex max-w-full flex-col items-start gap-1.5 text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
-                  <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{text}</Markdown></div>
+                  <div className="max-w-full"><Markdown>{text}</Markdown></div>
                   {cards.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
                       {cards.map((c) => bookmarkedTermExists(c.term) ? (
@@ -671,7 +671,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
             {streaming != null && (
               <div className="max-w-full text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
                 {streaming
-                  ? <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{stripStreamingCardBlock(streaming)}</Markdown></div>
+                  ? <div className="max-w-full"><Markdown>{stripStreamingCardBlock(streaming)}</Markdown></div>
                   : <span className="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500"><IconLoader2 size={13} stroke={2} className="animate-spin" aria-hidden /> {t("chat.replying")}</span>}
               </div>
             )}
