@@ -338,15 +338,8 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                   const dimmed = !!focused && !inFocus(key) && !inHover(key); // 포커스 시 무관 카드 어둡게(호버 대상은 살림)
                   const toggleFocus = () => setFocused((prev) => (prev === key ? null : key));
                   // 카드 클릭 시 그 노드 + 연결된 노드(나감 next + 들어옴)를 지칭하는 질문 좌표를 챗 입력창에(#746).
-                  const quote = () => {
-                    if (!onQuoteNode) return;
-                    const outs = n.next ?? [];
-                    const ins = (sections ?? []).flatMap((sec) => sec.nodes).filter((x) => x.next?.some((tt) => nk(tt) === key)).map((x) => x.name);
-                    const neigh = Array.from(new Set([...outs, ...ins])).filter((nm) => nk(nm) !== key);
-                    onQuoteNode(neigh.length
-                      ? t("flow.quoteWith", { name: n.name, neighbors: neigh.join("·") })
-                      : t("flow.quoteSolo", { name: n.name }));
-                  };
+                  // 최대 축약 — 노드명만 지칭([name]). 연결 관계는 arch 세션 컨텍스트에 이미 들어있음.
+                  const quote = () => { if (onQuoteNode) onQuoteNode(t("flow.quoteSolo", { name: n.name })); };
                   return (
                   // 카드 본문 클릭 = 포커스만(코드 자동 X). 코드/diff 패널은 우상단 아이콘으로만 연다(#743).
                   <div key={j} role="button" tabIndex={0}
