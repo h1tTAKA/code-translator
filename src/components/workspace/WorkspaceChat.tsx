@@ -318,7 +318,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
     const lines: string[] = [`# 기능(아키텍처): ${feature}`];
     if (overview) lines.push(`\n## 설명\n${overview}`);
     if (sections.length) {
-      lines.push(`\n## 구성 요소 (레이어별)`);
+      lines.push(`\n## 구성 요소 (레이어별, "→"는 흐름상 다음으로 이어지는 노드)`);
       for (const s of sections) {
         lines.push(`\n### ${s.layer}`);
         for (const n of s.nodes ?? []) {
@@ -329,6 +329,8 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
           lines.push(`- ${parts.join(" · ")}`);
         }
       }
+      // 답변 지침 — 질문에 나온 구성요소는 역할뿐 아니라 연결된 노드와의 관계·흐름까지 설명하도록.
+      lines.push(`\n---\n(답변 지침) 질문에 특정 구성요소(예: [이름])가 나오면, 그것의 역할만이 아니라 위 구조에서 그것과 연결된(→) 노드들과의 관계·데이터 흐름·왜 그렇게 이어지는지를 개발 초보도 이해할 수 있게 함께 설명해줘.`);
     }
     if (!overview && !sections.length) lines.push(`\n(아직 이 기능의 아키텍처 흐름이 생성되지 않았어요. 좌측 "아키텍처"에서 이 기능을 열면 흐름이 만들어져요.)`);
     return lines.join("\n") + "\n";
