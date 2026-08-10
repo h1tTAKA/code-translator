@@ -223,8 +223,10 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     const refresh = () => { void loadGitStatus(path); setGitNonce((n) => n + 1); };
     const onChange = () => { if (debounce) clearTimeout(debounce); debounce = setTimeout(refresh, 250); };
     const off = api.repo.onChanged((p) => { if (p.id === id) onChange(); });
+    // watch 지원이어도 저빈도(15s) 안전망 폴링 병행 — fs.watch가 나중에 조용히 죽거나(좀비) 이벤트를 놓쳐도 결국 갱신.
+    // 미지원(supported:false)/실패면 이벤트가 없으니 빠른 3s 주기로.
     void api.repo.watch({ id, root: path })
-      .then((r) => { if (r && r.supported === false) poll = setInterval(refresh, 3000); })
+      .then((r) => { poll = setInterval(refresh, r && r.supported === false ? 3000 : 15000); })
       .catch(() => { poll = setInterval(refresh, 3000); });
     return () => {
       off();
