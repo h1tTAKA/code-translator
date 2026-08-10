@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh } from "@tabler/icons-react";
+import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
@@ -78,7 +78,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   const [lines, setLines] = useState<Line[]>([]); // 노드 간 연결선(측정된 좌표)
   const reqRef = useRef(0); // 최신 요청만 반영(빠른 feature 전환 경합 방지)
   const flowRef = useRef<HTMLDivElement | null>(null); // 연결선 좌표 기준 컨테이너
-  const nodeEls = useRef(new Map<string, HTMLButtonElement>()); // 이름키 → 노드 DOM(엣지 끝점 측정)
+  const nodeEls = useRef(new Map<string, HTMLElement>()); // 이름키 → 노드 DOM(엣지 끝점 측정)
 
   const load = useCallback(async () => {
     if (!feature || !root || !providerId || !providerSettings) return;
@@ -127,7 +127,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
     const cr = cont.getBoundingClientRect();
     const keys = sourceKeys(sections);
     // 1) 유효 엣지 수집(양끝 DOM 존재하는 것만).
-    const raw: { srcName: string; srcKey: string; tgt: string; tgtKey: string; a: HTMLButtonElement; b: HTMLButtonElement }[] = [];
+    const raw: { srcName: string; srcKey: string; tgt: string; tgtKey: string; a: HTMLElement; b: HTMLElement }[] = [];
     for (const s of sections) for (const n of s.nodes) {
       if (!n.next?.length) continue;
       const a = nodeEls.current.get(nk(n.name));
@@ -253,17 +253,27 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                   const key = nk(n.name);
                   const lifted = inFocus(key) || inHover(key);           // 포커스 연결 대상(유지) + 호버 연결 대상 → 빛남
                   const dimmed = !!focused && !inFocus(key) && !inHover(key); // 포커스 시 무관 카드 어둡게(호버 대상은 살림)
+                  const toggleFocus = () => setFocused((prev) => (prev === key ? null : key));
                   return (
-                  <button key={j} type="button"
+                  // 카드 본문 클릭 = 포커스만(코드 자동 X). 코드/diff 패널은 우상단 아이콘으로만 연다(#743).
+                  <div key={j} role="button" tabIndex={0}
                     ref={(el) => { if (el) nodeEls.current.set(key, el); }}
                     onMouseEnter={() => setHovered(key)} onMouseLeave={() => setHovered(null)}
-                    onClick={(e) => { e.stopPropagation(); setFocused((prev) => (prev === key ? null : key)); if (n.file) onOpenFile?.(n.file, n.line); }}
+                    onClick={(e) => { e.stopPropagation(); toggleFocus(); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFocus(); } }}
                     style={{ opacity: dimmed ? 0.3 : 1 }}
-                    className={`relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-[#3B34E2] shadow-[0_0_16px_0_rgba(59,52,226,0.55)] dark:border-[#8b86f5] dark:shadow-[0_0_18px_0_rgba(139,134,245,0.55)]" : "z-10 border-zinc-200 hover:border-[#3B34E2] dark:border-zinc-700 dark:hover:border-[#8b86f5]"} bg-white dark:bg-zinc-800/60`}>
+                    className={`group relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 pr-7 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-[#3B34E2] shadow-[0_0_16px_0_rgba(59,52,226,0.55)] dark:border-[#8b86f5] dark:shadow-[0_0_18px_0_rgba(139,134,245,0.55)]" : "z-10 border-zinc-200 hover:border-[#3B34E2] dark:border-zinc-700 dark:hover:border-[#8b86f5]"} bg-white dark:bg-zinc-800/60`}>
+                    {n.file && (
+                      <button type="button" title={t("flow.openCode")} aria-label={t("flow.openCode")}
+                        onClick={(e) => { e.stopPropagation(); onOpenFile?.(n.file!, n.line); }}
+                        className="absolute right-1 top-1 rounded p-1 text-zinc-300 opacity-0 transition hover:bg-zinc-100 hover:text-[#3B34E2] group-hover:opacity-100 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-[#8b86f5]">
+                        <IconCode size={13} stroke={2} aria-hidden />
+                      </button>
+                    )}
                     <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
                     {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
                     {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
-                  </button>
+                  </div>
                   );
                 })}
                 {!anyEdge && i < sections.length - 1 && (
