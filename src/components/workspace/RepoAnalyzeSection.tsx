@@ -135,7 +135,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
           <>
             {/* 갱신 — 이미 있는 목록에 새로 생긴 것만 추가(모달 확인). */}
             <button type="button" onClick={() => setConfirm("update")} disabled={loading}
-              className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-amber-600 disabled:opacity-50">
+              className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-700 px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-amber-800 disabled:opacity-50">
               <IconRefresh size={11} stroke={2} className={loading ? "animate-spin" : ""} aria-hidden /> {t("confirm.updateTitle")}
             </button>
             {/* 재분석 — 전체 새로(모달 확인). */}
