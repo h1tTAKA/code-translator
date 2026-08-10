@@ -117,6 +117,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
   const [cardsOpen, setCardsOpen] = useState(false);      // 이 세션에서 추가된 카드 오버레이(#750)
   const [sessionCards, setSessionCards] = useState<Card[]>([]); // 현재 세션에서 만든 카드(최신순)
+  const [seenCards, setSeenCards] = useState<Record<string, number>>({}); // 세션별 목록 확인 시점 카드 수(배지 소거용, #750)
   const { throwCard } = useFlyCard(); // 카드 클릭 시 확대·상세(#750)
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -158,6 +159,10 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
     window.addEventListener(CARDS_CHANGED_EVENT, reloadCards);
     return () => window.removeEventListener(CARDS_CHANGED_EVENT, reloadCards);
   }, [reloadCards]);
+  // 목록을 열어 본 동안엔 그 세션의 카드 수를 "확인함"으로 기록 → 배지 소거(다음에 카드 늘면 다시 뜸).
+  useEffect(() => {
+    if (cardsOpen) setSeenCards((p) => (p[activeKey] === sessionCards.length ? p : { ...p, [activeKey]: sessionCards.length }));
+  }, [cardsOpen, sessionCards.length, activeKey]);
 
   // 폴더(store) 변경 시에만 재로드. 첫 마운트는 lazy init이 이미 처리했으므로 스킵.
   useEffect(() => {
@@ -604,7 +609,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
           {messages.length > 0 && (
             <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen((v) => !v); }} className={`relative rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
               <IconCards size={13} stroke={2} aria-hidden />
-              {sessionCards.length > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-[#3B34E2] px-0.5 text-[8px] font-bold leading-none text-white dark:bg-[#8b86f5] dark:text-zinc-900">{sessionCards.length}</span>}
+              {sessionCards.length > (seenCards[activeKey] ?? 0) && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-[#3B34E2] px-0.5 text-[8px] font-bold leading-none text-white dark:bg-[#8b86f5] dark:text-zinc-900">{sessionCards.length}</span>}
             </button>
           )}
           {history.length > 0 && (
