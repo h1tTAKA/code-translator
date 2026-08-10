@@ -563,6 +563,8 @@ const ko: Dict = {
   "confirm.deleteCollection": "목록 \"{name}\"을 삭제할까요? 분석 항목 자체는 지워지지 않습니다.",
   "confirm.reanalyze": "재분석하시게 되면 현재 분석 내용이 사라지고 분석 내용이 달라질 수 있습니다. 재분석하시겠습니까?",
   "confirm.reanalyzeTitle": "재분석",
+  "confirm.updateTitle": "갱신",
+  "confirm.update": "새로 발견된 카테고리를 기존 목록에 추가합니다. 갱신하시겠어요?",
   "confirm.excludeTermTitle": "\"{term}\" 용어 제외",
   "confirm.excludeTerm": "이 용어를 제외하시겠습니까?\n해당 용어는 다음 분석부터 분석 대상에서 제외됩니다.\n다시 되돌리려면 설정 > 제외 목록에서 해제할 수 있습니다.",
 
@@ -1250,6 +1252,8 @@ const ja: Dict = {
   "confirm.deleteCollection": "リスト「{name}」を削除しますか？分析項目自体は削除されません。",
   "confirm.reanalyze": "再分析すると現在の分析内容が消え、結果が変わる可能性があります。再分析しますか？",
   "confirm.reanalyzeTitle": "再分析",
+  "confirm.updateTitle": "更新",
+  "confirm.update": "新しく見つかったカテゴリを既存の一覧に追加します。更新しますか？",
   "confirm.excludeTermTitle": "「{term}」を除外",
   "confirm.excludeTerm": "この用語を除外しますか？\nこの用語は次回の分析から対象外になります。\n元に戻すには設定 > 除外リストで解除できます。",
 
@@ -1937,6 +1941,8 @@ const en: Dict = {
   "confirm.deleteCollection": "Delete the list \"{name}\"? The analyses themselves stay.",
   "confirm.reanalyze": "Re-analyzing discards the current result and may change the output. Re-analyze?",
   "confirm.reanalyzeTitle": "Re-analyze",
+  "confirm.updateTitle": "Update",
+  "confirm.update": "Adds newly found categories to the existing list. Update?",
   "confirm.excludeTermTitle": "Exclude \"{term}\"",
   "confirm.excludeTerm": "Exclude this term?\nIt won't appear in future analyses.\nYou can undo this in Settings > Exclusions.",
 
