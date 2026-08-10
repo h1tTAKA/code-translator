@@ -239,7 +239,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                 const hot = !!activeKey && (l.sk === activeKey || l.tk === activeKey);  // 강조 대상선(굵게)
                 const dim = !!focused && !(l.sk === focused || l.tk === focused);       // 포커스 시 무관선 흐리게
                 return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={hot ? 3 : 1.75}
-                  strokeOpacity={dim ? 0.1 : hot ? 1 : 0.9} markerEnd="url(#flow-arrow)" className="transition-[stroke-width,stroke-opacity] duration-150" />;
+                  opacity={dim ? 0.1 : hot ? 1 : 0.9} markerEnd="url(#flow-arrow)" className="transition-[stroke-width,opacity] duration-150" />;
               })}
             </svg>
             {sections.map((s, i) => (
