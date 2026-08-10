@@ -278,7 +278,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                       </button>
                     )}
                     <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
-                    {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
+                    {n.file && <span className="break-all font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{n.file}{n.line ? `:${n.line}` : ""}</span>}
                     {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
                   </div>
                   );
