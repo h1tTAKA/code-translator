@@ -126,23 +126,33 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
     if (!cont || !sections) { setLines([]); return; }
     const cr = cont.getBoundingClientRect();
     const keys = sourceKeys(sections);
-    const out: Line[] = [];
+    // 1) 유효 엣지 수집(양끝 DOM 존재하는 것만).
+    const raw: { srcName: string; srcKey: string; tgt: string; tgtKey: string; a: HTMLButtonElement; b: HTMLButtonElement }[] = [];
     for (const s of sections) for (const n of s.nodes) {
       if (!n.next?.length) continue;
       const a = nodeEls.current.get(nk(n.name));
       if (!a) continue;
-      const li = keys.indexOf(nk(n.name));
-      const color = EDGE_COLORS[li % EDGE_COLORS.length];
-      const laneX = LANE_MARGIN + (li % MAX_LANES) * LANE_GAP;
-      const ar = a.getBoundingClientRect();
-      // 나가는 선은 위쪽(0.38h), 들어오는 선은 아래쪽(0.62h)에서 — 같은 노드의 in/out이 동일선상에 안 겹치게.
-      const xs = ar.left - cr.left, ys = ar.top - cr.top + ar.height * 0.38;
       for (const target of n.next) {
         const b = nodeEls.current.get(nk(target));
         if (!b || b === a) continue;
-        const br = b.getBoundingClientRect();
-        out.push({ key: `${n.name}->${target}`, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height * 0.62 });
+        raw.push({ srcName: n.name, srcKey: nk(n.name), tgt: target, tgtKey: nk(target), a, b });
       }
+    }
+    // 2) 타깃별 incoming 개수 — 진입 y를 박스 높이에 분산(겹침 방지). 나감은 위쪽 한 점(버스)으로 모음.
+    const inCount = new Map<string, number>();
+    for (const r of raw) inCount.set(r.tgtKey, (inCount.get(r.tgtKey) ?? 0) + 1);
+    const inIdx = new Map<string, number>();
+    const out: Line[] = [];
+    for (const r of raw) {
+      const li = keys.indexOf(r.srcKey);
+      const color = EDGE_COLORS[li % EDGE_COLORS.length];
+      const laneX = LANE_MARGIN + (li % MAX_LANES) * LANE_GAP;
+      const ar = r.a.getBoundingClientRect(), br = r.b.getBoundingClientRect();
+      const xs = ar.left - cr.left, ys = ar.top - cr.top + ar.height * 0.24; // 나감: 위쪽(진입 밴드와 분리)
+      const n = inCount.get(r.tgtKey)!;
+      const k = inIdx.get(r.tgtKey) ?? 0; inIdx.set(r.tgtKey, k + 1);
+      const frac = n === 1 ? 0.6 : 0.46 + ((k + 0.5) / n) * 0.44; // 들어옴: 0.46~0.90 균등 분산
+      out.push({ key: `${r.srcName}->${r.tgt}#${k}`, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height * frac });
     }
     setLines(out);
   }, [sections]);
