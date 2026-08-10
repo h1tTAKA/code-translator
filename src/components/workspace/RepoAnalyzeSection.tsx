@@ -113,7 +113,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
   }, [root, providerId, providerSettings, locale, t, catsKey]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 text-[10px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
         <IconSitemap size={11} stroke={2} className="shrink-0" aria-hidden />
         <span className="truncate">{t("repo.analyzeSection")}</span>
