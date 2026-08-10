@@ -255,7 +255,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                     onMouseEnter={() => setHovered(key)} onMouseLeave={() => setHovered(null)}
                     onClick={(e) => { e.stopPropagation(); setFocused((prev) => (prev === key ? null : key)); if (n.file) onOpenFile?.(n.file, n.line); }}
                     style={{ opacity: dimmed ? 0.3 : 1 }}
-                    className={`relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-[#3B34E2] shadow-lg shadow-[#3B34E2]/20 dark:border-[#8b86f5] dark:shadow-[#8b86f5]/20" : "z-10 border-zinc-200 hover:border-[#3B34E2] dark:border-zinc-700 dark:hover:border-[#8b86f5]"} bg-white dark:bg-zinc-800/60`}>
+                    className={`relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-[#3B34E2] shadow-[0_0_16px_0_rgba(59,52,226,0.55)] dark:border-[#8b86f5] dark:shadow-[0_0_18px_0_rgba(139,134,245,0.55)]" : "z-10 border-zinc-200 hover:border-[#3B34E2] dark:border-zinc-700 dark:hover:border-[#8b86f5]"} bg-white dark:bg-zinc-800/60`}>
                     <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
                     {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
                     {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
