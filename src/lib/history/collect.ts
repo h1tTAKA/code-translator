@@ -112,14 +112,17 @@ export async function collectHistory(): Promise<UnifiedHistoryEvent[]> {
             ? "질문모드에서 저장"
             : d.sourceKind === "card"
               ? "암기 카드에서 저장"
-              : "분석에서 저장";
+              : d.sourceKind === "workspace"
+                ? "워크스페이스 챗에서 저장"
+                : "분석에서 저장";
         out.push({
           type: "bookmark",
           id: `bm-${text}-${d.bookmarkedAt}`,
           createdAt: d.bookmarkedAt,
           title: `카드 생성: ${text}`,
           description: from,
-          nav: { mode: d.sourceKind === "ask" ? "ask" : "code", sourceId: d.sourceId, sessionId: d.sourceSessionId, subId: d.sourceSubId },
+          // workspace 카드는 이동 대상(특정 챗 세션 복원)이 없어 비클릭(#750). 그 외만 nav 부여.
+          ...(d.sourceKind === "workspace" ? {} : { nav: { mode: d.sourceKind === "ask" ? "ask" : "code", sourceId: d.sourceId, sessionId: d.sourceSessionId, subId: d.sourceSubId } as const }),
         });
       }
     }
