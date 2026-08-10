@@ -473,7 +473,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           {/* 레포 분석하기 섹션(#743) — [분석하기]→카테고리→기능 플로우 패널 진입. */}
           {analyzeOpen && (
             <div style={leftFill === "analyze" ? undefined : { height: 240 }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "analyze" ? "min-h-0 flex-1" : "shrink-0"}`}>
-              <RepoAnalyzeSection onOpenFlow={(f) => setFlowFeature(f)} />
+              <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => setFlowFeature(f)} />
             </div>
           )}
           {/* 하단 아이콘 바(#733·#743) — 트리·git·문서·분석 패널 토글. 전체폭 토글 줄을 아이콘 한 줄로 대체. */}
