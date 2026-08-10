@@ -9,7 +9,11 @@ import rehypeHighlight from "rehype-highlight";
 // 부호와 별표 사이에 제로폭공백(U+200B)을 끼우면 flanking을 통과해 정상 볼드/이탤릭이 된다(보이지 않음).
 const CJK_EMPHASIS = /([)\]}>.,!?%:;"'’”》」』])(\*{1,2})(?=[가-힣぀-ヿ一-鿿])/g;
 const ZWSP = "​"; // 제로폭 공백(보이지 않음)
-const fixCjkEmphasis = (s: string) => s.replace(CJK_EMPHASIS, `$1${ZWSP}$2`);
+// 코드 펜스(```…```)와 인라인 코드(`…`)는 원문 그대로 두고, 텍스트 구간에만 강조 보정을 적용.
+// (코드 안에 우연히 `).**한글` 같은 패턴이 있어도 ZWSP가 코드에 섞이지 않게.)
+const CODE_OR_TEXT = /(```[\s\S]*?```|`[^`]*`)|([^`]+)/g;
+const fixCjkEmphasis = (s: string) =>
+  s.replace(CODE_OR_TEXT, (m, code, text) => (code !== undefined ? code : (text as string).replace(CJK_EMPHASIS, `$1${ZWSP}$2`)));
 
 // 챗/카드설명 답변을 마크다운으로 렌더(GFM 표 포함). raw HTML은 렌더하지 않아 안전.
 // 코드펜스는 rehype-highlight(highlight.js)로 신택스 하이라이팅(테마는 globals.css의 hljs).
