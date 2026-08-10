@@ -4,6 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode, IconBook2 } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
+import Markdown from "@/components/learning/Markdown";
+import { stripCardBlock } from "@/lib/cardSuggestion";
 
 // 기능별 아키텍처 플로우(#743) — Manyfast 유저플로우식: 레이어=밴드(위→아래), 알약 노드, 노드→코드 점프.
 // next(다음 노드)를 받아 SVG 곡선으로 연결해 흐름을 직관적으로.
@@ -62,10 +64,13 @@ function parseFlow(text: string): FlowSection[] {
   return order.map((layer) => ({ layer, nodes: byLayer.get(layer)! }));
 }
 
-// 응답에서 설명(산문) 추출 — 노드 라인(| 포함)과 섹션 마커([설명]/[흐름] 등) 빼고 남는 문장들.
+// 응답에서 설명(산문) 추출 — 노드 라인(| 포함)·섹션 마커([설명]/[흐름])만 빼고, 문단 구분(빈 줄)은 보존.
 function parseOverview(text: string): string {
+  const cut = text.search(/```|nunopi-cards/i); // 카드 블록/코드펜스 이후는 설명 아님 → 자름(누수 방지)
+  if (cut >= 0) text = text.slice(0, cut);
   const isMarker = (l: string) => /^\s*[[#*>\-\d.)\s]*\s*(설명|흐름|아키텍처|explanation|flow|architecture|overview)\s*[\]:：]*\s*$/i.test(l);
-  return text.split("\n").filter((l) => l.trim() && !l.includes("|") && !isMarker(l)).join("\n").trim();
+  const kept = text.split("\n").filter((l) => !l.includes("|") && !isMarker(l.trim()));
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim(); // 과도한 빈 줄만 축소
 }
 
 export default function RepoFlowPane({ feature, root, providerId, providerSettings, onOpenFile, onClose }: {
@@ -113,7 +118,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       const list = files.filter((f) => !/(^|\/)(node_modules|\.git|dist|build|\.next|\.turbo)(\/|$)/.test(f)).slice(0, 600);
       const name = basename(root);
       const ctx = `레포: ${name}\n파일 목록:\n${list.join("\n")}`;
-      const prompt = `레포 "${name}"에서 "${feature}" 기능의 아키텍처를 정리해줘. 아래 두 부분을 순서대로:\n\n[설명]\n이 기능이 전체적으로 어떻게 동작하는지, 각 조각이 왜 있고 서로 어떻게 이어지는지, 데이터가 어디서 어디로 흐르는지를 개발 초보도 완전히 이해할 수 있게 친절하고 자세히 풀어서 설명(6~12문장). 이 부분엔 파이프(|) 기호를 쓰지 말 것.\n\n[흐름]\n그 다음 각 노드를 한 줄씩, 아래 형식으로만:\n레이어 | 표시이름 | 파일경로:라인 | 한줄역할 | → 다음노드이름\n(진입(UI/route)→처리(IPC/handler)→서비스/로직→데이터/외부 순. 파일경로는 위 목록의 실제 경로. 라인 모르면 파일만. "→ 다음노드"는 흐름상 이어지는 노드 표시이름들(쉼표로 여러 개), 없으면 생략. 표시이름은 서로 정확히 일치시켜 연결되게. 예: 진입·UI | AnalyzeControls | src/components/AnalyzeControls.tsx | 분석 버튼 | → analyze route)`;
+      const prompt = `레포 "${name}"에서 "${feature}" 기능의 아키텍처를 정리해줘. 아래 두 부분을 순서대로:\n\n[설명]\n이 기능이 전체적으로 어떻게 동작하는지, 각 조각이 왜 있고 서로 어떻게 이어지는지, 데이터가 어디서 어디로 흐르는지를 개발 초보도 완전히 이해할 수 있게 친절하고 자세히. **2~4개의 짧은 문단**으로 나누고 문단 사이엔 빈 줄을 넣어. 파일/함수 이름은 백틱(\`)으로 감싸. 이 부분엔 파이프(|) 기호를 쓰지 말 것.\n\n[흐름]\n그 다음 각 노드를 한 줄씩, 아래 형식으로만:\n레이어 | 표시이름 | 파일경로:라인 | 한줄역할 | → 다음노드이름\n(진입(UI/route)→처리(IPC/handler)→서비스/로직→데이터/외부 순. 파일경로는 위 목록의 실제 경로. 라인 모르면 파일만. "→ 다음노드"는 흐름상 이어지는 노드 표시이름들(쉼표로 여러 개), 없으면 생략. 표시이름은 서로 정확히 일치시켜 연결되게. 예: 진입·UI | AnalyzeControls | src/components/AnalyzeControls.tsx | 분석 버튼 | → analyze route)`;
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId, request: { code: ctx, locale, providerId, mode: "chat", messages: [{ role: "user", content: prompt }], providerSettings } }),
@@ -131,9 +136,10 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       }
       if (my !== reqRef.current) return; // 더 최신 요청이 진행 중 → 폐기
       if (streamErr) { setErr(streamErr); return; }
-      const parsed = parseFlow(answer);
-      if (!parsed.length) { setErr(`no flow — ${answer.slice(0, 140)}`); return; }
-      const ov = parseOverview(answer) || null;
+      const clean = stripCardBlock(answer); // 튜터가 자동으로 붙이는 nunopi-cards 블록 제거
+      const parsed = parseFlow(clean);
+      if (!parsed.length) { setErr(`no flow — ${clean.slice(0, 140)}`); return; }
+      const ov = parseOverview(clean) || null;
       setSections(parsed); setOverview(ov);
       if (flowKey) { try { localStorage.setItem(flowKey, JSON.stringify({ sections: parsed, overview: ov })); } catch { /* ignore */ } } // 영속(#743)
     } catch (e) {
@@ -254,7 +260,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                   <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("flow.overview")}</span>
                   <IconChevronDown size={14} stroke={2} className={`ml-auto shrink-0 text-zinc-400 transition ${overviewOpen ? "" : "-rotate-90"}`} aria-hidden />
                 </button>
-                {overviewOpen && <p className="whitespace-pre-wrap px-3 pb-3 text-[12px] leading-relaxed text-zinc-600 dark:text-zinc-300">{overview}</p>}
+                {overviewOpen && <div className="border-t border-zinc-200/70 px-3.5 py-3 text-[12.5px] leading-relaxed text-zinc-600 dark:border-zinc-800 dark:text-zinc-300"><Markdown>{overview}</Markdown></div>}
               </div>
             )}
             {/* 세로 단일컬럼 흐름 — 왼쪽 거터에 소스별 레인, 지하철식 직각 배선으로 박스를 안 뚫고 연결. 빈 곳 클릭 → 포커스 해제. */}
