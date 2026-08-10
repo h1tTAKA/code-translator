@@ -304,7 +304,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                             title={clickable ? t("workspace.gitAskBranch", { branch: rf }) : rf}>
                             {isCur ? <IconGitCommit size={8} stroke={2.5} className="shrink-0" aria-hidden /> : b.tag ? <IconTag size={8} stroke={2} className="shrink-0" aria-hidden /> : <IconGitBranch size={8} stroke={2} className="shrink-0" aria-hidden />}
                             {isCur && <span className="shrink-0 font-bold">HEAD</span>}
-                            <span className="truncate">{rf}</span>
+                            <span className="min-w-0 truncate">{rf}</span>
                           </span>
                         );
                       })}
