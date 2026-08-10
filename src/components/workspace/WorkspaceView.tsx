@@ -210,6 +210,30 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   // 깃 그래프 새로고침 시 상태맵도 갱신 — stable(inline이면 GitGraph load가 매 렌더 재생성→무한 fetch).
   const handleGitRefreshed = useCallback(() => { if (path) void loadGitStatus(path); }, [path, loadGitStatus]);
 
+  // 실시간 갱신(#739) — 활성 워크스페이스의 레포를 파일 워처로 감시. 변경 시 도트 재로드 + gitNonce↑(GitGraph 재fetch).
+  // 활성 path만 watch(keep-alive 멀티탭 중복 방지). recursive 미지원이면 폴링 폴백.
+  const [gitNonce, setGitNonce] = useState(0);
+  useEffect(() => {
+    if (!mounted || !active || !path) return;
+    const api = window.nunopiDesktop;
+    if (!api?.repo) return;
+    const id = path;
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const refresh = () => { void loadGitStatus(path); setGitNonce((n) => n + 1); };
+    const onChange = () => { if (debounce) clearTimeout(debounce); debounce = setTimeout(refresh, 250); };
+    const off = api.repo.onChanged((p) => { if (p.id === id) onChange(); });
+    void api.repo.watch({ id, root: path })
+      .then((r) => { if (r && r.supported === false) poll = setInterval(refresh, 3000); })
+      .catch(() => { poll = setInterval(refresh, 3000); });
+    return () => {
+      off();
+      if (debounce) clearTimeout(debounce);
+      if (poll) clearInterval(poll);
+      void api.repo?.unwatch({ id });
+    };
+  }, [mounted, active, path, loadGitStatus]);
+
   // 폴더 정해지면 파일트리 로드.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
@@ -394,7 +418,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           {gitOpen && (
             <>
               {leftFill !== "git" && <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
-              <div style={leftFill === "git" ? undefined : { height: gitH }} className={`overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "git" ? "min-h-0 flex-1" : "shrink-0"}`}><GitGraph root={path} onOpenDiff={(hash, file) => openCodeTab({ kind: "diff", hash, file })} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => openCodeTab({ kind: "diff", file, worktree })} onRefreshed={handleGitRefreshed} /></div>
+              <div style={leftFill === "git" ? undefined : { height: gitH }} className={`overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "git" ? "min-h-0 flex-1" : "shrink-0"}`}><GitGraph root={path} onOpenDiff={(hash, file) => openCodeTab({ kind: "diff", hash, file })} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => openCodeTab({ kind: "diff", file, worktree })} onRefreshed={handleGitRefreshed} refreshNonce={gitNonce} /></div>
             </>
           )}
           {/* 문서 폴더 브라우저(#693) — .md/.txt 클릭 시 뷰어에 표시(뷰어는 커밋2). */}
