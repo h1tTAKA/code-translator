@@ -71,6 +71,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [treeOpen, setTreeOpen] = useState(true);  // 파일 트리 열림(#733) — 하단 아이콘 바 토글, 기본 열림
   const [analyzeOpen, setAnalyzeOpen] = useState(false); // 좌측 "레포 분석하기" 섹션 열림(#743)
   const [flowFeature, setFlowFeature] = useState<string | null>(null); // 열린 플로우 패널의 기능(null=닫힘). dock에 flow 패널 존재 여부와 동기(#743)
+  const [chatPrefill, setChatPrefill] = useState<{ text: string; n: number } | null>(null); // 챗 입력창 자동 삽입 신호(#746)
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
   const [analyzeH, setAnalyzeH] = useState(240);   // 레포 분석 섹션 높이(px, #743)
@@ -233,6 +234,15 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
   const toggleAnalyze = () => { if (analyzeOpen && leftOpenCount === 1) return; setAnalyzeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-analyze-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  // 이 아키텍처(기능)에 대해 질문(#746) — 우측 챗에 arch 세션 열고(focus) 챗 패널 펴기.
+  const askArch = (feature: string) => { focusChat(`arch:${feature}`, "arch", feature); setChatOpen(true); try { localStorage.setItem("nunopi:ws-chat-open", "1"); } catch { /* ignore */ } };
+  // 카드→좌표 삽입(#746) — 챗 패널이 열려 있으면 이 기능의 arch 세션으로 전환 + 지칭 문구를 입력창에.
+  // (챗 닫혀 있으면 카드 클릭=포커스만. 질문할 땐 챗이 열려 있음.)
+  const quoteNode = (text: string) => {
+    if (!chatOpen || flowFeature == null) return;
+    focusChat(`arch:${flowFeature}`, "arch", flowFeature); // arch 세션 활성(없으면 생성)
+    setChatPrefill((p) => ({ text, n: (p?.n ?? 0) + 1 }));
+  };
 
   // 워킹트리 변경 상태맵 로드(#687 도트 + #689 챗 승계 트리거). 경로 로드·깃 새로고침 시 호출.
   const loadGitStatus = useCallback(async (p: string) => {
@@ -410,7 +420,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     code: codeNode,
     doc: docNode,
     // 기능별 아키텍처 플로우(#743) — flowFeature 있을 때만 dock에 삽입됨. 노드 클릭 → 코드 탭 열기.
-    flow: <RepoFlowPane feature={flowFeature} root={path} providerId={providerId} providerSettings={providerSettings} onOpenFile={(file) => openCodeTab({ kind: "file", file })} onClose={() => setFlowFeature(null)} />,
+    flow: <RepoFlowPane feature={flowFeature} root={path} providerId={providerId} providerSettings={providerSettings} onOpenFile={(file) => openCodeTab({ kind: "file", file })} onAskArch={askArch} onQuoteNode={quoteNode} onClose={() => setFlowFeature(null)} />,
   };
 
   // 4존 셸.
@@ -532,7 +542,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           <>
             <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
             <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-              <WorkspaceChat root={path} files={files} focus={chatFocus} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
+              <WorkspaceChat root={path} files={files} focus={chatFocus} prefill={chatPrefill} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
             </aside>
           </>
         )}

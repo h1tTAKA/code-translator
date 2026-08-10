@@ -6,7 +6,7 @@
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory, IconSitemap } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
@@ -19,7 +19,10 @@ import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/age
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
-type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree";
+type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree" | "arch";
+// 아키텍처(flow) 캐시 shape — #743이 저장한 것을 컨텍스트로 읽기 위한 최소 타입.
+type ArchNode = { name: string; file?: string; line?: number; role?: string; next?: string[] };
+type ArchSection = { layer: string; nodes: ArchNode[] };
 interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). 레거시 저장분은 undefined.
 // baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
 interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
@@ -80,13 +83,14 @@ function loadStore(store: string, repoLabel: string): { sessions: Record<string,
 // 세션 kind별 아이콘 — JSX 직접 반환(렌더 중 컴포넌트 변수 생성 회피: react-hooks/static-components).
 function kindGlyph(k: SessionKind, size: number, className?: string) {
   const p = { size, stroke: 2, className, "aria-hidden": true } as const;
-  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : k === "worktree" ? <IconPencil {...p} /> : <IconFileCode {...p} />;
+  return k === "repo" ? <IconStack2 {...p} /> : k === "branch" ? <IconGitBranch {...p} /> : k === "diff" ? <IconGitCommit {...p} /> : k === "worktree" ? <IconPencil {...p} /> : k === "arch" ? <IconSitemap {...p} /> : <IconFileCode {...p} />;
 }
 
-export default function WorkspaceChat({ root, files, focus, changedFiles, providerId, providerSettings }: {
+export default function WorkspaceChat({ root, files, focus, prefill, changedFiles, providerId, providerSettings }: {
   root: string;
   files: string[];
   focus: ChatFocus | null;
+  prefill?: { text: string; n: number } | null; // 입력창에 넣을 텍스트(카드→arch 질문 좌표, #746). n=신호 카운터.
   changedFiles?: Set<string>; // 현재 워킹트리 변경 파일 경로(#689 승계 트리거)
   providerId: AgentProviderKind;
   providerSettings: ProviderSettings;
@@ -105,6 +109,8 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   const [streaming, setStreaming] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+  const taRef = useRef<HTMLTextAreaElement>(null); // 입력창 — prefill 시 포커스·캐럿 이동
+  const focusPendingRef = useRef(false);           // prefill 후 input 반영되면 포커스+캐럿 처리 대기 플래그
   const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -112,6 +118,25 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
 
   const active = sessions[activeKey] ?? sessions[REPO_KEY];
   const activeSub = active.subs.find((s) => s.id === active.activeSubId) ?? active.subs[0];
+
+  // 레포 파일 basename·stem 집합 — 카드 제안에서 파일/심볼 항목 걸러내기용(#746).
+  const fileStems = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of files) { const base = (f.split("/").pop() ?? f).toLowerCase(); set.add(base); set.add(base.replace(/\.[^.]+$/, "")); }
+    return set;
+  }, [files]);
+  // 카드로 만들 만한가? 파일명·경로·레포 파일 stem·camelCase 심볼(코드 식별자)은 암기카드감 아님 → 제외.
+  const keepCard = useCallback((c: SuggestedCard) => {
+    const term = c.term.trim();
+    if (/[/\\]/.test(term)) return false;                                         // 경로
+    // 파일명(확장자) — 멀티랭 대비 흔한 확장자 폭넓게(웹·백엔드·컴파일 언어).
+    if (/\.(tsx?|jsx?|mjs|cjs|css|scss|less|json|ya?ml|toml|md|html?|vue|svelte|py|rb|go|rs|java|kt|kts|swift|scala|c|cc|cpp|cxx|h|hpp|cs|php|sh|sql)$/i.test(term)) return false;
+    if (fileStems.has(term.toLowerCase())) return false;                          // 레포 파일 basename/stem = 심볼
+    // 코드 식별자(공백 없는 단일 토큰): camelCase/PascalCase 험프 또는 snake_case → 카드감 아님.
+    // (API·REST·HTTP2·S3·v8 같은 약어/버전 개념은 험프·언더스코어가 없어 살아남음 — 숫자만으론 안 버림)
+    if (/^[A-Za-z][A-Za-z0-9_]*$/.test(term) && (/[a-z][A-Z]/.test(term) || /_/.test(term))) return false;
+    return true;
+  }, [fileStems]);
   const messages = activeSub.messages;
 
   // 폴더(store) 변경 시에만 재로드. 첫 마운트는 lazy init이 이미 처리했으므로 스킵.
@@ -156,6 +181,21 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
     openSession(focus.key, focus.kind, focus.label);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- focus만 감시(openSession 넣으면 매 렌더 재실행)
   }, [focus]);
+
+  // 카드→arch 질문 좌표 삽입(#746) — 입력창에 텍스트 넣고(기존 입력 뒤 이어붙임). 포커스·캐럿은 아래 이펙트가 input 반영 후 처리.
+  useEffect(() => {
+    if (!prefill?.text) return;
+    setInput((prev) => (prev.trim() ? prev.replace(/\s+$/, "") + " " + prefill.text : prefill.text));
+    focusPendingRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prefill.n 신호만 감시
+  }, [prefill?.n]);
+  // input 반영(DOM 갱신) 후 포커스 + 캐럿 끝으로 — setInput 직후 캐럿은 옛 길이라 별도 이펙트로 분리.
+  useEffect(() => {
+    if (!focusPendingRef.current) return;
+    focusPendingRef.current = false;
+    const el = taRef.current;
+    if (el) { el.focus(); const end = el.value.length; try { el.setSelectionRange(end, end); } catch { /* ignore */ } }
+  }, [input]);
 
   // ── 워킹트리 챗 커밋 승계(#689) ──
   // carryOver가 await 사이 최신 sessions를 읽도록 ref 미러(클로저 stale 방지) + 언마운트 가드.
@@ -273,9 +313,42 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
   }
 
   // kind별 컨텍스트 빌드(세션키 캐시).
+  // 아키텍처 세션 컨텍스트 — #743이 저장한 flow 캐시(설명 overview + 레이어별 노드)를 사람이 읽는 문자열로.
+  // 캐시 없으면(아직 미생성) feature명 + 안내만. localStorage 동기 읽기(전송 시점).
+  function archContext(feature: string): string {
+    let sections: ArchSection[] = [], overview = "";
+    try {
+      const raw = localStorage.getItem(`nunopi:ws:${root}:flow:${encodeURIComponent(feature)}`);
+      if (raw) {
+        const j = JSON.parse(raw);
+        if (Array.isArray(j)) sections = j as ArchSection[];
+        else { sections = Array.isArray(j?.sections) ? j.sections : []; overview = typeof j?.overview === "string" ? j.overview : ""; }
+      }
+    } catch { /* 캐시 손상 → 폴백 */ }
+    const lines: string[] = [`# 기능(아키텍처): ${feature}`];
+    if (overview) lines.push(`\n## 설명\n${overview}`);
+    if (sections.length) {
+      lines.push(`\n## 구성 요소 (레이어별, "→"는 흐름상 다음으로 이어지는 노드)`);
+      for (const s of sections) {
+        lines.push(`\n### ${s.layer}`);
+        for (const n of s.nodes ?? []) {
+          const parts = [n.name];
+          if (n.file) parts.push(n.file + (n.line ? `:${n.line}` : ""));
+          if (n.role) parts.push(n.role);
+          if (n.next?.length) parts.push(`→ ${n.next.join(", ")}`);
+          lines.push(`- ${parts.join(" · ")}`);
+        }
+      }
+      // 답변 지침 — 질문에 나온 구성요소는 역할뿐 아니라 연결된 노드와의 관계·흐름까지 설명하도록.
+      lines.push(`\n---\n(답변 지침) 질문에 특정 구성요소(예: [이름])가 나오면, 그것의 역할만이 아니라 위 구조에서 그것과 연결된(→) 노드들과의 관계·데이터 흐름·왜 그렇게 이어지는지를 개발 초보도 이해할 수 있게 함께 설명해줘.`);
+    }
+    if (!overview && !sections.length) lines.push(`\n(아직 이 기능의 아키텍처 흐름이 생성되지 않았어요. 좌측 "아키텍처"에서 이 기능을 열면 흐름이 만들어져요.)`);
+    return lines.join("\n") + "\n";
+  }
+
   async function buildContext(s: Session): Promise<string> {
     const cached = ctxCache.current.get(s.key);
-    if (s.kind !== "worktree" && cached != null) return cached; // worktree는 편집 시 변하니 캐시 무시
+    if (s.kind !== "worktree" && s.kind !== "arch" && cached != null) return cached; // worktree=편집 시 변함, arch=flow 재생성 시 변함 → 캐시 무시
     let ctx = "";
     try {
       if (s.kind === "file") {
@@ -318,11 +391,13 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
           if (d.stat) parts.push(`## ${d.base} 대비 변경 요약\n\`\`\`\n${d.stat}\n\`\`\``);
           ctx = parts.join("\n\n") + "\n";
         }
+      } else if (s.kind === "arch") {
+        ctx = archContext(s.key.slice("arch:".length));
       } else if (s.kind === "repo") {
         ctx = await repoContext();
       }
     } catch { ctx = ""; }
-    if (s.kind !== "worktree") ctxCache.current.set(s.key, ctx); // worktree는 캐시 안 함(매번 최신 diff)
+    if (s.kind !== "worktree" && s.kind !== "arch") ctxCache.current.set(s.key, ctx); // worktree·arch는 캐시 안 함(항상 최신 diff/flow)
     return ctx;
   }
 
@@ -563,8 +638,10 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
               if (m.role === "user") return (
                 <div key={i} className="self-end max-w-[85%] whitespace-pre-wrap rounded-2xl bg-zinc-100 px-3 py-1.5 text-[12px] leading-relaxed text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100">{m.content}</div>
               );
-              // 어시스턴트 — 본문 + nunopi-cards 칩(다른 챗룸과 동일).
-              const { text, cards } = parseCardSuggestions(m.content);
+              // 어시스턴트 — 본문 + nunopi-cards 칩(다른 챗룸과 동일). 파일/심볼 카드는 제외(#746).
+              const parsedCards = parseCardSuggestions(m.content);
+              const text = parsedCards.text;
+              const cards = parsedCards.cards.filter(keepCard);
               return (
                 <div key={i} className="flex max-w-full flex-col items-start gap-1.5 text-[12px] leading-relaxed text-zinc-700 dark:text-zinc-200">
                   <div className="prose prose-sm max-w-none dark:prose-invert"><Markdown>{text}</Markdown></div>
@@ -642,6 +719,7 @@ export default function WorkspaceChat({ root, files, focus, changedFiles, provid
       <div className="border-t border-zinc-200 p-2 dark:border-zinc-800">
         <div className="flex items-end gap-1.5 rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 focus-within:border-[#3B34E2] dark:border-zinc-700 dark:bg-[#0e0f16] dark:focus-within:border-[#8b86f5]">
           <textarea
+            ref={taRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
