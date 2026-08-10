@@ -269,7 +269,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                     hoverTimer.current = setTimeout(() => setHover(payload), HOVER_DELAY_MS); // 머물러야 뜸
                   }}
                   onMouseLeave={clearHover}
-                  className="flex w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
+                  className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
                   {/* 그래프 셀 — 가로는 colW로 클립(overflow-x:clip), 세로는 visible(점→점 곡선이 부모 행까지 뻗음, #707). */}
                   <div className="shrink-0" style={{ width: colW, height: ROW_H, overflowX: "clip", overflowY: "visible" }}>
                     <svg width={graphW} height={ROW_H} style={{ minWidth: graphW, overflow: "visible" }} aria-hidden>
@@ -280,7 +280,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                     </svg>
                   </div>
                   <IconChevronRight size={11} stroke={2} className={`shrink-0 text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden />
-                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden pr-3 text-[11px]">
+                  <span className="flex items-baseline gap-1.5 whitespace-nowrap pr-3 text-[11px]">
                     {row.commit.refs.map((rf) => {
                       const isCur = rf === branch; // 현재 체크아웃 브랜치 = HEAD 위치
                       const b = refBadge(rf, branch);
@@ -297,7 +297,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                       );
                     })}
                     {/* 순서: 커밋메세지 → 이름 → 해시. 좁으면 subject가 truncate(전체는 호버 툴팁, #685). */}
-                    <span className="min-w-0 truncate text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
+                    <span className="whitespace-nowrap text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
                     {(() => { const login = githubLogin(row.commit.email); return <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
                     <span className="shrink-0 font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
                   </span>
