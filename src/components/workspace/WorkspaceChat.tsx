@@ -110,6 +110,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null); // 입력창 — prefill 시 포커스·캐럿 이동
+  const focusPendingRef = useRef(false);           // prefill 후 input 반영되면 포커스+캐럿 처리 대기 플래그
   const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -128,9 +129,12 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   const keepCard = useCallback((c: SuggestedCard) => {
     const term = c.term.trim();
     if (/[/\\]/.test(term)) return false;                                         // 경로
-    if (/\.(tsx?|jsx?|mjs|cjs|css|scss|json|md|html)$/i.test(term)) return false; // 파일명(확장자)
+    // 파일명(확장자) — 멀티랭 대비 흔한 확장자 폭넓게(웹·백엔드·컴파일 언어).
+    if (/\.(tsx?|jsx?|mjs|cjs|css|scss|less|json|ya?ml|toml|md|html?|vue|svelte|py|rb|go|rs|java|kt|kts|swift|scala|c|cc|cpp|cxx|h|hpp|cs|php|sh|sql)$/i.test(term)) return false;
     if (fileStems.has(term.toLowerCase())) return false;                          // 레포 파일 basename/stem = 심볼
-    if (/^[A-Za-z][A-Za-z0-9]*$/.test(term) && /[a-z][A-Z]/.test(term)) return false; // camelCase/PascalCase 코드 식별자
+    // 코드 식별자(공백 없는 단일 토큰): camelCase/PascalCase 험프, snake_case, 숫자 포함 → 카드감 아님.
+    // (API·REST·OAuth 같은 순수 약어/개념은 험프·언더스코어·숫자가 없어 살아남음)
+    if (/^[A-Za-z][A-Za-z0-9_]*$/.test(term) && (/[a-z][A-Z]/.test(term) || /[_0-9]/.test(term))) return false;
     return true;
   }, [fileStems]);
   const messages = activeSub.messages;
@@ -178,14 +182,20 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
     // eslint-disable-next-line react-hooks/exhaustive-deps -- focus만 감시(openSession 넣으면 매 렌더 재실행)
   }, [focus]);
 
-  // 카드→arch 질문 좌표 삽입(#746) — 입력창에 텍스트 넣고(기존 입력 뒤 이어붙임) 포커스+캐럿 끝으로.
+  // 카드→arch 질문 좌표 삽입(#746) — 입력창에 텍스트 넣고(기존 입력 뒤 이어붙임). 포커스·캐럿은 아래 이펙트가 input 반영 후 처리.
   useEffect(() => {
     if (!prefill?.text) return;
     setInput((prev) => (prev.trim() ? prev.replace(/\s+$/, "") + " " + prefill.text : prefill.text));
-    const el = taRef.current;
-    if (el) { el.focus(); const end = el.value.length; try { el.setSelectionRange(end, end); } catch { /* ignore */ } }
+    focusPendingRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- prefill.n 신호만 감시
   }, [prefill?.n]);
+  // input 반영(DOM 갱신) 후 포커스 + 캐럿 끝으로 — setInput 직후 캐럿은 옛 길이라 별도 이펙트로 분리.
+  useEffect(() => {
+    if (!focusPendingRef.current) return;
+    focusPendingRef.current = false;
+    const el = taRef.current;
+    if (el) { el.focus(); const end = el.value.length; try { el.setSelectionRange(end, end); } catch { /* ignore */ } }
+  }, [input]);
 
   // ── 워킹트리 챗 커밋 승계(#689) ──
   // carryOver가 await 사이 최신 sessions를 읽도록 ref 미러(클로저 stale 방지) + 언마운트 가드.
@@ -338,7 +348,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
 
   async function buildContext(s: Session): Promise<string> {
     const cached = ctxCache.current.get(s.key);
-    if (s.kind !== "worktree" && cached != null) return cached; // worktree는 편집 시 변하니 캐시 무시
+    if (s.kind !== "worktree" && s.kind !== "arch" && cached != null) return cached; // worktree=편집 시 변함, arch=flow 재생성 시 변함 → 캐시 무시
     let ctx = "";
     try {
       if (s.kind === "file") {
@@ -387,7 +397,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
         ctx = await repoContext();
       }
     } catch { ctx = ""; }
-    if (s.kind !== "worktree") ctxCache.current.set(s.key, ctx); // worktree는 캐시 안 함(매번 최신 diff)
+    if (s.kind !== "worktree" && s.kind !== "arch") ctxCache.current.set(s.key, ctx); // worktree·arch는 캐시 안 함(항상 최신 diff/flow)
     return ctx;
   }
 
