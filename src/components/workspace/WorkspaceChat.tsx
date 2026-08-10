@@ -6,12 +6,14 @@
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory, IconSitemap } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory, IconSitemap, IconCards } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
-import { createChatCard } from "@/lib/chatCard";
+import { createChatCard, CARDS_CHANGED_EVENT } from "@/lib/chatCard";
 import { bookmarkedTermExists } from "@/lib/bookmarkDetails";
+import { collectCards } from "@/lib/srs/collect";
+import type { Card } from "@/lib/srs/types";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
@@ -112,6 +114,8 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   const taRef = useRef<HTMLTextAreaElement>(null); // 입력창 — prefill 시 포커스·캐럿 이동
   const focusPendingRef = useRef(false);           // prefill 후 input 반영되면 포커스+캐럿 처리 대기 플래그
   const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
+  const [cardsOpen, setCardsOpen] = useState(false);      // 이 세션에서 추가된 카드 오버레이(#750)
+  const [sessionCards, setSessionCards] = useState<Card[]>([]); // 현재 세션에서 만든 카드(최신순)
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
   const curStore = useRef(store); // 현재 로드된 store(폴더 변경 감지용)
@@ -138,6 +142,20 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
     return true;
   }, [fileStems]);
   const messages = activeSub.messages;
+
+  // 이 세션에서 추가된 카드(#750) — 전역 카드 풀에서 workspace + 현재 세션 것만. 최신순.
+  const reloadCards = useCallback(() => {
+    const all = collectCards(["token", "concept", "term"], new Date());
+    const mine = all.filter((c) => c.sourceKind === "workspace" && c.sourceSessionId === activeKey);
+    mine.sort((a, b) => (b.bookmarkedAt ?? "").localeCompare(a.bookmarkedAt ?? ""));
+    setSessionCards(mine);
+  }, [activeKey]);
+  // 세션 전환/카드 생성(CARDS_CHANGED_EVENT) 시 재수집.
+  useEffect(() => {
+    reloadCards();
+    window.addEventListener(CARDS_CHANGED_EVENT, reloadCards);
+    return () => window.removeEventListener(CARDS_CHANGED_EVENT, reloadCards);
+  }, [reloadCards]);
 
   // 폴더(store) 변경 시에만 재로드. 첫 마운트는 lazy init이 이미 처리했으므로 스킵.
   useEffect(() => {
@@ -581,8 +599,13 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
         {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {sessionCards.length > 0 && (
+            <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
+              <IconCards size={13} stroke={2} aria-hidden />
+            </button>
+          )}
           {history.length > 0 && (
-            <button type="button" onClick={() => setHistoryOpen((v) => !v)} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${historyOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("workspace.chatHistory")} aria-label={t("workspace.chatHistory")} aria-pressed={historyOpen}>
+            <button type="button" onClick={() => { setCardsOpen(false); setHistoryOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${historyOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("workspace.chatHistory")} aria-label={t("workspace.chatHistory")} aria-pressed={historyOpen}>
               <IconHistory size={13} stroke={2} aria-hidden />
             </button>
           )}
@@ -709,6 +732,30 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
                     <span className="mt-0.5 shrink-0 rounded bg-zinc-100 px-1 text-[9px] font-medium text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">{h.count}</span>
                   </button>
                 ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* 이 세션에서 추가된 카드 목록(#750) — 히스토리 오버레이와 동형. */}
+      {cardsOpen && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-white dark:bg-[#0b0c12]">
+          <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
+            <IconCards size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+            <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("ask.sessionCards")}</span>
+            <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{sessionCards.length}</span>
+            <button type="button" onClick={() => setCardsOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>
+              <IconX size={13} stroke={2} aria-hidden />
+            </button>
+          </div>
+          <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto p-2">
+            {sessionCards.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("ask.noSessionCards")}</div>
+            ) : sessionCards.map((c) => (
+              <div key={c.key} className="mb-1 flex flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left dark:border-zinc-800 dark:bg-zinc-900">
+                <span className="w-full truncate text-[12px] font-medium text-zinc-800 dark:text-zinc-100">{c.front}</span>
+                {c.back && <span className="line-clamp-2 text-[11px] text-zinc-500 dark:text-zinc-400">{c.back}</span>}
+                {c.bookmarkedAt && <span className="mt-0.5 text-[9px] text-zinc-400 dark:text-zinc-500">{new Date(c.bookmarkedAt).toLocaleString(locale === "ja" ? "ja-JP" : locale === "en" ? "en-US" : "ko-KR", { dateStyle: "medium", timeStyle: "short" })}</span>}
               </div>
             ))}
           </div>
