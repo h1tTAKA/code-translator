@@ -14,6 +14,7 @@ import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
 import RepoFlowPane from "@/components/workspace/RepoFlowPane";
 import RepoAnalyzeSection from "@/components/workspace/RepoAnalyzeSection";
+import { FlyCardProvider } from "@/components/memorize/FlyCard";
 import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, isDockNode, appendPanel, removePanel, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
@@ -72,6 +73,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [analyzeOpen, setAnalyzeOpen] = useState(false); // 좌측 "레포 분석하기" 섹션 열림(#743)
   const [flowFeature, setFlowFeature] = useState<string | null>(null); // 열린 플로우 패널의 기능(null=닫힘). dock에 flow 패널 존재 여부와 동기(#743)
   const [chatPrefill, setChatPrefill] = useState<{ text: string; n: number } | null>(null); // 챗 입력창 자동 삽입 신호(#746)
+  const flyNoSources = useMemo(() => new Set<string>(), []); // FlyCardProvider용 빈 출처(워크스페이스 카드는 출처이동 없음, #750)
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
   const [analyzeH, setAnalyzeH] = useState(240);   // 레포 분석 섹션 높이(px, #743)
@@ -542,7 +544,10 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           <>
             <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
             <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-              <WorkspaceChat root={path} files={files} focus={chatFocus} prefill={chatPrefill} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
+              {/* FlyCardProvider(#750) — 세션 카드 목록에서 카드 클릭 시 확대·상세(throwCard). 워크스페이스 카드는 출처이동 없음(빈 sourceIds). */}
+              <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={flyNoSources} onGoToSource={() => {}}>
+                <WorkspaceChat root={path} files={files} focus={chatFocus} prefill={chatPrefill} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
+              </FlyCardProvider>
             </aside>
           </>
         )}

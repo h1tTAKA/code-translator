@@ -14,6 +14,7 @@ import { createChatCard, CARDS_CHANGED_EVENT } from "@/lib/chatCard";
 import { bookmarkedTermExists } from "@/lib/bookmarkDetails";
 import { collectCards } from "@/lib/srs/collect";
 import type { Card } from "@/lib/srs/types";
+import { useFlyCard } from "@/components/memorize/FlyCard";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
@@ -116,6 +117,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
   const [cardsOpen, setCardsOpen] = useState(false);      // 이 세션에서 추가된 카드 오버레이(#750)
   const [sessionCards, setSessionCards] = useState<Card[]>([]); // 현재 세션에서 만든 카드(최신순)
+  const { throwCard } = useFlyCard(); // 카드 클릭 시 확대·상세(#750)
   const ctxCache = useRef<Map<string, string>>(new Map()); // 세션키별 컨텍스트 캐시(재fetch 회피)
   const scrollRef = useRef<HTMLDivElement>(null);
   const curStore = useRef(store); // 현재 로드된 store(폴더 변경 감지용)
@@ -753,11 +755,13 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
             {sessionCards.length === 0 ? (
               <div className="flex h-full items-center justify-center text-[11px] text-zinc-400 dark:text-zinc-500">{t("ask.noSessionCards")}</div>
             ) : sessionCards.map((c) => (
-              <div key={c.key} className="mb-1 flex flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left dark:border-zinc-800 dark:bg-zinc-900">
+              <button key={c.key} type="button"
+                onClick={(e) => { throwCard(c, e.currentTarget.getBoundingClientRect()); setCardsOpen(false); }}
+                className="mb-1 flex w-full flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-[#3B34E2] dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[#8b86f5]">
                 <span className="w-full truncate text-[12px] font-medium text-zinc-800 dark:text-zinc-100">{c.front}</span>
                 {c.back && <span className="line-clamp-2 text-[11px] text-zinc-500 dark:text-zinc-400">{c.back}</span>}
                 {c.bookmarkedAt && <span className="mt-0.5 text-[9px] text-zinc-400 dark:text-zinc-500">{new Date(c.bookmarkedAt).toLocaleString(locale === "ja" ? "ja-JP" : locale === "en" ? "en-US" : "ko-KR", { dateStyle: "medium", timeStyle: "short" })}</span>}
-              </div>
+              </button>
             ))}
           </div>
         </div>
