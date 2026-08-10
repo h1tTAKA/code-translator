@@ -10,10 +10,12 @@ import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 type FlowNode = { name: string; file?: string; line?: number; role?: string; next?: string[] };
 type FlowSection = { layer: string; nodes: FlowNode[] };
 type StreamEvent = { type: string; message?: string; response?: { summary?: string } };
-type Line = { key: string; x1: number; y1: number; x2: number; y2: number };
+type Line = { key: string; x1: number; y1: number; x2: number; y2: number; color: string };
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const nk = (s: string) => s.trim().toLowerCase(); // 노드 이름 정규화 키(엣지 매칭용)
+// 출처(source 노드)별 화살표 색 — 겹쳐도 어디서 나왔는지 구분되게. 다크 배경서 잘 보이는 톤.
+const EDGE_COLORS = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#c084fc", "#f472b6", "#2dd4bf", "#fb923c", "#a3e635", "#38bdf8"];
 
 // 튜터가 내는 "레이어 | 이름 | 파일:라인 | 역할 | →다음노드" 라인을 섹션으로. JSON 안 옴(튜터 페르소나).
 function parseFlow(text: string): FlowSection[] {
@@ -25,6 +27,7 @@ function parseFlow(text: string): FlowSection[] {
     const parts = line.split("|").map((s) => s.trim());
     if (parts.length < 2 || !parts[0] || !parts[1]) continue;
     const layer = parts[0], name = parts[1];
+    if (/^(레이어|layer)$/i.test(layer) || /^(표시이름|이름|name|노드)$/i.test(name)) continue; // 형식 예시 헤더 에코 제거
     let file: string | undefined, lineNo: number | undefined, role: string | undefined, next: string[] | undefined;
     // 3번째 칸부터 순서 무관하게: 화살표=다음노드, 파일처럼 생김=파일:라인, 나머지=역할.
     for (const p of parts.slice(2)) {
@@ -107,17 +110,19 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
     if (!cont || !sections) { setLines([]); return; }
     const cr = cont.getBoundingClientRect();
     const out: Line[] = [];
+    let ci = 0; // 출처 노드마다 색 하나(등장 순)
     for (const s of sections) for (const n of s.nodes) {
       if (!n.next?.length) continue;
       const a = nodeEls.current.get(nk(n.name));
       if (!a) continue;
+      const color = EDGE_COLORS[ci++ % EDGE_COLORS.length];
       const ar = a.getBoundingClientRect();
       const x1 = ar.left - cr.left + ar.width / 2, y1 = ar.bottom - cr.top;
       for (const target of n.next) {
         const b = nodeEls.current.get(nk(target));
         if (!b || b === a) continue;
         const br = b.getBoundingClientRect();
-        out.push({ key: `${n.name}->${target}`, x1, y1, x2: br.left - cr.left + br.width / 2, y2: br.top - cr.top });
+        out.push({ key: `${n.name}->${target}`, x1, y1, x2: br.left - cr.left + br.width / 2, y2: br.top - cr.top, color });
       }
     }
     setLines(out);
@@ -170,14 +175,15 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
             {/* 연결선 오버레이 — 노드보다 뒤에 깔림(노드 배경이 덮어 끝점만 맞닿음). 클릭은 통과. */}
             <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
               <defs>
+                {/* context-stroke: 화살촉이 각 선 색을 그대로 상속(선마다 색이 달라도 한 marker로) */}
                 <marker id="flow-arrow" markerWidth="6" markerHeight="6" refX="4.5" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" className="fill-zinc-300 dark:fill-zinc-600" />
+                  <path d="M0,0 L6,3 L0,6 Z" fill="context-stroke" />
                 </marker>
               </defs>
               {lines.map((l) => {
                 const dy = Math.max(10, Math.abs(l.y2 - l.y1) / 2);
                 return <path key={l.key} d={`M ${l.x1} ${l.y1} C ${l.x1} ${l.y1 + dy} ${l.x2} ${l.y2 - dy} ${l.x2} ${l.y2}`}
-                  fill="none" strokeWidth={1.5} className="stroke-zinc-300 dark:stroke-zinc-600" markerEnd="url(#flow-arrow)" />;
+                  fill="none" stroke={l.color} strokeWidth={1.75} strokeOpacity={0.9} markerEnd="url(#flow-arrow)" />;
               })}
             </svg>
             {sections.map((s, i) => (
