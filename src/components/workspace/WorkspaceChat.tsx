@@ -599,9 +599,10 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
         {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          {sessionCards.length > 0 && (
-            <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
+          {messages.length > 0 && (
+            <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen((v) => !v); }} className={`relative rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
               <IconCards size={13} stroke={2} aria-hidden />
+              {sessionCards.length > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-[#3B34E2] px-0.5 text-[8px] font-bold leading-none text-white dark:bg-[#8b86f5] dark:text-zinc-900">{sessionCards.length}</span>}
             </button>
           )}
           {history.length > 0 && (
