@@ -296,7 +296,7 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         </span>
                       );
                     })}
-                    {/* 순서: 커밋메세지 → 이름 → 해시. 좁으면 subject가 truncate(전체는 호버 툴팁, #685). */}
+                    {/* 순서: 커밋메세지 → 이름 → 해시. nowrap이라 좁으면 잘리지 않고 가로 스크롤로 봄(전체는 호버 툴팁도, #685·#737). */}
                     <span className="whitespace-nowrap text-zinc-700 dark:text-zinc-200">{row.commit.subject}</span>
                     {(() => { const login = githubLogin(row.commit.email); return <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-500">{login ? `@${login}` : row.commit.author}</span>; })()}
                     <span className="shrink-0 font-mono text-[10px] text-zinc-300 dark:text-zinc-600">{row.commit.hash.slice(0, 7)}</span>
