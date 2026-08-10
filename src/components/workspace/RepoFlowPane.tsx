@@ -181,9 +181,12 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                 </marker>
               </defs>
               {lines.map((l) => {
-                const dy = Math.max(10, Math.abs(l.y2 - l.y1) / 2);
-                return <path key={l.key} d={`M ${l.x1} ${l.y1} C ${l.x1} ${l.y1 + dy} ${l.x2} ${l.y2 - dy} ${l.x2} ${l.y2}`}
-                  fill="none" stroke={l.color} strokeWidth={1.75} strokeOpacity={0.9} markerEnd="url(#flow-arrow)" />;
+                const d = l.y2 - l.y1;
+                const dy = Math.max(10, Math.abs(d) / 2);
+                const s = d >= 0 ? 1 : -1;                 // 곡선 볼록 방향(정방향 아래로/역행 위로)
+                const back = d < -6;                       // 타깃이 소스보다 위 = 역행 → 화살촉. 정방향·같은 층은 선만.
+                return <path key={l.key} d={`M ${l.x1} ${l.y1} C ${l.x1} ${l.y1 + s * dy} ${l.x2} ${l.y2 - s * dy} ${l.x2} ${l.y2}`}
+                  fill="none" stroke={l.color} strokeWidth={1.75} strokeOpacity={0.9} markerEnd={back ? "url(#flow-arrow)" : undefined} />;
               })}
             </svg>
             {sections.map((s, i) => (
