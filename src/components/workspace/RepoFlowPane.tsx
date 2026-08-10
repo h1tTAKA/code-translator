@@ -205,7 +205,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
           // 세로 단일컬럼 흐름 — 왼쪽 거터에 소스별 레인, 지하철식 직각 배선으로 박스를 안 뚫고 연결.
           <div ref={flowRef} style={{ paddingLeft: gutter }} className="relative mx-auto flex w-full max-w-[30rem] flex-col gap-2">
             {/* 배선 오버레이 — 노드보다 뒤에 깔림, 클릭은 통과. 화살촉은 타깃 왼쪽으로 진입. */}
-            <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+            <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full overflow-visible" aria-hidden>
               <defs>
                 {/* context-stroke: 화살촉이 각 선 색을 그대로 상속(선마다 색 달라도 한 marker로) */}
                 <marker id="flow-arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3.5" orient="auto">
