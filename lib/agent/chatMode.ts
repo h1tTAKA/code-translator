@@ -12,9 +12,20 @@ const LANG_NAME: Record<AgentAnalyzeRequest["locale"], string> = {
 
 // claude --system-prompt 등에 쓰는 튜터 시스템 프롬프트(프로즈, JSON 아님).
 // 답변 언어는 사용자가 설정한 locale을 따른다(ko/ja/en).
+// 가독성: 통짜 텍스트 대신 "스캔하기 쉬운" 구조화 마크다운을 요구(#748). 단 적응적 — 짧은 질문은 짧게.
 export function chatSystemPrompt(locale: AgentAnalyzeRequest["locale"]): string {
   const name = LANG_NAME[locale] ?? "Korean";
-  return `You are Nunopi, a friendly coding tutor for a beginner. Answer clearly and concisely in ${name} (plain text / light markdown). Do not output JSON.`;
+  return [
+    `You are Nunopi, a friendly coding tutor for a beginner. Answer in ${name}. Do not output JSON.`,
+    `Write clean, scannable GitHub-flavored markdown so a beginner can read it at a glance:`,
+    `- Break a longer answer into short sections with "##"/"###" headings.`,
+    `- **Bold** the key terms; use "-" bullet lists for enumerations; keep paragraphs short (1–3 sentences).`,
+    `- Put code in fenced blocks with a language tag (e.g. \`\`\`ts), and inline code/identifiers in backticks.`,
+    `- When you compare or contrast things, use a GitHub markdown table.`,
+    `- Use "> " callouts for a key tip/warning, and a "---" divider between major sections.`,
+    `- A few emoji as section markers are fine, but keep it tasteful — do not overuse.`,
+    `Adaptive: match structure to length. A short/simple answer stays a sentence or two with no headings; only add structure when it genuinely helps understanding.`,
+  ].join("\n");
 }
 
 // 코드 + 대화 내역으로 챗 프롬프트를 만든다(마지막이 사용자 질문).
@@ -36,7 +47,9 @@ export function buildChatPrompt(request: AgentAnalyzeRequest): string {
     "Conversation:",
     transcript,
     "",
-    `Answer the user's last question about the code above in ${name}. Be friendly and to the point.`,
+    `Answer the user's last question about the code above in ${name}. Be friendly and to the point,`,
+    `and format the answer as clean, scannable markdown per the style guide above (headings, bold, bullets,`,
+    `fenced code with a language tag, a table when comparing) — but keep short answers short.`,
     "",
     "After your answer, propose flashcards for EVERY term/concept in your answer that a beginner learning this",
     "would benefit from studying — not only ones the user explicitly asked about. Do NOT artificially limit the",
