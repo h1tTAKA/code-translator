@@ -18,7 +18,9 @@ const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const nk = (s: string) => s.trim().toLowerCase(); // 노드 이름 정규화 키(엣지 매칭용)
 // 출처(source 노드)별 색 — 겹쳐도 어디서 나왔는지 구분되게. 다크 배경서 잘 보이는 톤.
 const EDGE_COLORS = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#c084fc", "#f472b6", "#2dd4bf", "#fb923c", "#a3e635", "#38bdf8"];
-const LANE_GAP = 11, LANE_MARGIN = 8, LANE_PAD = 14, CORNER = 6; // 레인 간격·좌여백·박스전여백·모서리반경(px)
+// 거터는 좁은 패널서 박스 폭을 뺏지 않게 상한(MAX_GUTTER)까지만. 레인이 상한 넘으면 x 재사용(색으로 구분).
+const MAX_GUTTER = 48, LANE_GAP = 5, LANE_MARGIN = 6, LANE_PAD = 10, CORNER = 5; // px
+const MAX_LANES = Math.max(1, Math.floor((MAX_GUTTER - LANE_MARGIN - LANE_PAD) / LANE_GAP));
 
 // next 있는 소스 노드들의 정규화 키를 등장 순으로 — 레인 인덱스·색 배정 기준(측정·거터폭 계산 공용).
 function sourceKeys(sections: FlowSection[]): string[] {
@@ -131,14 +133,15 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       if (!a) continue;
       const li = keys.indexOf(nk(n.name));
       const color = EDGE_COLORS[li % EDGE_COLORS.length];
-      const laneX = LANE_MARGIN + li * LANE_GAP;
+      const laneX = LANE_MARGIN + (li % MAX_LANES) * LANE_GAP;
       const ar = a.getBoundingClientRect();
-      const xs = ar.left - cr.left, ys = ar.top - cr.top + ar.height / 2; // 소스 왼쪽·세로중앙
+      // 나가는 선은 위쪽(0.38h), 들어오는 선은 아래쪽(0.62h)에서 — 같은 노드의 in/out이 동일선상에 안 겹치게.
+      const xs = ar.left - cr.left, ys = ar.top - cr.top + ar.height * 0.38;
       for (const target of n.next) {
         const b = nodeEls.current.get(nk(target));
         if (!b || b === a) continue;
         const br = b.getBoundingClientRect();
-        out.push({ key: `${n.name}->${target}`, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height / 2 });
+        out.push({ key: `${n.name}->${target}`, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height * 0.62 });
       }
     }
     setLines(out);
@@ -159,7 +162,9 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   }, [measure]);
 
   const anyEdge = !!sections?.some((s) => s.nodes.some((n) => n.next?.length)); // 엣지 있으면 선으로, 없으면 꺾쇠 폴백
-  const gutter = sections && anyEdge ? LANE_MARGIN + sourceKeys(sections).length * LANE_GAP + LANE_PAD : 0; // 왼쪽 배선 레인 폭
+  const gutter = sections && anyEdge // 왼쪽 배선 레인 폭 — 상한 캡(좁은 패널 보호)
+    ? Math.min(MAX_GUTTER, LANE_MARGIN + Math.min(sourceKeys(sections).length, MAX_LANES) * LANE_GAP + LANE_PAD)
+    : 0;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#0b0c12]">
