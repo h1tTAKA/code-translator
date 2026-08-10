@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode, IconBook2 } from "@tabler/icons-react";
+import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode, IconBook2, IconSparkles } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 import Markdown from "@/components/learning/Markdown";
@@ -64,6 +64,21 @@ function parseFlow(text: string): FlowSection[] {
   return order.map((layer) => ({ layer, nodes: byLayer.get(layer)! }));
 }
 
+// 갱신: 기존 흐름 유지 + 새로 발견된 노드만 해당 레이어(없으면 새 레이어)에 추가(이름 중복 제외).
+function mergeFlow(existing: FlowSection[], incoming: FlowSection[]): FlowSection[] {
+  const out = existing.map((s) => ({ layer: s.layer, nodes: s.nodes.map((n) => ({ ...n })) }));
+  const layerIdx = new Map(out.map((s, i) => [nk(s.layer), i]));
+  const seen = new Set(out.flatMap((s) => s.nodes.map((n) => nk(n.name))));
+  for (const s of incoming) for (const n of s.nodes) {
+    if (seen.has(nk(n.name))) continue;
+    seen.add(nk(n.name));
+    const li = layerIdx.get(nk(s.layer));
+    if (li != null) out[li].nodes.push({ ...n });
+    else { layerIdx.set(nk(s.layer), out.length); out.push({ layer: s.layer, nodes: [{ ...n }] }); }
+  }
+  return out;
+}
+
 // 응답에서 설명(산문) 추출 — 노드 라인(| 포함)·섹션 마커([설명]/[흐름])만 빼고, 문단 구분(빈 줄)은 보존.
 function parseOverview(text: string): string {
   const cut = text.search(/```|nunopi-cards/i); // 카드 블록/코드펜스 이후는 설명 아님 → 자름(누수 방지)
@@ -89,18 +104,22 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   const [lines, setLines] = useState<Line[]>([]); // 노드 간 연결선(측정된 좌표)
   const [overview, setOverview] = useState<string | null>(null); // 이 아키텍처 설명(초보용 산문)
   const [overviewOpen, setOverviewOpen] = useState(true);        // 설명 박스 펼침
+  const [confirm, setConfirm] = useState<null | "regen" | "update">(null); // 확인 모달
+  const [running, setRunning] = useState<null | "regen" | "update">(null);  // 지금 도는 액션(그 버튼만 스핀)
   const reqRef = useRef(0); // 최신 요청만 반영(빠른 feature 전환 경합 방지)
+  const sectionsRef = useRef<FlowSection[] | null>(null); // 최신 sections 미러(갱신 병합 기준, load 의존성 회피)
   const flowRef = useRef<HTMLDivElement | null>(null); // 연결선 좌표 기준 컨테이너
   const nodeEls = useRef(new Map<string, HTMLElement>()); // 이름키 → 노드 DOM(엣지 끝점 측정)
 
   const flowKey = feature && root ? `nunopi:ws:${root}:flow:${encodeURIComponent(feature)}` : null; // 레포+기능별 flow 영속 키(#743)
 
-  const load = useCallback(async (force = false) => {
+  // mode: "cache"=저장분 우선(자동), "regen"=전체 새로, "update"=새 노드만 병합 추가.
+  const load = useCallback(async (mode: "cache" | "regen" | "update" = "cache") => {
     if (!feature || !root || !providerId || !providerSettings) return;
     const my = ++reqRef.current;
-    nodeEls.current.clear(); setLines([]);
-    // 강제(새로고침) 아니면 저장된 flow 먼저 — 에이전트 재호출 없이 즉시 복원. (구 캐시=배열, 신 캐시={sections,overview})
-    if (!force && flowKey) {
+    if (mode !== "update") { nodeEls.current.clear(); setLines([]); }
+    // 자동(cache)일 때만 저장분 먼저 — 에이전트 재호출 없이 즉시 복원. (구 캐시=배열, 신 캐시={sections,overview})
+    if (mode === "cache" && flowKey) {
       try {
         const raw = localStorage.getItem(flowKey);
         if (raw) {
@@ -110,7 +129,8 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
         }
       } catch { /* 캐시 손상 → 재생성 */ }
     }
-    setLoading(true); setErr(null); setSections(null); setOverview(null);
+    setLoading(true); setRunning(mode === "update" ? "update" : "regen"); setErr(null);
+    if (mode !== "update") { setSections(null); setOverview(null); } // 갱신은 기존 유지
     try {
       const tr = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root }) });
       const td = await tr.json().catch(() => null);
@@ -140,14 +160,20 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       const parsed = parseFlow(clean);
       if (!parsed.length) { setErr(`no flow — ${clean.slice(0, 140)}`); return; }
       const ov = parseOverview(clean) || null;
-      setSections(parsed); setOverview(ov);
-      if (flowKey) { try { localStorage.setItem(flowKey, JSON.stringify({ sections: parsed, overview: ov })); } catch { /* ignore */ } } // 영속(#743)
+      // 갱신(update)=기존 흐름에 새 노드만 병합, 그 외=교체.
+      const base = sectionsRef.current;
+      const nextSecs = mode === "update" && base ? mergeFlow(base, parsed) : parsed;
+      setSections(nextSecs); setOverview(ov);
+      if (flowKey) { try { localStorage.setItem(flowKey, JSON.stringify({ sections: nextSecs, overview: ov })); } catch { /* ignore */ } } // 영속(#743)
     } catch (e) {
       if (my === reqRef.current) setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      if (my === reqRef.current) setLoading(false);
+      if (my === reqRef.current) { setLoading(false); setRunning(null); }
     }
   }, [feature, root, providerId, providerSettings, locale, flowKey]);
+
+  // 최신 sections 미러(갱신 병합 기준).
+  useEffect(() => { sectionsRef.current = sections; }, [sections]);
 
   // 연결선 좌표 측정 — 각 노드 DOM 위치를 컨테이너 기준 상대좌표로. wrap/리사이즈 후 다시.
   const measure = useCallback(() => {
@@ -226,15 +252,23 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
     : 0;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#0b0c12]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
+    <div className="relative flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#0b0c12]">
+      <div className="flex shrink-0 items-center gap-1 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
         <IconSitemap size={14} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
-        <span className="truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{feature || t("flow.title")}</span>
+        <span className="mr-auto truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{feature || t("flow.title")}</span>
         {feature && (
-          <button type="button" onClick={() => void load(true)} disabled={loading} title={t("usage.refresh")} aria-label={t("usage.refresh")}
-            className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-            <IconRefresh size={13} stroke={2} className={loading ? "animate-spin" : ""} aria-hidden />
-          </button>
+          <>
+            {/* 갱신 — 새 노드만 병합 추가(모달 확인). 흐름 없으면 비활성. */}
+            <button type="button" onClick={() => setConfirm("update")} disabled={loading || !sections} title={t("flow.updateTitle")} aria-label={t("flow.updateTitle")}
+              className="shrink-0 rounded p-1 text-amber-500 transition hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800">
+              {running === "update" ? <IconLoader2 size={13} stroke={2} className="animate-spin" aria-hidden /> : <IconRefresh size={13} stroke={2} aria-hidden />}
+            </button>
+            {/* 재생성 — 전체 새로(모달 확인). */}
+            <button type="button" onClick={() => setConfirm("regen")} disabled={loading} title={t("flow.regenerateTitle")} aria-label={t("flow.regenerateTitle")}
+              className="shrink-0 rounded p-1 text-[#3B34E2] transition hover:bg-zinc-100 disabled:opacity-40 dark:text-[#8b86f5] dark:hover:bg-zinc-800">
+              {running === "regen" ? <IconLoader2 size={13} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={13} stroke={2} aria-hidden />}
+            </button>
+          </>
         )}
         {onClose && (
           <button type="button" onClick={onClose} title={t("mem.close")} aria-label={t("mem.close")}
@@ -325,6 +359,21 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
           </div>
         ) : null}
       </div>
+      {/* 갱신·재생성 확인 모달 — 내용이 바뀌거나 추가될 수 있어 먼저 물어봄(#743). */}
+      {confirm && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirm(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[18rem] rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-700 dark:bg-[#15161d]">
+            <p className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-100">{confirm === "regen" ? t("flow.regenerateTitle") : t("flow.updateTitle")}</p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">{confirm === "regen" ? t("flow.regenerate") : t("flow.update")}</p>
+            <div className="mt-3 flex justify-end gap-1.5">
+              <button type="button" onClick={() => setConfirm(null)}
+                className="rounded-md px-2.5 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">{t("confirm.cancel")}</button>
+              <button type="button" onClick={() => { const m = confirm; setConfirm(null); void load(m); }}
+                className="rounded-md bg-[#3B34E2] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#322bc9]">{t("confirm.ok")}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
