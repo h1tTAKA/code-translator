@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { IconSitemap, IconSparkles, IconLoader2, IconChevronRight } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
@@ -51,6 +51,16 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [detail, setDetail] = useState<string | null>(null); // 실패 원인 상세(디버깅·안내)
+  const catsKey = root ? `nunopi:ws:${root}:analyze-cats` : null; // 레포별 카테고리 영속 키(#743)
+
+  // 저장된 카테고리 복원 — 새로고침/재시작/레포 재진입 시 재분석 없이 바로 목록 표시.
+  useEffect(() => {
+    if (!catsKey) return;
+    let saved: RepoCategory[] | null = null;
+    try { const raw = localStorage.getItem(catsKey); if (raw) { const j = JSON.parse(raw); if (Array.isArray(j) && j.length) saved = j; } } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 레포별 저장 카테고리 1회 복원
+    setCats(saved);
+  }, [catsKey]);
 
   const analyze = useCallback(async () => {
     setLoading(true);
@@ -94,12 +104,13 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       const parsed = parseCategories(answer);
       if (!parsed.length) { fail(`no JSON array — ${answer.slice(0, 160)}`); return; }
       setCats(parsed);
+      if (catsKey) { try { localStorage.setItem(catsKey, JSON.stringify(parsed)); } catch { /* ignore */ } } // 영속(#743)
     } catch (e) {
       fail(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [root, providerId, providerSettings, locale, t]);
+  }, [root, providerId, providerSettings, locale, t, catsKey]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

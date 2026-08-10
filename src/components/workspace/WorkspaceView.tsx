@@ -176,6 +176,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const hasCode = codeTabs.length > 0;
   const hasDoc = !!(docsRoot && activeDoc && docTabs.length);
   const dockRepoRef = useRef<string | null>(null); // 현재 dockTree가 로드된 레포 — 전환 감지·저장 게이트
+  const flowRepoRef = useRef<string | null>(null); // flowFeature가 복원된 레포 — 전환 시 그 레포 저장값으로 복원(#743)
   useEffect(() => {
     if (!mounted || !path) return;
     const has: Record<PanelId, boolean> = { terminal: true, code: hasCode, doc: hasDoc, flow: flowFeature !== null };
@@ -206,6 +207,19 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   }, [flowFeature, mounted]);
   // 도킹 트리 저장(#716) — 로드된 레포와 현재 path 일치할 때만(전환 오염 방지).
   useEffect(() => { if (!path || dockRepoRef.current !== path || !dockTree) return; try { localStorage.setItem(`nunopi:ws:${path}:dock-tree`, JSON.stringify(dockTree)); } catch { /* ignore */ } }, [dockTree]); // eslint-disable-line react-hooks/exhaustive-deps -- path 제외: 전환 커밋에 옛 트리를 새 레포 키에 쓰는 오염 방지(dockTree 변할 때만 저장)
+
+  // 열린 플로우 기능 영속(#743) — 레포 전환/재진입 시 그 레포에 저장된 flowFeature 복원(플로우 패널 자동 복귀).
+  useEffect(() => {
+    if (!mounted || !path || flowRepoRef.current === path) return;
+    flowRepoRef.current = path;
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(`nunopi:ws:${path}:flow-feature`) || null; } catch { /* ignore */ }
+    setFlowFeature(saved);
+  }, [path, mounted]);
+  useEffect(() => {
+    if (!path || flowRepoRef.current !== path) return; // 전환 커밋에 옛 값 오염 방지
+    try { if (flowFeature) localStorage.setItem(`nunopi:ws:${path}:flow-feature`, flowFeature); else localStorage.removeItem(`nunopi:ws:${path}:flow-feature`); } catch { /* ignore */ }
+  }, [flowFeature]); // eslint-disable-line react-hooks/exhaustive-deps -- flowFeature 변할 때만 저장(path 변화는 위 복원 이펙트가 담당)
 
   // 좌측 4섹션(트리·git·문서·분석) 중 최소 하나는 열려 있어야 — 빈 사이드바 방지(#733·#743). 마지막 하나는 못 끔.
   const leftOpenCount = (treeOpen ? 1 : 0) + (gitOpen ? 1 : 0) + (docsOpen ? 1 : 0) + (analyzeOpen ? 1 : 0);

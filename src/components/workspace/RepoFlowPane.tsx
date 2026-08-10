@@ -80,10 +80,16 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   const flowRef = useRef<HTMLDivElement | null>(null); // 연결선 좌표 기준 컨테이너
   const nodeEls = useRef(new Map<string, HTMLElement>()); // 이름키 → 노드 DOM(엣지 끝점 측정)
 
-  const load = useCallback(async () => {
+  const flowKey = feature && root ? `nunopi:ws:${root}:flow:${encodeURIComponent(feature)}` : null; // 레포+기능별 flow 영속 키(#743)
+
+  const load = useCallback(async (force = false) => {
     if (!feature || !root || !providerId || !providerSettings) return;
     const my = ++reqRef.current;
     nodeEls.current.clear(); setLines([]);
+    // 강제(새로고침) 아니면 저장된 flow 먼저 — 에이전트 재호출 없이 즉시 복원.
+    if (!force && flowKey) {
+      try { const raw = localStorage.getItem(flowKey); if (raw) { const j = JSON.parse(raw); if (Array.isArray(j) && j.length) { setSections(j); setLoading(false); setErr(null); return; } } } catch { /* 캐시 손상 → 재생성 */ }
+    }
     setLoading(true); setErr(null); setSections(null);
     try {
       const tr = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root }) });
@@ -113,12 +119,13 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       const parsed = parseFlow(answer);
       if (!parsed.length) { setErr(`no flow — ${answer.slice(0, 140)}`); return; }
       setSections(parsed);
+      if (flowKey) { try { localStorage.setItem(flowKey, JSON.stringify(parsed)); } catch { /* ignore */ } } // 영속(#743)
     } catch (e) {
       if (my === reqRef.current) setErr(e instanceof Error ? e.message : String(e));
     } finally {
       if (my === reqRef.current) setLoading(false);
     }
-  }, [feature, root, providerId, providerSettings, locale]);
+  }, [feature, root, providerId, providerSettings, locale, flowKey]);
 
   // 연결선 좌표 측정 — 각 노드 DOM 위치를 컨테이너 기준 상대좌표로. wrap/리사이즈 후 다시.
   const measure = useCallback(() => {
@@ -202,7 +209,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
         <IconSitemap size={14} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
         <span className="truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{feature || t("flow.title")}</span>
         {feature && (
-          <button type="button" onClick={() => void load()} disabled={loading} title={t("usage.refresh")} aria-label={t("usage.refresh")}
+          <button type="button" onClick={() => void load(true)} disabled={loading} title={t("usage.refresh")} aria-label={t("usage.refresh")}
             className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
             <IconRefresh size={13} stroke={2} className={loading ? "animate-spin" : ""} aria-hidden />
           </button>
