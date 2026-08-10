@@ -187,9 +187,11 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   }, [sections]);
   const relatedOf = useCallback((key: string | null) => (key ? adjacency.get(key) ?? new Set([key]) : null), [adjacency]);
 
-  const activeKey = hovered ?? focused;            // 강조 기준(호버 우선)
-  const activeSet = relatedOf(activeKey);           // 강조 대상 노드 집합
-  const focusSet = relatedOf(focused);              // 포커스(어둡게 판단) 집합
+  // 포커스(클릭)는 밖·다른카드 누르기 전까지 계속 유지, 호버는 그 위에 추가 강조 — 두 집합 합집합.
+  const hoverSet = relatedOf(hovered);
+  const focusSet = relatedOf(focused);
+  const inFocus = (k: string) => !!focused && !!focusSet?.has(k);
+  const inHover = (k: string) => !!hovered && !!hoverSet?.has(k);
   const gutter = sections && anyEdge // 왼쪽 배선 레인 폭 — 상한 캡(좁은 패널 보호)
     ? Math.min(MAX_GUTTER, LANE_MARGIN + Math.min(sourceKeys(sections).length, MAX_LANES) * LANE_GAP + LANE_PAD)
     : 0;
@@ -236,8 +238,10 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                 const r = Math.min(CORNER, Math.abs(l.yt - l.ys) / 2 || 0); // 짧은 세로구간에선 모서리 축소
                 // 소스 왼쪽 → 레인까지 수평 → 레인 세로 → 타깃 왼쪽 수평(화살촉). 모서리 2곳 라운드.
                 const d = `M ${l.xs} ${l.ys} L ${l.laneX + r} ${l.ys} Q ${l.laneX} ${l.ys} ${l.laneX} ${l.ys + sgn * r} L ${l.laneX} ${l.yt - sgn * r} Q ${l.laneX} ${l.yt} ${l.laneX + r} ${l.yt} L ${l.xt} ${l.yt}`;
-                const hot = !!activeKey && (l.sk === activeKey || l.tk === activeKey);  // 강조 대상선(굵게)
-                const dim = !!focused && !(l.sk === focused || l.tk === focused);       // 포커스 시 무관선 흐리게
+                const incidentFocus = !!focused && (l.sk === focused || l.tk === focused);
+                const incidentHover = !!hovered && (l.sk === hovered || l.tk === hovered);
+                const hot = incidentFocus || incidentHover;                 // 포커스/호버 노드에 붙은 선 → 굵게
+                const dim = !!focused && !incidentFocus && !incidentHover;   // 포커스 시 무관선 흐리게(호버선은 살림)
                 return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={hot ? 3 : 1.75}
                   opacity={dim ? 0.1 : hot ? 1 : 0.9} markerEnd="url(#flow-arrow)" className="transition-[stroke-width,opacity] duration-150" />;
               })}
@@ -247,8 +251,8 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{s.layer}</div>
                 {s.nodes.map((n, j) => {
                   const key = nk(n.name);
-                  const lifted = !!activeSet?.has(key);                 // 호버/포커스 연결 대상 → 입체적으로
-                  const dimmed = !!focused && !focusSet?.has(key);       // 포커스 시 무관 카드 어둡게
+                  const lifted = inFocus(key) || inHover(key);           // 포커스 연결 대상(유지) + 호버 연결 대상 → 빛남
+                  const dimmed = !!focused && !inFocus(key) && !inHover(key); // 포커스 시 무관 카드 어둡게(호버 대상은 살림)
                   return (
                   <button key={j} type="button"
                     ref={(el) => { if (el) nodeEls.current.set(key, el); }}
