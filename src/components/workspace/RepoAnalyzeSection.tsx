@@ -77,7 +77,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       const list = files.filter((f) => !/(^|\/)(node_modules|\.git|dist|build|\.next|\.turbo)(\/|$)/.test(f)).slice(0, 600);
       const name = root.split("/").filter(Boolean).pop() ?? root;
       const ctx = `레포: ${name}\n파일 목록:\n${list.join("\n")}`;
-      const prompt = `위 레포 파일 목록을 보고, 사용자가 이해할 만한 "기능/영역"을 6~12개로 나눠줘. 인사·서론·다른 설명 없이 **목록만**, 각 항목을 아래 형식으로 **한 줄씩** 적어줘:\n\`slug\` · 제목 · 한줄설명\n(slug은 kebab-case 영문. 예: \`token-usage\` · 토큰 사용량 모니터 · 로컬 토큰으로 provider usage API 호출)`;
+      const prompt = `위 레포 파일 목록을 보고, 이 레포의 주요 기능/영역을 **빠짐없이** 나눠줘. 개수를 억지로 제한하지 말고 실제로 있는 만큼(보통 8~20개), 중요한 영역이 하나도 누락되지 않게, 서로 겹치지 않게. 인사·서론·다른 설명 없이 **목록만**, 각 항목을 아래 형식으로 **한 줄씩** 적어줘:\n\`slug\` · 제목 · 한줄설명\n(slug은 kebab-case 영문. 예: \`token-usage\` · 토큰 사용량 모니터 · 로컬 토큰으로 provider usage API 호출)`;
       // 2) chat 모드 재사용(WorkspaceChat과 동일 경로) — 스트림 result.summary = 응답 텍스트.
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
