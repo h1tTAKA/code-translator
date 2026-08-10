@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode } from "@tabler/icons-react";
+import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh, IconCode, IconBook2 } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
@@ -62,6 +62,12 @@ function parseFlow(text: string): FlowSection[] {
   return order.map((layer) => ({ layer, nodes: byLayer.get(layer)! }));
 }
 
+// 응답에서 설명(산문) 추출 — 노드 라인(| 포함)과 섹션 마커([설명]/[흐름] 등) 빼고 남는 문장들.
+function parseOverview(text: string): string {
+  const isMarker = (l: string) => /^\s*[[#*>\-\d.)\s]*\s*(설명|흐름|아키텍처|explanation|flow|architecture|overview)\s*[\]:：]*\s*$/i.test(l);
+  return text.split("\n").filter((l) => l.trim() && !l.includes("|") && !isMarker(l)).join("\n").trim();
+}
+
 export default function RepoFlowPane({ feature, root, providerId, providerSettings, onOpenFile, onClose }: {
   feature?: string | null;
   root?: string;
@@ -76,6 +82,8 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [lines, setLines] = useState<Line[]>([]); // 노드 간 연결선(측정된 좌표)
+  const [overview, setOverview] = useState<string | null>(null); // 이 아키텍처 설명(초보용 산문)
+  const [overviewOpen, setOverviewOpen] = useState(true);        // 설명 박스 펼침
   const reqRef = useRef(0); // 최신 요청만 반영(빠른 feature 전환 경합 방지)
   const flowRef = useRef<HTMLDivElement | null>(null); // 연결선 좌표 기준 컨테이너
   const nodeEls = useRef(new Map<string, HTMLElement>()); // 이름키 → 노드 DOM(엣지 끝점 측정)
@@ -86,11 +94,18 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
     if (!feature || !root || !providerId || !providerSettings) return;
     const my = ++reqRef.current;
     nodeEls.current.clear(); setLines([]);
-    // 강제(새로고침) 아니면 저장된 flow 먼저 — 에이전트 재호출 없이 즉시 복원.
+    // 강제(새로고침) 아니면 저장된 flow 먼저 — 에이전트 재호출 없이 즉시 복원. (구 캐시=배열, 신 캐시={sections,overview})
     if (!force && flowKey) {
-      try { const raw = localStorage.getItem(flowKey); if (raw) { const j = JSON.parse(raw); if (Array.isArray(j) && j.length) { setSections(j); setLoading(false); setErr(null); return; } } } catch { /* 캐시 손상 → 재생성 */ }
+      try {
+        const raw = localStorage.getItem(flowKey);
+        if (raw) {
+          const j = JSON.parse(raw);
+          const secs: FlowSection[] | undefined = Array.isArray(j) ? j : j?.sections;
+          if (Array.isArray(secs) && secs.length) { setSections(secs); setOverview(Array.isArray(j) ? null : (j?.overview ?? null)); setLoading(false); setErr(null); return; }
+        }
+      } catch { /* 캐시 손상 → 재생성 */ }
     }
-    setLoading(true); setErr(null); setSections(null);
+    setLoading(true); setErr(null); setSections(null); setOverview(null);
     try {
       const tr = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root }) });
       const td = await tr.json().catch(() => null);
@@ -98,7 +113,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       const list = files.filter((f) => !/(^|\/)(node_modules|\.git|dist|build|\.next|\.turbo)(\/|$)/.test(f)).slice(0, 600);
       const name = basename(root);
       const ctx = `레포: ${name}\n파일 목록:\n${list.join("\n")}`;
-      const prompt = `레포 "${name}"에서 "${feature}" 기능의 아키텍처 흐름을 레이어별로 정리해줘. 진입(UI/route) → 처리(IPC/handler) → 서비스/로직 → 데이터/외부 순. 인사·서론·다른 설명 없이 **각 노드를 한 줄씩**, 아래 형식으로만:\n레이어 | 표시이름 | 파일경로:라인 | 한줄역할 | → 다음노드이름\n(파일경로는 위 목록의 실제 경로. 라인 모르면 파일만. "→ 다음노드"는 이 노드가 흐름상 이어지는 노드의 표시이름들(쉼표로 여러 개), 없으면 생략. 표시이름은 서로 정확히 일치시켜 연결되게. 예: 진입·UI | AnalyzeControls | src/components/AnalyzeControls.tsx | 분석 버튼 | → analyze route)`;
+      const prompt = `레포 "${name}"에서 "${feature}" 기능의 아키텍처를 정리해줘. 아래 두 부분을 순서대로:\n\n[설명]\n이 기능이 전체적으로 어떻게 동작하는지, 각 조각이 왜 있고 서로 어떻게 이어지는지, 데이터가 어디서 어디로 흐르는지를 개발 초보도 완전히 이해할 수 있게 친절하고 자세히 풀어서 설명(6~12문장). 이 부분엔 파이프(|) 기호를 쓰지 말 것.\n\n[흐름]\n그 다음 각 노드를 한 줄씩, 아래 형식으로만:\n레이어 | 표시이름 | 파일경로:라인 | 한줄역할 | → 다음노드이름\n(진입(UI/route)→처리(IPC/handler)→서비스/로직→데이터/외부 순. 파일경로는 위 목록의 실제 경로. 라인 모르면 파일만. "→ 다음노드"는 흐름상 이어지는 노드 표시이름들(쉼표로 여러 개), 없으면 생략. 표시이름은 서로 정확히 일치시켜 연결되게. 예: 진입·UI | AnalyzeControls | src/components/AnalyzeControls.tsx | 분석 버튼 | → analyze route)`;
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId, request: { code: ctx, locale, providerId, mode: "chat", messages: [{ role: "user", content: prompt }], providerSettings } }),
@@ -118,8 +133,9 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       if (streamErr) { setErr(streamErr); return; }
       const parsed = parseFlow(answer);
       if (!parsed.length) { setErr(`no flow — ${answer.slice(0, 140)}`); return; }
-      setSections(parsed);
-      if (flowKey) { try { localStorage.setItem(flowKey, JSON.stringify(parsed)); } catch { /* ignore */ } } // 영속(#743)
+      const ov = parseOverview(answer) || null;
+      setSections(parsed); setOverview(ov);
+      if (flowKey) { try { localStorage.setItem(flowKey, JSON.stringify({ sections: parsed, overview: ov })); } catch { /* ignore */ } } // 영속(#743)
     } catch (e) {
       if (my === reqRef.current) setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -229,9 +245,20 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
         ) : err ? (
           <div className="flex flex-col gap-1"><p className="text-[12px] text-rose-500">{t("flow.error")}</p><p className="break-words text-[10px] text-zinc-400 dark:text-zinc-500">{err}</p></div>
         ) : sections ? (
-          // 세로 단일컬럼 흐름 — 왼쪽 거터에 소스별 레인, 지하철식 직각 배선으로 박스를 안 뚫고 연결.
-          // 빈 곳 클릭 → 포커스 해제.
-          <div ref={flowRef} onClick={() => setFocused(null)} style={{ paddingLeft: gutter }} className="relative mx-auto flex w-full max-w-[30rem] flex-col gap-2">
+          <div className="mx-auto flex w-full max-w-[30rem] flex-col gap-3">
+            {/* 이 아키텍처 설명(초보용) — 흐름 위 접이식 박스(#743). */}
+            {overview && (
+              <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-800/40">
+                <button type="button" onClick={() => setOverviewOpen((v) => !v)} className="flex w-full items-center gap-1.5 px-3 py-2 text-left">
+                  <IconBook2 size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+                  <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("flow.overview")}</span>
+                  <IconChevronDown size={14} stroke={2} className={`ml-auto shrink-0 text-zinc-400 transition ${overviewOpen ? "" : "-rotate-90"}`} aria-hidden />
+                </button>
+                {overviewOpen && <p className="whitespace-pre-wrap px-3 pb-3 text-[12px] leading-relaxed text-zinc-600 dark:text-zinc-300">{overview}</p>}
+              </div>
+            )}
+            {/* 세로 단일컬럼 흐름 — 왼쪽 거터에 소스별 레인, 지하철식 직각 배선으로 박스를 안 뚫고 연결. 빈 곳 클릭 → 포커스 해제. */}
+            <div ref={flowRef} onClick={() => setFocused(null)} style={{ paddingLeft: gutter }} className="relative flex w-full flex-col gap-2">
             {/* 배선 오버레이 — 노드보다 뒤에 깔림, 클릭은 통과. 화살촉은 타깃 왼쪽으로 진입. */}
             <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full overflow-visible" aria-hidden>
               <defs>
@@ -288,6 +315,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                 )}
               </div>
             ))}
+            </div>
           </div>
         ) : null}
       </div>
