@@ -10,12 +10,26 @@ import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 type FlowNode = { name: string; file?: string; line?: number; role?: string; next?: string[] };
 type FlowSection = { layer: string; nodes: FlowNode[] };
 type StreamEvent = { type: string; message?: string; response?: { summary?: string } };
-type Line = { key: string; x1: number; y1: number; x2: number; y2: number; color: string };
+// 지하철식 직각 배선: 소스 노드 왼쪽에서 나와 → 왼쪽 거터의 전용 레인(세로) → 타깃 왼쪽으로 들어감.
+// 박스는 거터 오른쪽에만 있어 선이 박스를 뚫지 않음. 소스별 레인·색 분리로 스파게티 방지.
+type Line = { key: string; color: string; laneX: number; xs: number; ys: number; xt: number; yt: number };
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const nk = (s: string) => s.trim().toLowerCase(); // 노드 이름 정규화 키(엣지 매칭용)
-// 출처(source 노드)별 화살표 색 — 겹쳐도 어디서 나왔는지 구분되게. 다크 배경서 잘 보이는 톤.
+// 출처(source 노드)별 색 — 겹쳐도 어디서 나왔는지 구분되게. 다크 배경서 잘 보이는 톤.
 const EDGE_COLORS = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#c084fc", "#f472b6", "#2dd4bf", "#fb923c", "#a3e635", "#38bdf8"];
+const LANE_GAP = 11, LANE_MARGIN = 8, LANE_PAD = 14, CORNER = 6; // 레인 간격·좌여백·박스전여백·모서리반경(px)
+
+// next 있는 소스 노드들의 정규화 키를 등장 순으로 — 레인 인덱스·색 배정 기준(측정·거터폭 계산 공용).
+function sourceKeys(sections: FlowSection[]): string[] {
+  const seen = new Set<string>(); const out: string[] = [];
+  for (const s of sections) for (const n of s.nodes) {
+    if (!n.next?.length) continue;
+    const k = nk(n.name);
+    if (!seen.has(k)) { seen.add(k); out.push(k); }
+  }
+  return out;
+}
 
 // 튜터가 내는 "레이어 | 이름 | 파일:라인 | 역할 | →다음노드" 라인을 섹션으로. JSON 안 옴(튜터 페르소나).
 function parseFlow(text: string): FlowSection[] {
@@ -109,20 +123,22 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
     const cont = flowRef.current;
     if (!cont || !sections) { setLines([]); return; }
     const cr = cont.getBoundingClientRect();
+    const keys = sourceKeys(sections);
     const out: Line[] = [];
-    let ci = 0; // 출처 노드마다 색 하나(등장 순)
     for (const s of sections) for (const n of s.nodes) {
       if (!n.next?.length) continue;
       const a = nodeEls.current.get(nk(n.name));
       if (!a) continue;
-      const color = EDGE_COLORS[ci++ % EDGE_COLORS.length];
+      const li = keys.indexOf(nk(n.name));
+      const color = EDGE_COLORS[li % EDGE_COLORS.length];
+      const laneX = LANE_MARGIN + li * LANE_GAP;
       const ar = a.getBoundingClientRect();
-      const x1 = ar.left - cr.left + ar.width / 2, y1 = ar.bottom - cr.top;
+      const xs = ar.left - cr.left, ys = ar.top - cr.top + ar.height / 2; // 소스 왼쪽·세로중앙
       for (const target of n.next) {
         const b = nodeEls.current.get(nk(target));
         if (!b || b === a) continue;
         const br = b.getBoundingClientRect();
-        out.push({ key: `${n.name}->${target}`, x1, y1, x2: br.left - cr.left + br.width / 2, y2: br.top - cr.top, color });
+        out.push({ key: `${n.name}->${target}`, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height / 2 });
       }
     }
     setLines(out);
@@ -143,6 +159,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   }, [measure]);
 
   const anyEdge = !!sections?.some((s) => s.nodes.some((n) => n.next?.length)); // 엣지 있으면 선으로, 없으면 꺾쇠 폴백
+  const gutter = sections && anyEdge ? LANE_MARGIN + sourceKeys(sections).length * LANE_GAP + LANE_PAD : 0; // 왼쪽 배선 레인 폭
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#0b0c12]">
@@ -170,42 +187,37 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
         ) : err ? (
           <div className="flex flex-col gap-1"><p className="text-[12px] text-rose-500">{t("flow.error")}</p><p className="break-words text-[10px] text-zinc-400 dark:text-zinc-500">{err}</p></div>
         ) : sections ? (
-          // 세로 흐름(위→아래) — 좁은 패널에서도 읽히게. 레이어=밴드, 노드 가로 wrap, 노드끼리 SVG 곡선 연결.
-          <div ref={flowRef} className="relative mx-auto flex w-full max-w-2xl flex-col gap-1">
-            {/* 연결선 오버레이 — 노드보다 뒤에 깔림(노드 배경이 덮어 끝점만 맞닿음). 클릭은 통과. */}
+          // 세로 단일컬럼 흐름 — 왼쪽 거터에 소스별 레인, 지하철식 직각 배선으로 박스를 안 뚫고 연결.
+          <div ref={flowRef} style={{ paddingLeft: gutter }} className="relative mx-auto flex w-full max-w-2xl flex-col gap-2">
+            {/* 배선 오버레이 — 노드보다 뒤에 깔림, 클릭은 통과. 화살촉은 타깃 왼쪽으로 진입. */}
             <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
               <defs>
-                {/* context-stroke: 화살촉이 각 선 색을 그대로 상속(선마다 색이 달라도 한 marker로) */}
-                <marker id="flow-arrow" markerWidth="6" markerHeight="6" refX="4.5" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="context-stroke" />
+                {/* context-stroke: 화살촉이 각 선 색을 그대로 상속(선마다 색 달라도 한 marker로) */}
+                <marker id="flow-arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3.5" orient="auto">
+                  <path d="M0,0 L7,3.5 L0,7 Z" fill="context-stroke" />
                 </marker>
               </defs>
               {lines.map((l) => {
-                const d = l.y2 - l.y1;
-                const dy = Math.max(10, Math.abs(d) / 2);
-                const s = d >= 0 ? 1 : -1;                 // 곡선 볼록 방향(정방향 아래로/역행 위로)
-                const back = d < -6;                       // 타깃이 소스보다 위 = 역행 → 화살촉. 정방향·같은 층은 선만.
-                return <path key={l.key} d={`M ${l.x1} ${l.y1} C ${l.x1} ${l.y1 + s * dy} ${l.x2} ${l.y2 - s * dy} ${l.x2} ${l.y2}`}
-                  fill="none" stroke={l.color} strokeWidth={1.75} strokeOpacity={0.9} markerEnd={back ? "url(#flow-arrow)" : undefined} />;
+                const sgn = l.yt >= l.ys ? 1 : -1;                          // 세로 진행 방향
+                const r = Math.min(CORNER, Math.abs(l.yt - l.ys) / 2 || 0); // 짧은 세로구간에선 모서리 축소
+                // 소스 왼쪽 → 레인까지 수평 → 레인 세로 → 타깃 왼쪽 수평(화살촉). 모서리 2곳 라운드.
+                const d = `M ${l.xs} ${l.ys} L ${l.laneX + r} ${l.ys} Q ${l.laneX} ${l.ys} ${l.laneX} ${l.ys + sgn * r} L ${l.laneX} ${l.yt - sgn * r} Q ${l.laneX} ${l.yt} ${l.laneX + r} ${l.yt} L ${l.xt} ${l.yt}`;
+                return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={1.75} strokeOpacity={0.95} markerEnd="url(#flow-arrow)" />;
               })}
             </svg>
             {sections.map((s, i) => (
-              <div key={s.layer + i} className="relative flex flex-col gap-1">
-                <div className="flex flex-col gap-1.5 rounded-lg border border-zinc-100 bg-zinc-50/60 p-2 dark:border-zinc-800 dark:bg-zinc-800/30">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{s.layer}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {s.nodes.map((n, j) => (
-                      <button key={j} type="button" disabled={!n.file}
-                        ref={(el) => { if (el) nodeEls.current.set(nk(n.name), el); }}
-                        onClick={() => n.file && onOpenFile?.(n.file, n.line)}
-                        className={`relative z-10 flex min-w-[9rem] flex-1 flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition ${n.file ? "cursor-pointer border-zinc-200 bg-white hover:border-[#3B34E2] dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:border-[#8b86f5]" : "cursor-default border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800/60"}`}>
-                        <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
-                        {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
-                        {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <div key={s.layer + i} className="relative flex flex-col gap-1.5 rounded-lg border border-zinc-100 bg-zinc-50/60 p-2 dark:border-zinc-800 dark:bg-zinc-800/30">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{s.layer}</div>
+                {s.nodes.map((n, j) => (
+                  <button key={j} type="button" disabled={!n.file}
+                    ref={(el) => { if (el) nodeEls.current.set(nk(n.name), el); }}
+                    onClick={() => n.file && onOpenFile?.(n.file, n.line)}
+                    className={`relative z-10 flex w-full flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition ${n.file ? "cursor-pointer border-zinc-200 bg-white hover:border-[#3B34E2] dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:border-[#8b86f5]" : "cursor-default border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800/60"}`}>
+                    <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
+                    {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
+                    {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
+                  </button>
+                ))}
                 {!anyEdge && i < sections.length - 1 && (
                   <div className="flex justify-center text-zinc-300 dark:text-zinc-600"><IconChevronDown size={16} stroke={2} aria-hidden /></div>
                 )}
