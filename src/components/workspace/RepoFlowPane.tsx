@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconSitemap, IconX, IconLoader2, IconChevronRight, IconRefresh } from "@tabler/icons-react";
+import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
@@ -124,22 +124,25 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
         ) : err ? (
           <div className="flex flex-col gap-1"><p className="text-[12px] text-rose-500">{t("flow.error")}</p><p className="break-words text-[10px] text-zinc-400 dark:text-zinc-500">{err}</p></div>
         ) : sections ? (
-          <div className="flex min-w-max items-stretch gap-1">
+          // 세로 흐름(위→아래) — 좁은 패널에서도 읽히게. 레이어=밴드, 노드는 가로 wrap, 사이엔 아래꺾쇠.
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-1">
             {sections.map((s, i) => (
-              <div key={s.layer + i} className="flex items-stretch gap-1">
-                <div className="flex w-52 shrink-0 flex-col gap-1.5">
-                  <div className="border-b border-dashed border-zinc-300 pb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:border-zinc-700 dark:text-zinc-500">{s.layer}</div>
-                  {s.nodes.map((n, j) => (
-                    <button key={j} type="button" disabled={!n.file} onClick={() => n.file && onOpenFile?.(n.file, n.line)}
-                      className={`flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition ${n.file ? "cursor-pointer border-zinc-200 bg-zinc-50 hover:border-[#3B34E2] hover:bg-white dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:border-[#8b86f5] dark:hover:bg-zinc-800" : "cursor-default border-transparent bg-zinc-50/50 dark:bg-zinc-800/30"}`}>
-                      <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
-                      {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
-                      {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
-                    </button>
-                  ))}
+              <div key={s.layer + i} className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1.5 rounded-lg border border-zinc-100 bg-zinc-50/60 p-2 dark:border-zinc-800 dark:bg-zinc-800/30">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{s.layer}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {s.nodes.map((n, j) => (
+                      <button key={j} type="button" disabled={!n.file} onClick={() => n.file && onOpenFile?.(n.file, n.line)}
+                        className={`flex min-w-[9rem] flex-1 flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition ${n.file ? "cursor-pointer border-zinc-200 bg-white hover:border-[#3B34E2] dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:border-[#8b86f5]" : "cursor-default border-transparent bg-white/50 dark:bg-zinc-800/30"}`}>
+                        <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
+                        {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
+                        {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 {i < sections.length - 1 && (
-                  <div className="flex items-center px-0.5 text-zinc-300 dark:text-zinc-600"><IconChevronRight size={16} stroke={2} aria-hidden /></div>
+                  <div className="flex justify-center text-zinc-300 dark:text-zinc-600"><IconChevronDown size={16} stroke={2} aria-hidden /></div>
                 )}
               </div>
             ))}
