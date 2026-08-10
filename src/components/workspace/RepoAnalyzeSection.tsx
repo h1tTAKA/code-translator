@@ -60,6 +60,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
   const [err, setErr] = useState<string | null>(null);
   const [detail, setDetail] = useState<string | null>(null); // 실패 원인 상세(디버깅·안내)
   const [confirm, setConfirm] = useState<null | "reanalyze" | "update">(null); // 확인 모달(내용 바뀜·추가 경고)
+  const [running, setRunning] = useState<null | "reanalyze" | "update">(null); // 지금 도는 액션(그 버튼만 스핀)
   const catsKey = root ? `nunopi:ws:${root}:analyze-cats` : null; // 레포별 카테고리 영속 키(#743)
 
   // 저장된 카테고리 복원 — 새로고침/재시작/레포 재진입 시 재분석 없이 바로 목록 표시.
@@ -74,6 +75,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
   // merge=true(갱신): 기존 목록에 새 항목만 추가. false(분석/재분석): 전체 교체.
   const analyze = useCallback(async (merge = false) => {
     setLoading(true);
+    setRunning(merge ? "update" : "reanalyze");
     setErr(null);
     setDetail(null);
     const fail = (d: string) => { setErr(t("repo.analyzeError")); setDetail(d); };
@@ -122,6 +124,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       fail(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+      setRunning(null);
     }
   }, [root, providerId, providerSettings, locale, t, catsKey]);
 
@@ -136,12 +139,12 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
             {/* 갱신 — 이미 있는 목록에 새로 생긴 것만 추가(모달 확인). */}
             <button type="button" onClick={() => setConfirm("update")} disabled={loading}
               className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-amber-600 disabled:opacity-50">
-              <IconRefresh size={11} stroke={2} className={loading ? "animate-spin" : ""} aria-hidden /> {t("confirm.updateTitle")}
+              {running === "update" ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> : <IconRefresh size={11} stroke={2} aria-hidden />} {t("confirm.updateTitle")}
             </button>
             {/* 재분석 — 전체 새로(모달 확인). */}
             <button type="button" onClick={() => setConfirm("reanalyze")} disabled={loading}
               className="inline-flex shrink-0 items-center gap-1 rounded bg-[#3B34E2] px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-[#322bc9] disabled:opacity-50">
-              {loading ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={11} stroke={2} aria-hidden />} {t("confirm.reanalyzeTitle")}
+              {running === "reanalyze" ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={11} stroke={2} aria-hidden />} {t("confirm.reanalyzeTitle")}
             </button>
           </>
         ) : (
