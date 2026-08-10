@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { IconSitemap, IconX, IconLoader2, IconChevronDown, IconRefresh } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
@@ -12,7 +12,7 @@ type FlowSection = { layer: string; nodes: FlowNode[] };
 type StreamEvent = { type: string; message?: string; response?: { summary?: string } };
 // 지하철식 직각 배선: 소스 노드 왼쪽에서 나와 → 왼쪽 거터의 전용 레인(세로) → 타깃 왼쪽으로 들어감.
 // 박스는 거터 오른쪽에만 있어 선이 박스를 뚫지 않음. 소스별 레인·색 분리로 스파게티 방지.
-type Line = { key: string; color: string; laneX: number; xs: number; ys: number; xt: number; yt: number };
+type Line = { key: string; sk: string; tk: string; color: string; laneX: number; xs: number; ys: number; xt: number; yt: number };
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const nk = (s: string) => s.trim().toLowerCase(); // 노드 이름 정규화 키(엣지 매칭용)
@@ -152,7 +152,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       const n = inCount.get(r.tgtKey)!;
       const k = inIdx.get(r.tgtKey) ?? 0; inIdx.set(r.tgtKey, k + 1);
       const frac = n === 1 ? 0.6 : 0.46 + ((k + 0.5) / n) * 0.44; // 들어옴: 0.46~0.90 균등 분산
-      out.push({ key: `${r.srcName}->${r.tgt}#${k}`, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height * frac });
+      out.push({ key: `${r.srcName}->${r.tgt}#${k}`, sk: r.srcKey, tk: r.tgtKey, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height * frac });
     }
     setLines(out);
   }, [sections]);
@@ -171,7 +171,25 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
     return () => ro.disconnect();
   }, [measure]);
 
+  const [hovered, setHovered] = useState<string | null>(null); // 호버 카드 키(연결 강조)
+  const [focused, setFocused] = useState<string | null>(null); // 클릭 포커스 카드 키(무관 어둡게)
   const anyEdge = !!sections?.some((s) => s.nodes.some((n) => n.next?.length)); // 엣지 있으면 선으로, 없으면 꺾쇠 폴백
+
+  // 노드별 인접집합(자기 + next 타깃 + 자기를 가리키는 소스). 양방향 대칭, 자기 포함.
+  const adjacency = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    const add = (a: string, b: string) => { let s = m.get(a); if (!s) { s = new Set([a]); m.set(a, s); } s.add(b); };
+    if (sections) for (const sec of sections) for (const n of sec.nodes) {
+      const sk = nk(n.name); add(sk, sk);
+      for (const tgt of n.next ?? []) { const tk = nk(tgt); add(sk, tk); add(tk, sk); }
+    }
+    return m;
+  }, [sections]);
+  const relatedOf = useCallback((key: string | null) => (key ? adjacency.get(key) ?? new Set([key]) : null), [adjacency]);
+
+  const activeKey = hovered ?? focused;            // 강조 기준(호버 우선)
+  const activeSet = relatedOf(activeKey);           // 강조 대상 노드 집합
+  const focusSet = relatedOf(focused);              // 포커스(어둡게 판단) 집합
   const gutter = sections && anyEdge // 왼쪽 배선 레인 폭 — 상한 캡(좁은 패널 보호)
     ? Math.min(MAX_GUTTER, LANE_MARGIN + Math.min(sourceKeys(sections).length, MAX_LANES) * LANE_GAP + LANE_PAD)
     : 0;
@@ -203,7 +221,8 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
           <div className="flex flex-col gap-1"><p className="text-[12px] text-rose-500">{t("flow.error")}</p><p className="break-words text-[10px] text-zinc-400 dark:text-zinc-500">{err}</p></div>
         ) : sections ? (
           // 세로 단일컬럼 흐름 — 왼쪽 거터에 소스별 레인, 지하철식 직각 배선으로 박스를 안 뚫고 연결.
-          <div ref={flowRef} style={{ paddingLeft: gutter }} className="relative mx-auto flex w-full max-w-[30rem] flex-col gap-2">
+          // 빈 곳 클릭 → 포커스 해제.
+          <div ref={flowRef} onClick={() => setFocused(null)} style={{ paddingLeft: gutter }} className="relative mx-auto flex w-full max-w-[30rem] flex-col gap-2">
             {/* 배선 오버레이 — 노드보다 뒤에 깔림, 클릭은 통과. 화살촉은 타깃 왼쪽으로 진입. */}
             <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full overflow-visible" aria-hidden>
               <defs>
@@ -217,22 +236,32 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                 const r = Math.min(CORNER, Math.abs(l.yt - l.ys) / 2 || 0); // 짧은 세로구간에선 모서리 축소
                 // 소스 왼쪽 → 레인까지 수평 → 레인 세로 → 타깃 왼쪽 수평(화살촉). 모서리 2곳 라운드.
                 const d = `M ${l.xs} ${l.ys} L ${l.laneX + r} ${l.ys} Q ${l.laneX} ${l.ys} ${l.laneX} ${l.ys + sgn * r} L ${l.laneX} ${l.yt - sgn * r} Q ${l.laneX} ${l.yt} ${l.laneX + r} ${l.yt} L ${l.xt} ${l.yt}`;
-                return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={1.75} strokeOpacity={0.95} markerEnd="url(#flow-arrow)" />;
+                const hot = !!activeKey && (l.sk === activeKey || l.tk === activeKey);  // 강조 대상선(굵게)
+                const dim = !!focused && !(l.sk === focused || l.tk === focused);       // 포커스 시 무관선 흐리게
+                return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={hot ? 3 : 1.75}
+                  strokeOpacity={dim ? 0.1 : hot ? 1 : 0.9} markerEnd="url(#flow-arrow)" className="transition-[stroke-width,stroke-opacity] duration-150" />;
               })}
             </svg>
             {sections.map((s, i) => (
               <div key={s.layer + i} className="relative flex flex-col gap-1.5 rounded-lg border border-zinc-100 bg-zinc-50/60 p-2 dark:border-zinc-800 dark:bg-zinc-800/30">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{s.layer}</div>
-                {s.nodes.map((n, j) => (
-                  <button key={j} type="button" disabled={!n.file}
-                    ref={(el) => { if (el) nodeEls.current.set(nk(n.name), el); }}
-                    onClick={() => n.file && onOpenFile?.(n.file, n.line)}
-                    className={`relative z-10 flex w-full flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition ${n.file ? "cursor-pointer border-zinc-200 bg-white hover:border-[#3B34E2] dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:border-[#8b86f5]" : "cursor-default border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800/60"}`}>
+                {s.nodes.map((n, j) => {
+                  const key = nk(n.name);
+                  const lifted = !!activeSet?.has(key);                 // 호버/포커스 연결 대상 → 입체적으로
+                  const dimmed = !!focused && !focusSet?.has(key);       // 포커스 시 무관 카드 어둡게
+                  return (
+                  <button key={j} type="button"
+                    ref={(el) => { if (el) nodeEls.current.set(key, el); }}
+                    onMouseEnter={() => setHovered(key)} onMouseLeave={() => setHovered(null)}
+                    onClick={(e) => { e.stopPropagation(); setFocused((prev) => (prev === key ? null : key)); if (n.file) onOpenFile?.(n.file, n.line); }}
+                    style={{ opacity: dimmed ? 0.3 : 1 }}
+                    className={`relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-[#3B34E2] shadow-lg shadow-[#3B34E2]/20 dark:border-[#8b86f5] dark:shadow-[#8b86f5]/20" : "z-10 border-zinc-200 hover:border-[#3B34E2] dark:border-zinc-700 dark:hover:border-[#8b86f5]"} bg-white dark:bg-zinc-800/60`}>
                     <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
                     {n.file && <span className="font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{basename(n.file)}{n.line ? `:${n.line}` : ""}</span>}
                     {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
                   </button>
-                ))}
+                  );
+                })}
                 {!anyEdge && i < sections.length - 1 && (
                   <div className="flex justify-center text-zinc-300 dark:text-zinc-600"><IconChevronDown size={16} stroke={2} aria-hidden /></div>
                 )}
