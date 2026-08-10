@@ -193,7 +193,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
           <div className="flex flex-col gap-1"><p className="text-[12px] text-rose-500">{t("flow.error")}</p><p className="break-words text-[10px] text-zinc-400 dark:text-zinc-500">{err}</p></div>
         ) : sections ? (
           // 세로 단일컬럼 흐름 — 왼쪽 거터에 소스별 레인, 지하철식 직각 배선으로 박스를 안 뚫고 연결.
-          <div ref={flowRef} style={{ paddingLeft: gutter }} className="relative mx-auto flex w-full max-w-2xl flex-col gap-2">
+          <div ref={flowRef} style={{ paddingLeft: gutter }} className="relative mx-auto flex w-full max-w-[30rem] flex-col gap-2">
             {/* 배선 오버레이 — 노드보다 뒤에 깔림, 클릭은 통과. 화살촉은 타깃 왼쪽으로 진입. */}
             <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
               <defs>
