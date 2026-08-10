@@ -74,6 +74,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
   const [analyzeH, setAnalyzeH] = useState(240);   // 레포 분석 섹션 높이(px, #743)
+  const asideRef = useRef<HTMLElement | null>(null); // 좌측 사이드바 — 세로 리사이즈 상한 계산용(#743)
   const dragRef = useRef<{ kind: "tree" | "chat" | "gitH" | "docsH" | "analyzeH"; startX: number; startY: number; startVal: number } | null>(null);
   const wRef = useRef({ tree: 240, chat: 320, gitH: 220, docsH: 220, analyzeH: 240 }); // 최신 폭·높이 미러(드래그 종료 시 영속용). 중앙은 도킹 트리 관리.
   const [mounted, setMounted] = useState(false);
@@ -89,9 +90,9 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 후 저장 폭 복원(1회)
       const t = Number(localStorage.getItem("nunopi:ws-tree-w")); if (t) { const v = clamp(t, 140, 560); setTreeW(v); wRef.current.tree = v; }
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
-      const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
-      const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
-      const ah = Number(localStorage.getItem("nunopi:ws-analyze-h")); if (ah) { const v = clamp(ah, 80, 500); setAnalyzeH(v); wRef.current.analyzeH = v; }
+      const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 1600); setGitH(v); wRef.current.gitH = v; }
+      const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 1600); setDocsH(v); wRef.current.docsH = v; }
+      const ah = Number(localStorage.getItem("nunopi:ws-analyze-h")); if (ah) { const v = clamp(ah, 80, 1600); setAnalyzeH(v); wRef.current.analyzeH = v; }
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
       setTreeOpen(localStorage.getItem("nunopi:ws-tree-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#733)
       setAnalyzeOpen(localStorage.getItem("nunopi:ws-analyze-open") === "1"); // 기본 닫힘(#743)
@@ -142,12 +143,14 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   useEffect(() => {
     const move = (e: MouseEvent) => {
       const d = dragRef.current; if (!d) return;
-      const dx = e.clientX - d.startX;
+      const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
+      // 세로 리사이즈 상한 = 사이드바 높이 - 여유(위 채움 섹션 + 하단 바). 500 고정 캡 제거(#743).
+      const maxH = Math.max(160, (asideRef.current?.clientHeight ?? 800) - 120);
       if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
       else if (d.kind === "chat") { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
-      else if (d.kind === "gitH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // 세로
-      else if (d.kind === "analyzeH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setAnalyzeH(v); wRef.current.analyzeH = v; } // 세로
-      else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setDocsH(v); wRef.current.docsH = v; } // docsH: 세로
+      else if (d.kind === "gitH") { const v = clamp(d.startVal - dy, 80, maxH); setGitH(v); wRef.current.gitH = v; }
+      else if (d.kind === "analyzeH") { const v = clamp(d.startVal - dy, 80, maxH); setAnalyzeH(v); wRef.current.analyzeH = v; }
+      else { const v = clamp(d.startVal - dy, 80, maxH); setDocsH(v); wRef.current.docsH = v; } // docsH
     };
     const up = () => {
       if (!dragRef.current) return;
@@ -444,7 +447,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       </header>
       <div className="relative flex min-h-0 flex-1">
         {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
-        <aside style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
+        <aside ref={asideRef} style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
           {treeOpen && (
             <div className="min-h-0 flex-1 overflow-hidden">
               {treeLoading ? (
