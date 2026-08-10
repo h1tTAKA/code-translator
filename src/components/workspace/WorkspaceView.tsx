@@ -388,8 +388,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     terminal: <TerminalPane cwd={path} />,
     code: codeNode,
     doc: docNode,
-    // 기능별 아키텍처 플로우(#743) — flowFeature 있을 때만 dock에 삽입됨.
-    flow: <RepoFlowPane feature={flowFeature} onClose={() => setFlowFeature(null)} />,
+    // 기능별 아키텍처 플로우(#743) — flowFeature 있을 때만 dock에 삽입됨. 노드 클릭 → 코드 탭 열기.
+    flow: <RepoFlowPane feature={flowFeature} root={path} providerId={providerId} providerSettings={providerSettings} onOpenFile={(file) => openCodeTab({ kind: "file", file })} onClose={() => setFlowFeature(null)} />,
   };
 
   // 4존 셸.
