@@ -73,8 +73,9 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [flowFeature, setFlowFeature] = useState<string | null>(null); // 열린 플로우 패널의 기능(null=닫힘). dock에 flow 패널 존재 여부와 동기(#743)
   const [gitH, setGitH] = useState(220);           // 깃 그래프 높이(px)
   const [docsH, setDocsH] = useState(220);         // 문서 브라우저 높이(px, #693)
-  const dragRef = useRef<{ kind: "tree" | "chat" | "gitH" | "docsH"; startX: number; startY: number; startVal: number } | null>(null);
-  const wRef = useRef({ tree: 240, chat: 320, gitH: 220, docsH: 220 }); // 최신 폭·높이 미러(드래그 종료 시 영속용). 중앙은 도킹 트리 관리.
+  const [analyzeH, setAnalyzeH] = useState(240);   // 레포 분석 섹션 높이(px, #743)
+  const dragRef = useRef<{ kind: "tree" | "chat" | "gitH" | "docsH" | "analyzeH"; startX: number; startY: number; startVal: number } | null>(null);
+  const wRef = useRef({ tree: 240, chat: 320, gitH: 220, docsH: 220, analyzeH: 240 }); // 최신 폭·높이 미러(드래그 종료 시 영속용). 중앙은 도킹 트리 관리.
   const [mounted, setMounted] = useState(false);
   const repoLoadedRef = useRef<string | null>(null); // 현재 열린 상태가 복원된 레포 path — 전환 중 오염 방지·저장 게이트(#712)
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 마운트 1회(SSR/Electron 판별 안전)
@@ -90,6 +91,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       const c = Number(localStorage.getItem("nunopi:ws-chat-w")); if (c) { const v = clamp(c, 200, 640); setChatW(v); wRef.current.chat = v; }
       const gh = Number(localStorage.getItem("nunopi:ws-git-h")); if (gh) { const v = clamp(gh, 80, 500); setGitH(v); wRef.current.gitH = v; }
       const dh = Number(localStorage.getItem("nunopi:ws-docs-h")); if (dh) { const v = clamp(dh, 80, 500); setDocsH(v); wRef.current.docsH = v; }
+      const ah = Number(localStorage.getItem("nunopi:ws-analyze-h")); if (ah) { const v = clamp(ah, 80, 500); setAnalyzeH(v); wRef.current.analyzeH = v; }
       setGitOpen(localStorage.getItem("nunopi:ws-git-open") === "1");
       setTreeOpen(localStorage.getItem("nunopi:ws-tree-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#733)
       setAnalyzeOpen(localStorage.getItem("nunopi:ws-analyze-open") === "1"); // 기본 닫힘(#743)
@@ -144,6 +146,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       if (d.kind === "tree") { const v = clamp(d.startVal + dx, 140, 560); setTreeW(v); wRef.current.tree = v; }
       else if (d.kind === "chat") { const v = clamp(d.startVal - dx, 200, 640); setChatW(v); wRef.current.chat = v; }
       else if (d.kind === "gitH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setGitH(v); wRef.current.gitH = v; } // 세로
+      else if (d.kind === "analyzeH") { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setAnalyzeH(v); wRef.current.analyzeH = v; } // 세로
       else { const dy = e.clientY - d.startY; const v = clamp(d.startVal - dy, 80, 500); setDocsH(v); wRef.current.docsH = v; } // docsH: 세로
     };
     const up = () => {
@@ -154,17 +157,18 @@ export default function WorkspaceView({ path, active = true, providerId, provide
         localStorage.setItem("nunopi:ws-chat-w", String(wRef.current.chat));
         localStorage.setItem("nunopi:ws-git-h", String(wRef.current.gitH));
         localStorage.setItem("nunopi:ws-docs-h", String(wRef.current.docsH));
+        localStorage.setItem("nunopi:ws-analyze-h", String(wRef.current.analyzeH));
       } catch { /* ignore */ }
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
   }, []);
 
-  const startDrag = (kind: "tree" | "chat" | "gitH" | "docsH", startVal: number) => (e: React.MouseEvent) => {
+  const startDrag = (kind: "tree" | "chat" | "gitH" | "docsH" | "analyzeH", startVal: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     // eslint-disable-next-line react-hooks/refs -- 이벤트 핸들러 내 ref 쓰기(렌더 중 아님)
     dragRef.current = { kind, startX: e.clientX, startY: e.clientY, startVal };
-    document.body.style.cursor = (kind === "gitH" || kind === "docsH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
+    document.body.style.cursor = (kind === "gitH" || kind === "docsH" || kind === "analyzeH") ? "row-resize" : "col-resize"; document.body.style.userSelect = "none";
   };
 
   // 중앙 도킹 트리 동기화·영속(#716) — 존재 패널(터미널 항상·코드=탭·문서=열림)에 맞춰 트리 유지.
@@ -205,8 +209,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
 
   // 좌측 4섹션(트리·git·문서·분석) 중 최소 하나는 열려 있어야 — 빈 사이드바 방지(#733·#743). 마지막 하나는 못 끔.
   const leftOpenCount = (treeOpen ? 1 : 0) + (gitOpen ? 1 : 0) + (docsOpen ? 1 : 0) + (analyzeOpen ? 1 : 0);
-  // 남는 세로 공간을 채우는(flex-1) 섹션 = 열린 것 중 최상위(트리>git>문서>분석). 나머지는 고정 높이(#733·#743).
-  const leftFill: "tree" | "git" | "docs" | "analyze" = treeOpen ? "tree" : gitOpen ? "git" : docsOpen ? "docs" : "analyze";
+  // 남는 세로 공간을 채우는(flex-1) 섹션 = 열린 것 중 최상위(순서: 폴더>레포분석>깃>문서). 나머지는 고정 높이(#733·#743).
+  const leftFill: "tree" | "analyze" | "git" | "docs" = treeOpen ? "tree" : analyzeOpen ? "analyze" : gitOpen ? "git" : "docs";
   const toggleGit = () => { if (gitOpen && leftOpenCount === 1) return; setGitOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-git-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleTree = () => { if (treeOpen && leftOpenCount === 1) return; setTreeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-tree-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
@@ -438,6 +442,15 @@ export default function WorkspaceView({ path, active = true, providerId, provide
               )}
             </div>
           )}
+          {/* 레포 분석하기 섹션(#743) — [분석하기]→카테고리→기능 플로우. 순서: 폴더 다음. 세로 리사이즈·전체영역. */}
+          {analyzeOpen && (
+            <>
+              {leftFill !== "analyze" && <div onMouseDown={startDrag("analyzeH", analyzeH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+              <div style={leftFill === "analyze" ? undefined : { height: analyzeH }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "analyze" ? "min-h-0 flex-1" : "shrink-0"}`}>
+                <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => setFlowFeature(f)} />
+              </div>
+            </>
+          )}
           {gitOpen && (
             <>
               {leftFill !== "git" && <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
@@ -470,17 +483,15 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             </div>
             </>
           )}
-          {/* 레포 분석하기 섹션(#743) — [분석하기]→카테고리→기능 플로우 패널 진입. */}
-          {analyzeOpen && (
-            <div style={leftFill === "analyze" ? undefined : { height: 240 }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "analyze" ? "min-h-0 flex-1" : "shrink-0"}`}>
-              <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => setFlowFeature(f)} />
-            </div>
-          )}
-          {/* 하단 아이콘 바(#733·#743) — 트리·git·문서·분석 패널 토글. 전체폭 토글 줄을 아이콘 한 줄로 대체. */}
+          {/* 하단 아이콘 바(#733·#743) — 폴더·분석·git·문서 패널 토글(순서 일치). */}
           <div className="flex shrink-0 items-center gap-0.5 border-t border-zinc-200 px-1.5 py-0.5 dark:border-zinc-800">
             <button type="button" onClick={toggleTree} title={t("workspace.tree")} aria-label={t("workspace.tree")} aria-pressed={treeOpen}
               className={`rounded-md p-1 transition ${treeOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
               <IconFiles size={14} stroke={2} aria-hidden />
+            </button>
+            <button type="button" onClick={toggleAnalyze} title={t("repo.analyzeSection")} aria-label={t("repo.analyzeSection")} aria-pressed={analyzeOpen}
+              className={`rounded-md p-1 transition ${analyzeOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
+              <IconSitemap size={14} stroke={2} aria-hidden />
             </button>
             <button type="button" onClick={toggleGit} title="git" aria-label="git" aria-pressed={gitOpen}
               className={`rounded-md p-1 transition ${gitOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
@@ -489,10 +500,6 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             <button type="button" onClick={toggleDocs} title={t("workspace.docs")} aria-label={t("workspace.docs")} aria-pressed={docsOpen}
               className={`rounded-md p-1 transition ${docsOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
               <IconFileText size={14} stroke={2} aria-hidden />
-            </button>
-            <button type="button" onClick={toggleAnalyze} title={t("repo.analyzeSection")} aria-label={t("repo.analyzeSection")} aria-pressed={analyzeOpen}
-              className={`rounded-md p-1 transition ${analyzeOpen ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"}`}>
-              <IconSitemap size={14} stroke={2} aria-hidden />
             </button>
             {/* 우측 끝 — Claude·Codex 토큰 사용량 모니터(#735). active일 때만 폴링(중복 방지). */}
             <div className="ml-auto"><UsageMonitor active={active} /></div>
