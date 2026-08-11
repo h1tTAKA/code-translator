@@ -70,12 +70,14 @@ function loadStore(store: string, repoLabel: string): { sessions: Record<string,
     const raw = localStorage.getItem(store);
     if (!raw) return fresh();
     const p = JSON.parse(raw) as { sessions?: Record<string, Partial<Session> & { messages?: ChatMessage[] }>; openKeys?: string[]; activeKey?: string };
-    if (!p.sessions || !p.sessions[REPO_KEY]) return fresh();
+    if (!p.sessions) return fresh(); // 데이터 자체가 없을 때만 완전 초기화
     const sessions: Record<string, Session> = {};
     for (const [k, s] of Object.entries(p.sessions)) {
       const subs = Array.isArray(s.subs) && s.subs.length ? s.subs : [{ id: genId(), messages: Array.isArray(s.messages) ? s.messages : [] }];
       sessions[k] = { key: k, kind: (s.kind ?? "file") as SessionKind, label: s.label ?? k, subs, activeSubId: s.activeSubId && subs.some((x) => x.id === s.activeSubId) ? s.activeSubId : subs[0].id };
     }
+    // repo 세션이 없으면 나머지(file/diff/arch…)를 버리지 말고 repo만 보강(관용, #754).
+    if (!sessions[REPO_KEY]) sessions[REPO_KEY] = mkSession(REPO_KEY, "repo", repoLabel);
     let openKeys = Array.isArray(p.openKeys) && p.openKeys.length ? p.openKeys.filter((k) => sessions[k]) : Object.keys(sessions);
     openKeys = [REPO_KEY, ...openKeys.filter((k) => k !== REPO_KEY)]; // repo 항상 맨 앞
     const activeKey = p.activeKey && sessions[p.activeKey] && openKeys.includes(p.activeKey) ? p.activeKey : REPO_KEY;
