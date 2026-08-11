@@ -6,8 +6,9 @@
 // 각 세션 = kind별 컨텍스트 + 그 안에 여러 서브 대화(sub) 스레드. 질문 쌓여도 새 대화로 분리(스크롤 지옥 방지).
 // 데이터(sessions)와 열린 탭(openKeys) 분리: 탭 닫아도 대화 보존, 다시 열면 복원. localStorage 영속.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory, IconSitemap, IconCards } from "@tabler/icons-react";
+import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory, IconSitemap, IconCards, IconListCheck } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
+import QuizRunner from "@/components/ask/QuizRunner";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
 import { createChatCard, CARDS_CHANGED_EVENT } from "@/lib/chatCard";
@@ -145,6 +146,8 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   const focusPendingRef = useRef(false);           // prefill 후 input 반영되면 포커스+캐럿 처리 대기 플래그
   const [historyOpen, setHistoryOpen] = useState(false); // 질문 이력 오버레이
   const [cardsOpen, setCardsOpen] = useState(false);      // 이 세션에서 추가된 카드 오버레이(#750)
+  const [testOpen, setTestOpen] = useState(false);        // 테스트(퀴즈) 오버레이(#760)
+  const [testCtx, setTestCtx] = useState<string | null>(null); // 테스트 대상 자료(비동기 조립). null=로딩 중(#760)
   const [sessionCards, setSessionCards] = useState<Card[]>([]); // 현재 세션에서 만든 카드(최신순)
   const [seenCards, setSeenCards] = useState<Record<string, number>>({}); // 세션별 목록 확인 시점 카드 수(배지 소거용, #750)
   const { throwCard } = useFlyCard(); // 카드 클릭 시 확대·상세(#750)
@@ -483,6 +486,17 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
     return parts.join("\n\n") + "\n";
   }
 
+  // 테스트 오버레이 열림(또는 세션 전환) 시 대상 자료를 조립해 QuizRunner에 넘긴다(#760).
+  // 자료 = 챗 답변과 같은 buildContext(레포/파일/diff/아키텍처). 대화 기억은 QuizRunner가 messages로 따로 받음.
+  useEffect(() => {
+    if (!testOpen) return;
+    let cancelled = false;
+    setTestCtx(null); // 열림/전환 시 로딩 표시 후 async 자료 반영
+    void buildContext(active).then((c) => { if (!cancelled) setTestCtx(c); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- activeKey로 세션 식별(active는 매 렌더 새 객체 → 무한 재실행 방지)
+  }, [testOpen, activeKey]);
+
   // 특정 세션·서브의 한 어시스턴트 메시지 본문만 함수형 갱신(prev 기준 — 클로저 배열 클로버 방지).
   function editMessage(key: string, subId: string, msgIndex: number, mapContent: (c: string) => string) {
     setSessions((prev) => {
@@ -635,14 +649,18 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
         {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {/* 테스트(퀴즈, #760) — 대화 없어도 세션 자료로 출제 가능하므로 상시 노출. 카드/히스토리와 배타. */}
+          <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen(false); setTestOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${testOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("quiz.title")} aria-label={t("quiz.title")} aria-pressed={testOpen}>
+            <IconListCheck size={13} stroke={2} aria-hidden />
+          </button>
           {messages.length > 0 && (
-            <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen((v) => !v); }} className={`relative rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
+            <button type="button" onClick={() => { setHistoryOpen(false); setTestOpen(false); setCardsOpen((v) => !v); }} className={`relative rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
               <IconCards size={13} stroke={2} aria-hidden />
               {sessionCards.length > (seenCards[activeKey] ?? 0) && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-[#3B34E2] px-0.5 text-[8px] font-bold leading-none text-white dark:bg-[#8b86f5] dark:text-zinc-900">{sessionCards.length}</span>}
             </button>
           )}
           {history.length > 0 && (
-            <button type="button" onClick={() => { setCardsOpen(false); setHistoryOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${historyOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("workspace.chatHistory")} aria-label={t("workspace.chatHistory")} aria-pressed={historyOpen}>
+            <button type="button" onClick={() => { setCardsOpen(false); setTestOpen(false); setHistoryOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${historyOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("workspace.chatHistory")} aria-label={t("workspace.chatHistory")} aria-pressed={historyOpen}>
               <IconHistory size={13} stroke={2} aria-hidden />
             </button>
           )}
@@ -797,6 +815,32 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
                 {c.bookmarkedAt && <span className="mt-0.5 text-[9px] text-zinc-400 dark:text-zinc-500">{new Date(c.bookmarkedAt).toLocaleString(locale === "ja" ? "ja-JP" : locale === "en" ? "en-US" : "ko-KR", { dateStyle: "medium", timeStyle: "short" })}</span>}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+      {/* 테스트(퀴즈) 오버레이(#760) — 히스토리/카드와 동형. 대상 자료 + 대화로 QuizRunner가 출제·채점. */}
+      {testOpen && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-white dark:bg-[#0b0c12]">
+          <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
+            <IconListCheck size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+            <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("quiz.title")}</span>
+            <button type="button" onClick={() => setTestOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>
+              <IconX size={13} stroke={2} aria-hidden />
+            </button>
+          </div>
+          <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto p-3">
+            {testCtx === null ? (
+              <div className="flex h-full items-center justify-center text-zinc-300 dark:text-zinc-600"><IconLoader2 size={20} stroke={2} className="animate-spin" aria-hidden /></div>
+            ) : (
+              <QuizRunner
+                key={activeSub.id}
+                messages={activeSub.messages}
+                sourceContext={testCtx}
+                providerId={providerId}
+                providerSettings={providerSettings}
+                onQuizChange={() => { /* 영속은 커밋3 */ }}
+              />
+            )}
           </div>
         </div>
       )}
