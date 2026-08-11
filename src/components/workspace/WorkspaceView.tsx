@@ -445,12 +445,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             <IconBrain size={16} stroke={2} aria-hidden />
           </button>
         )}
-        {onOpenSettings && (
-          <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
-            className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-            <IconSettings size={16} stroke={2} aria-hidden />
-          </button>
-        )}
+        {/* 설정은 워크스페이스에선 하단 바(토큰 사용량 옆)로 이동(#752). */}
         {/* 우측 챗 패널 접기/펴기(#716·#695) — 헤더 토글. 열림=collapse 아이콘, 접힘=expand 아이콘. */}
         <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
           className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
@@ -531,7 +526,15 @@ export default function WorkspaceView({ path, active = true, providerId, provide
               <IconFileText size={14} stroke={2} aria-hidden />
             </button>
             {/* 우측 끝 — Claude·Codex 토큰 사용량 모니터(#735). active일 때만 폴링(중복 방지). */}
-            <div className="ml-auto"><UsageMonitor active={active} /></div>
+            <div className="ml-auto flex items-center gap-0.5">
+              {onOpenSettings && (
+                <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
+                  className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
+                  <IconSettings size={14} stroke={2} aria-hidden />
+                </button>
+              )}
+              <UsageMonitor active={active} />
+            </div>
           </div>
         </aside>
         <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
