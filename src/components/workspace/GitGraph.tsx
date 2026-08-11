@@ -243,7 +243,8 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
             <div onPointerDown={startColDrag} style={{ left: colW }} title={t("workspace.gitGraphResize")}
               className="absolute inset-y-0 z-10 -ml-0.5 w-1 cursor-col-resize bg-transparent transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
           )}
-          <div className="nunopi-scroll h-full overflow-auto">
+          {/* container-type: 배지 max-width(cqw)가 스크롤되는 행 폭이 아니라 "보이는 패널 폭" 기준이 되게(#752). */}
+          <div className="nunopi-scroll h-full overflow-auto" style={{ containerType: "inline-size" }}>
           {model?.rows.map((row, idx) => {
             const dotY = ROW_H / 2;
             // 각 부모로 향하는 선을 "점→점" 곡선으로(#707) — 반행 stub 없이 점에서 점까지 한 번에 부드럽게(orca식).
@@ -300,7 +301,8 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         return (
                           <span key={rf} role={clickable ? "button" : undefined} tabIndex={clickable ? -1 : undefined}
                             onClick={clickable ? (e) => { e.stopPropagation(); onFocusBranch(rf); } : undefined}
-                            className={`inline-flex max-w-[6.5rem] shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls} ${clickable ? "cursor-pointer hover:ring-1 hover:ring-current" : ""}`}
+                            style={{ maxWidth: "min(45cqw, 14rem)" }} // 보이는 패널 폭의 45%(상한 14rem) — 넓히면 회복, 좁히면 더 truncate(#752)
+                            className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls} ${clickable ? "cursor-pointer hover:ring-1 hover:ring-current" : ""}`}
                             title={clickable ? t("workspace.gitAskBranch", { branch: rf }) : rf}>
                             {/* 현재 브랜치(isCur)는 배경색으로 구분되므로 "HEAD" 라벨 생략(#741 후속) — 너무 길어짐. */}
                             {isCur ? <IconGitCommit size={8} stroke={2.5} className="shrink-0" aria-hidden /> : b.tag ? <IconTag size={8} stroke={2} className="shrink-0" aria-hidden /> : <IconGitBranch size={8} stroke={2} className="shrink-0" aria-hidden />}
