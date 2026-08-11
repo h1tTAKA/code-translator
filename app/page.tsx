@@ -1357,6 +1357,7 @@ export default function Home() {
       <SettingsDrawer
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        variant={viewMode === "workspace" ? "modal" : "drawer"}
         settings={providerSettings}
         onSave={handleSettingsSave}
         excludedTerms={excludedTerms}

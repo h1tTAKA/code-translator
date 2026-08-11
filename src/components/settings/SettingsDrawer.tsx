@@ -8,6 +8,7 @@ import { LOCALES, type Locale } from "@/lib/i18n/messages";
 interface SettingsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  variant?: "drawer" | "modal"; // drawer=우측 슬라이드(기본), modal=중앙 팝업(워크스페이스, #752)
   settings: ProviderSettings;
   onSave: (next: ProviderSettings) => void;
   excludedTerms?: string[];
@@ -68,6 +69,7 @@ function ExclusionGroup({
 export default function SettingsDrawer({
   isOpen,
   onClose,
+  variant = "drawer",
   settings,
   onSave,
   excludedTerms = [],
@@ -135,7 +137,9 @@ export default function SettingsDrawer({
         className="fixed inset-0 z-[80] bg-black/30 dark:bg-black/50"
         onClick={onClose}
       />
-      <div className="fixed inset-y-0 right-0 z-[90] flex w-full max-w-sm flex-col bg-white shadow-xl dark:bg-[#111219]">
+      <div className={variant === "modal"
+        ? "fixed left-1/2 top-1/2 z-[90] flex max-h-[85vh] w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#111219]"
+        : "fixed inset-y-0 right-0 z-[90] flex w-full max-w-sm flex-col bg-white shadow-xl dark:bg-[#111219]"}>
         <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
             {t("settings.title")}
