@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconMessageCircle, IconArrowUp, IconLoader2, IconFileCode, IconFileText, IconEraser, IconStack2, IconGitBranch, IconGitCommit, IconPencil, IconX, IconPlus, IconCheck, IconHistory, IconSitemap, IconCards, IconListCheck } from "@tabler/icons-react";
 import Markdown from "@/components/learning/Markdown";
-import QuizRunner from "@/components/ask/QuizRunner";
+import WorkspaceQuizPanel from "@/components/workspace/WorkspaceQuizPanel";
 import { formatChatAsMarkdown } from "@/components/learning/ChatRoom";
 import { parseCardSuggestions, stripStreamingCardBlock, stripCardBlock, removeSuggestedCard, type SuggestedCard } from "@/lib/cardSuggestion";
 import { createChatCard, CARDS_CHANGED_EVENT } from "@/lib/chatCard";
@@ -20,7 +20,7 @@ import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
-import type { AskQuiz } from "@/lib/askStore";
+import type { QuizSession } from "@/lib/askStore";
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
@@ -28,7 +28,7 @@ type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree" | "arch";
 // 아키텍처(flow) 캐시 shape — #743이 저장한 것을 컨텍스트로 읽기 위한 최소 타입.
 type ArchNode = { name: string; file?: string; line?: number; role?: string; next?: string[] };
 type ArchSection = { layer: string; nodes: ArchNode[] };
-interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; quiz?: AskQuiz; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). quiz=이 스레드의 테스트 상태(#760). 레거시 저장분은 undefined.
+interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; quizzes?: QuizSession[]; activeQuizId?: string; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). quizzes=이 스레드의 테스트 세션들·activeQuizId=활성 테스트(#760). 레거시 저장분은 undefined.
 // baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
 interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
 // WorkspaceView가 주는 포커스 신호 — n(nonce)로 같은 대상 재클릭도 매번 발화.
@@ -351,11 +351,11 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
     });
   }
 
-  // 특정 세션·서브의 테스트(퀴즈) 상태 저장(#760) — QuizRunner의 onQuizChange가 호출. undefined면 그 서브 테스트 비움.
-  function setSubQuiz(key: string, subId: string, quiz: AskQuiz | undefined) {
+  // 특정 세션·서브의 테스트(퀴즈) 세션들 저장(#760) — WorkspaceQuizPanel의 onQuizzesChange가 호출.
+  function setSubQuizzes(key: string, subId: string, quizzes: QuizSession[], activeQuizId: string | undefined) {
     setSessions((prev) => {
       const s = prev[key]; if (!s) return prev;
-      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, quiz } : su) } };
+      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, quizzes, activeQuizId } : su) } };
     });
   }
 
@@ -837,18 +837,19 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
               <IconX size={13} stroke={2} aria-hidden />
             </button>
           </div>
-          <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="min-h-0 flex-1">
             {testCtx === null ? (
               <div className="flex h-full items-center justify-center text-zinc-300 dark:text-zinc-600"><IconLoader2 size={20} stroke={2} className="animate-spin" aria-hidden /></div>
             ) : (
-              <QuizRunner
+              <WorkspaceQuizPanel
                 key={activeSub.id}
                 messages={activeSub.messages}
                 sourceContext={testCtx}
                 providerId={providerId}
                 providerSettings={providerSettings}
-                quiz={activeSub.quiz}
-                onQuizChange={(q) => setSubQuiz(activeKey, activeSub.id, q)}
+                quizzes={activeSub.quizzes ?? []}
+                activeQuizId={activeSub.activeQuizId}
+                onQuizzesChange={(qs, aid) => setSubQuizzes(activeKey, activeSub.id, qs, aid)}
               />
             )}
           </div>
