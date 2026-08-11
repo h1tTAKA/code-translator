@@ -8,6 +8,14 @@ import Terminal from "@/components/workspace/Terminal";
 
 interface Tab { id: string; title: string }
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
+// 새 탭 번호 = 현재 안 쓰는 가장 낮은 양수(#756). 닫은 자리를 다시 채워 "터미널 4처럼 계속 증가" 방지.
+// 제목 끝 숫자로 판별(모든 로케일 포맷이 "… {n}"이라 안전).
+function nextNum(tabs: Tab[]): number {
+  const used = new Set<number>();
+  for (const tb of tabs) { const m = tb.title.match(/(\d+)\s*$/); if (m) used.add(parseInt(m[1], 10)); }
+  let n = 1; while (used.has(n)) n += 1;
+  return n;
+}
 
 function loadTabs(store: string, firstTitle: string): { tabs: Tab[]; activeId: string } {
   const fresh = () => { const id = genId(); return { tabs: [{ id, title: firstTitle }], activeId: id }; };
@@ -31,14 +39,13 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   const [tabs, setTabs] = useState<Tab[]>(initial.tabs);
   const [activeId, setActiveId] = useState<string>(initial.activeId);
   const curStore = useRef(store);
-  const seq = useRef(initial.tabs.length); // "터미널 N" 번호(단조 증가)
 
   // 폴더(cwd) 바뀌면 그 레포 탭셋 재로드(첫 마운트는 lazy init).
   useEffect(() => {
     if (curStore.current === store) return;
     curStore.current = store;
     const d = loadTabs(store, t("workspace.terminalTab", { n: 1 }));
-    setTabs(d.tabs); setActiveId(d.activeId); seq.current = d.tabs.length;
+    setTabs(d.tabs); setActiveId(d.activeId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- store 변경만
   }, [store]);
 
@@ -49,17 +56,16 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   }, [tabs, activeId]);
 
   function addTab() {
-    seq.current += 1;
-    const tab = { id: genId(), title: t("workspace.terminalTab", { n: seq.current }) };
-    setTabs((prev) => [...prev, tab]);
-    setActiveId(tab.id);
+    const id = genId();
+    // 번호는 functional update 안에서 최신 prev로 계산 — 연타 시 중복 번호 방지.
+    setTabs((prev) => [...prev, { id, title: t("workspace.terminalTab", { n: nextNum(prev) }) }]);
+    setActiveId(id);
   }
   function closeTab(id: string) {
     try { window.nunopiDesktop?.terminal?.kill({ id }); } catch { /* ignore */ } // pty 정리(좀비 방지)
     const next = tabs.filter((x) => x.id !== id);
-    if (!next.length) { // 마지막 탭 → 새 빈 탭으로 대체 + 그 탭 활성
-      seq.current += 1;
-      const nt = { id: genId(), title: t("workspace.terminalTab", { n: seq.current }) };
+    if (!next.length) { // 마지막 탭 → 새 빈 탭으로 대체 + 그 탭 활성(번호 1로 리셋)
+      const nt = { id: genId(), title: t("workspace.terminalTab", { n: 1 }) };
       setTabs([nt]); setActiveId(nt.id);
       return;
     }
