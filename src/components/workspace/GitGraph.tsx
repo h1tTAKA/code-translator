@@ -300,10 +300,10 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
                         return (
                           <span key={rf} role={clickable ? "button" : undefined} tabIndex={clickable ? -1 : undefined}
                             onClick={clickable ? (e) => { e.stopPropagation(); onFocusBranch(rf); } : undefined}
-                            className={`inline-flex max-w-[10rem] shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls} ${clickable ? "cursor-pointer hover:ring-1 hover:ring-current" : ""}`}
+                            className={`inline-flex max-w-[6.5rem] shrink-0 items-center gap-0.5 rounded px-1 text-[9px] font-medium ${b.cls} ${clickable ? "cursor-pointer hover:ring-1 hover:ring-current" : ""}`}
                             title={clickable ? t("workspace.gitAskBranch", { branch: rf }) : rf}>
+                            {/* 현재 브랜치(isCur)는 배경색으로 구분되므로 "HEAD" 라벨 생략(#741 후속) — 너무 길어짐. */}
                             {isCur ? <IconGitCommit size={8} stroke={2.5} className="shrink-0" aria-hidden /> : b.tag ? <IconTag size={8} stroke={2} className="shrink-0" aria-hidden /> : <IconGitBranch size={8} stroke={2} className="shrink-0" aria-hidden />}
-                            {isCur && <span className="shrink-0 font-bold">HEAD</span>}
                             <span className="min-w-0 truncate">{rf}</span>
                           </span>
                         );
