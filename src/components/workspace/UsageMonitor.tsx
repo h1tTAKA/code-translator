@@ -76,6 +76,8 @@ function ProviderBlock({ u, name, Icon, t }: { u: ProviderUsage; name: string; I
 export default function UsageMonitor({ active = true }: { active?: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);                             // 팝오버 위치 기준(버튼 래퍼)
+  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null); // fixed 좌표(뷰포트 클램프)
   const [data, setData] = useState<ProviderUsageResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -116,14 +118,25 @@ export default function UsageMonitor({ active = true }: { active?: boolean }) {
 
   if (ready && !api?.getProviderUsage) return null; // 웹 등 미지원(마운트 전엔 렌더해 깜빡임 방지)
 
+  // 팝오버 위치 — 조상 overflow/좁은 패널서 왼쪽 잘림 방지. 버튼 기준 fixed + 뷰포트 클램프.
+  const openPopover = () => {
+    setOpen(true); void load(false);
+    const el = wrapRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 256, M = 8; // 팝오버 폭(w-64) · 화면 여백
+    const left = Math.max(M, Math.min(r.right - W, window.innerWidth - W - M)); // 버튼 우측 정렬, 화면 안으로 클램프
+    const bottom = Math.max(M, window.innerHeight - r.top + 6);                 // 버튼 위로
+    setPos({ left, bottom });
+  };
+
   return (
-    <div className="relative" onMouseEnter={() => { setOpen(true); void load(false); }} onMouseLeave={() => setOpen(false)}>
+    <div ref={wrapRef} className="relative" onMouseEnter={openPopover} onMouseLeave={() => setOpen(false)}>
       <button type="button" title={t("usage.title")} aria-label={t("usage.title")}
         className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
         <IconGauge size={14} stroke={2} aria-hidden />
       </button>
-      {open && (
-        <div className="absolute bottom-full right-0 z-50 mb-1.5 w-64 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-700 dark:bg-[#15161d]">
+      {open && pos && (
+        <div style={{ left: pos.left, bottom: pos.bottom }} className="fixed z-50 w-64 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-700 dark:bg-[#15161d]">
           <div className="mb-2.5 flex items-center justify-between">
             <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("usage.title")}</span>
             <button type="button" onClick={() => void load(true)} disabled={loading} title={t("usage.refresh")} aria-label={t("usage.refresh")}
