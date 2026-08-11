@@ -2,7 +2,7 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconMessages, IconBrain, IconSettings, IconSitemap } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMessages, IconBrain, IconSettings, IconSitemap } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
@@ -68,6 +68,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
   const [chatOpen, setChatOpen] = useState(true);  // 우측 챗 패널 열림(#695)
+  const [leftOpen, setLeftOpen] = useState(true);  // 좌측 사이드바(폴더/아키텍처/깃/문서트리) 펼침(#758)
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
   const [treeOpen, setTreeOpen] = useState(true);  // 파일 트리 열림(#733) — 하단 아이콘 바 토글, 기본 열림
   const [analyzeOpen, setAnalyzeOpen] = useState(false); // 좌측 "레포 분석하기" 섹션 열림(#743)
@@ -100,6 +101,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       setTreeOpen(localStorage.getItem("nunopi:ws-tree-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#733)
       setAnalyzeOpen(localStorage.getItem("nunopi:ws-analyze-open") === "1"); // 기본 닫힘(#743)
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
+      setLeftOpen(localStorage.getItem("nunopi:ws-left-open") !== "0"); // 기본 열림(#758)
     } catch { /* ignore */ }
   }, [mounted]);
 
@@ -236,6 +238,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
   const toggleAnalyze = () => { if (analyzeOpen && leftOpenCount === 1) return; setAnalyzeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-analyze-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  const toggleLeft = () => setLeftOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-left-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); // 좌측 사이드바 접기/펴기(#758)
   // 이 아키텍처(기능)에 대해 질문(#746) — 우측 챗에 arch 세션 열고(focus) 챗 패널 펴기.
   const askArch = (feature: string) => { focusChat(`arch:${feature}`, "arch", feature); setChatOpen(true); try { localStorage.setItem("nunopi:ws-chat-open", "1"); } catch { /* ignore */ } };
   // 카드→좌표 삽입(#746) — 챗 패널이 열려 있으면 이 기능의 arch 세션으로 전환 + 지칭 문구를 입력창에.
@@ -430,6 +433,14 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     <div className="flex h-full min-h-0 w-full flex-col">
       {/* 헤더 한 줄(#731) — 좌: 워크스페이스 탭(이름이 탭에 있어 별도 폴더명 줄 없음), 우: 영역 컨트롤. */}
       <header className="flex items-center gap-2 border-b border-zinc-200 pr-2 dark:border-zinc-800">
+        {/* 좌측 도크 툴바(#758) — 왼쪽 사이드바 토글 | (커밋2: 중앙 패널 접기/펴기 토글들). */}
+        <div className="flex shrink-0 items-center gap-0.5 pl-1.5">
+          <button type="button" onClick={toggleLeft} title={leftOpen ? t("workspace.leftCollapse") : t("workspace.leftExpand")} aria-label={leftOpen ? t("workspace.leftCollapse") : t("workspace.leftExpand")} aria-pressed={leftOpen}
+            className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+            {leftOpen ? <IconLayoutSidebarLeftCollapse size={16} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftExpand size={16} stroke={2} aria-hidden />}
+          </button>
+        </div>
+        <span className="h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
         {tabStrip}
         {/* 영역 컨트롤(#721) — 질문·분석으로 나가기 / 암기(카드덱) / 설정 / 챗 토글. */}
         {(onExitWorkspace || onOpenMemorize || onOpenSettings) && <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
@@ -453,7 +464,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
         </button>
       </header>
       <div className="relative flex min-h-0 flex-1">
-        {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈) */}
+        {/* 좌: 파일트리(위) + 깃 그래프(아래, 접기·세로 리사이즈). leftOpen=false면 통째로 접힘(#758). */}
+        {leftOpen && (
         <aside ref={asideRef} style={{ width: treeW }} className="flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800">
           {treeOpen && (
             <div className="min-h-0 flex-1 overflow-hidden">
@@ -537,7 +549,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             </div>
           </div>
         </aside>
-        <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
+        )}
+        {leftOpen && <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
         {/* 가운데: 커스텀 도킹 분할 트리(터미널·코드·문서 자유 배치, #716). 기존 패널 그대로 렌더만 재배치. */}
         <section className="flex min-w-0 flex-1">
           {dockTree && <WorkspaceDockLayout tree={dockTree} panels={dockPanels} onTreeChange={setDockTree} />}
