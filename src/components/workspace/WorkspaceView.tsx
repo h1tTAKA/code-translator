@@ -529,7 +529,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             <div className="ml-auto flex items-center gap-0.5">
               {onOpenSettings && (
                 <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
-                  className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
                   <IconSettings size={14} stroke={2} aria-hidden />
                 </button>
               )}

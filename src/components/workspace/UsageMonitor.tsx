@@ -132,7 +132,7 @@ export default function UsageMonitor({ active = true }: { active?: boolean }) {
   return (
     <div ref={wrapRef} className="relative" onMouseEnter={openPopover} onMouseLeave={() => setOpen(false)}>
       <button type="button" title={t("usage.title")} aria-label={t("usage.title")}
-        className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
+        className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
         <IconGauge size={14} stroke={2} aria-hidden />
       </button>
       {open && pos && (
