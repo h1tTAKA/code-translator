@@ -85,6 +85,33 @@ function loadStore(store: string, repoLabel: string): { sessions: Record<string,
   } catch { return fresh(); }
 }
 
+// 챗 영속 — 조용한 쿼터 실패로 새 내용이 안 남던 것(#754) 방지.
+// setItem이 던지면(QuotaExceededError 등) 비활성(=repo·활성 세션 아닌) 세션을 오래된 것부터
+// 잘라내며 재시도한다. repo·현재 활성 세션은 최대한 보존. 그래도 안 되면 최후로 둘만 저장.
+function persistChat(store: string, sessions: Record<string, Session>, openKeys: string[], activeKey: string): void {
+  if (typeof localStorage === "undefined") return;
+  const write = (s: Record<string, Session>): boolean => {
+    const ok = openKeys.filter((k) => s[k]);
+    try {
+      localStorage.setItem(store, JSON.stringify({ sessions: s, openKeys: ok.length ? ok : [REPO_KEY], activeKey: s[activeKey] ? activeKey : REPO_KEY }));
+      return true;
+    } catch { return false; }
+  };
+  if (write(sessions)) return;
+  // 쿼터 초과 → 비보호 세션을 오래된 것(서브 createdAt 최대값 기준)부터 제거하며 재시도.
+  const work: Record<string, Session> = { ...sessions };
+  const recency = (v: Session) => v.subs.reduce((m, sub) => Math.max(m, sub.createdAt ?? 0), 0);
+  const removable = Object.keys(work)
+    .filter((k) => k !== REPO_KEY && k !== activeKey)
+    .sort((a, b) => recency(work[a]) - recency(work[b]));
+  for (const k of removable) { delete work[k]; if (write(work)) return; }
+  // 최후 — repo + 활성 세션만. 그래도 실패면 포기(이전 성공 저장분은 그대로 남음).
+  const minimal: Record<string, Session> = {};
+  if (work[REPO_KEY]) minimal[REPO_KEY] = work[REPO_KEY];
+  if (work[activeKey]) minimal[activeKey] = work[activeKey];
+  write(minimal);
+}
+
 // 세션 kind별 아이콘 — JSX 직접 반환(렌더 중 컴포넌트 변수 생성 회피: react-hooks/static-components).
 function kindGlyph(k: SessionKind, size: number, className?: string) {
   const p = { size, stroke: 2, className, "aria-hidden": true } as const;
@@ -179,7 +206,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   // 세션 변경 영속. deps에서 store 제외 — store 바뀐 렌더에 옛 sessions를 새 store 키에 쓰는 오염 방지.
   // (store는 클로저 현재값으로 씀. 첫 실행은 loaded===loaded라 idempotent.)
   useEffect(() => {
-    try { localStorage.setItem(store, JSON.stringify({ sessions, openKeys, activeKey })); } catch { /* ignore */ }
+    persistChat(store, sessions, openKeys, activeKey); // 쿼터 초과 시 잘라내며 재시도(#754)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 데이터 변경 시에만 저장(store 변경엔 반응 안 함)
   }, [sessions, openKeys, activeKey]);
 
