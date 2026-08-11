@@ -20,6 +20,7 @@ import { useLocale, useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import type { AgentProviderKind, ChatMessage, ProviderSettings } from "@/lib/agent";
+import type { AskQuiz } from "@/lib/askStore";
 
 type StreamEvent = { type: "progress"; line: string } | { type: "result"; response: { summary: string } } | { type: "error"; message: string };
 
@@ -27,7 +28,7 @@ type SessionKind = "repo" | "file" | "diff" | "branch" | "worktree" | "arch";
 // 아키텍처(flow) 캐시 shape — #743이 저장한 것을 컨텍스트로 읽기 위한 최소 타입.
 type ArchNode = { name: string; file?: string; line?: number; role?: string; next?: string[] };
 type ArchSection = { layer: string; nodes: ArchNode[] };
-interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). 레거시 저장분은 undefined.
+interface Sub { id: string; messages: ChatMessage[]; createdAt?: number; quiz?: AskQuiz; } // 세션 안의 한 대화 스레드. createdAt=생성 시각(ms, 히스토리 날짜 그룹용 #691). quiz=이 스레드의 테스트 상태(#760). 레거시 저장분은 undefined.
 // baseHead: worktree 세션 생성 시점 HEAD sha — 커밋 승계 판별용(#689, 커밋3에서 채움).
 interface Session { key: string; kind: SessionKind; label: string; subs: Sub[]; activeSubId: string; baseHead?: string; }
 // WorkspaceView가 주는 포커스 신호 — n(nonce)로 같은 대상 재클릭도 매번 발화.
@@ -347,6 +348,14 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
       const s = prev[key]; if (!s) return prev;
       // createdAt 없으면(레거시 서브 or 재사용) 첫 쓰기 시각으로 스탬프 — 새 질문이 '이전 기록'으로 빠지는 것 방지(#691).
       return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, messages: msgs, createdAt: su.createdAt ?? Date.now() } : su) } };
+    });
+  }
+
+  // 특정 세션·서브의 테스트(퀴즈) 상태 저장(#760) — QuizRunner의 onQuizChange가 호출. undefined면 그 서브 테스트 비움.
+  function setSubQuiz(key: string, subId: string, quiz: AskQuiz | undefined) {
+    setSessions((prev) => {
+      const s = prev[key]; if (!s) return prev;
+      return { ...prev, [key]: { ...s, subs: s.subs.map((su) => su.id === subId ? { ...su, quiz } : su) } };
     });
   }
 
@@ -838,7 +847,8 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
                 sourceContext={testCtx}
                 providerId={providerId}
                 providerSettings={providerSettings}
-                onQuizChange={() => { /* 영속은 커밋3 */ }}
+                quiz={activeSub.quiz}
+                onQuizChange={(q) => setSubQuiz(activeKey, activeSub.id, q)}
               />
             )}
           </div>
