@@ -56,9 +56,10 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   }, [tabs, activeId]);
 
   function addTab() {
-    const tab = { id: genId(), title: t("workspace.terminalTab", { n: nextNum(tabs) }) }; // 빈 번호 채움
-    setTabs((prev) => [...prev, tab]);
-    setActiveId(tab.id);
+    const id = genId();
+    // 번호는 functional update 안에서 최신 prev로 계산 — 연타 시 중복 번호 방지.
+    setTabs((prev) => [...prev, { id, title: t("workspace.terminalTab", { n: nextNum(prev) }) }]);
+    setActiveId(id);
   }
   function closeTab(id: string) {
     try { window.nunopiDesktop?.terminal?.kill({ id }); } catch { /* ignore */ } // pty 정리(좀비 방지)
