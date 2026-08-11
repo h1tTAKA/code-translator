@@ -55,29 +55,36 @@ function loadOpts(): QuizOpts {
 }
 
 // 서브 대화(Q&A)를 퀴즈 생성 컨텍스트로 — 첫 줄 MODE로 프롬프트가 분기한다.
-function buildGenerateContext(messages: ChatMessage[], langName: string, opts: QuizOpts): string {
+// source(선택): 세션 대상 자료(레포/파일/diff/아키텍처). 주면 대화 기억 + 자료 개념 둘 다에서 출제(#760). Ask는 안 줌.
+function buildGenerateContext(messages: ChatMessage[], langName: string, opts: QuizOpts, source?: string): string {
   const qa = messages.map((m) => `${m.role === "user" ? "Q" : "A"}: ${m.content}`).join("\n\n");
   const allowed = (Object.keys(opts.types) as (keyof QuizOpts["types"])[]).filter((k) => opts.types[k]);
-  return [
+  const hasSource = !!source?.trim();
+  const hasQa = messages.length > 0;
+  const lines = [
     "MODE: GENERATE",
     `LANGUAGE: ${langName} (모든 문제·선택지·해설은 이 언어로)`,
     "",
-    "아래는 학습자가 실제로 물어본 질문과 받은 답이다. 이걸 바탕으로 능동 회상용 퀴즈를 만든다.",
+    hasSource
+      ? "아래 [대상 자료]는 학습자가 지금 보고 있는 코드/구조/변경/아키텍처이고, [학습자 Q&A]는 그가 실제로 물어본 것이다(있으면). 이 둘을 바탕으로 능동 회상용 퀴즈를 만든다."
+      : "아래는 학습자가 실제로 물어본 질문과 받은 답이다. 이걸 바탕으로 능동 회상용 퀴즈를 만든다.",
     "규칙:",
     opts.max >= UNLIMITED
-      ? `- 문제 ${opts.min}개 이상. 상한은 없다 — 재료(대화)가 풍부하면 그만큼 많이 내라. 재료가 적으면 ${opts.min}개보다 적게 내도 된다(억지로 채우지 말 것).`
+      ? `- 문제 ${opts.min}개 이상. 상한은 없다 — 재료가 풍부하면 그만큼 많이 내라. 재료가 적으면 ${opts.min}개보다 적게 내도 된다(억지로 채우지 말 것).`
       : `- 문제 ${opts.min}~${opts.max}개(목표 범위). 재료가 부족하면 그보다 적게 내도 된다(억지로 채우지 말 것).`,
     `- 다음 유형만 사용: ${allowed.map((k) => TYPE_DESC[k]).join(" / ")}. 지정 안 된 유형은 내지 말 것.`,
-    "- 학습자가 실제로 물어본 내용에서만 출제(모르는 걸 새로 묻지 않기).",
+    hasSource
+      ? "- 대상 자료의 핵심 개념·구조·이 코드를 이해하는 데 필요한 것, 그리고 학습자가 물어본 내용에서 출제. 자료·대화에 없는 걸 지어내지 말 것."
+      : "- 학습자가 실제로 물어본 내용에서만 출제(모르는 걸 새로 묻지 않기).",
     '- type은 반드시 "mc" | "short" 중 하나 그대로(다른 표기 금지: "multiple_choice"/"reverse" X). 역질문도 type은 "short".',
     '- mc의 answer는 정답 옵션의 0-based 인덱스 숫자(0,1,2,3). 글자("A")나 정답 텍스트가 아니라 숫자.',
     "- 오직 ```json 펜스 블록 하나만 출력. 배열의 각 원소:",
     '  { "type": "mc", "q": "...", "options": ["A","B","C","D"], "answer": 정답인덱스(0-3), "why": "정답 이유 한 줄" }',
     '  { "type": "short", "q": "...", "answer": "모범답안", "why": "채점 포인트 한 줄" }',
-    "",
-    "=== 학습자 Q&A ===",
-    qa,
-  ].join("\n");
+  ];
+  if (hasSource) lines.push("", "=== 대상 자료 ===", source!.trim());
+  if (hasQa) lines.push("", "=== 학습자 Q&A ===", qa);
+  return lines.join("\n");
 }
 
 // 주관식/역질문 채점 컨텍스트 — 문제·모범답안·학습자 답을 주고 항목별 판정을 받는다.
@@ -197,12 +204,13 @@ async function runQuiz(
 }
 
 // 퀴즈 한 세션 실행부. 활성 세션 데이터(quiz)로 초기화, 변경 시 onQuizChange로 그 세션에 저장.
-export default function QuizRunner({ messages, providerId, providerSettings, quiz, onQuizChange }: {
+export default function QuizRunner({ messages, providerId, providerSettings, quiz, onQuizChange, sourceContext }: {
   messages: ChatMessage[];
   providerId: AgentProviderKind;
   providerSettings: ProviderSettings;
   quiz?: AskQuiz;
   onQuizChange: (next: AskQuiz | undefined) => void;
+  sourceContext?: string; // 세션 대상 자료(레포/파일/diff/아키텍처) — 있으면 대화 기억 + 자료 개념 둘 다 출제(#760)
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -235,7 +243,9 @@ export default function QuizRunner({ messages, providerId, providerSettings, qui
   useEffect(() => () => acRef.current?.abort(), []);
 
   const langName = LANG_NAME[locale] ?? "English";
-  const hasMaterial = messages.some((m) => m.role === "assistant");
+  // 재료 있음 = 대상 자료(sourceContext)가 있거나, 대화에 답변이 하나라도 있음(#760).
+  const hasSource = !!sourceContext?.trim();
+  const hasMaterial = hasSource || messages.some((m) => m.role === "assistant");
 
   async function generate() {
     setPhase("loading");
@@ -246,7 +256,7 @@ export default function QuizRunner({ messages, providerId, providerSettings, qui
     const ac = new AbortController();
     acRef.current = ac;
     try {
-      const text = await runQuiz(buildGenerateContext(messages, langName, opts), { providerId, providerSettings, locale, signal: ac.signal });
+      const text = await runQuiz(buildGenerateContext(messages, langName, opts, sourceContext), { providerId, providerSettings, locale, signal: ac.signal });
       if (ac.signal.aborted) return;
       const parsed = parseJsonBlock<unknown[]>(text);
       const clean = (Array.isArray(parsed) ? parsed : []).map(normalizeQuestion).filter((q): q is QuizQ => q !== null);
@@ -299,7 +309,7 @@ export default function QuizRunner({ messages, providerId, providerSettings, qui
     <>
       {phase === "idle" && (
         <div className="flex flex-col items-center gap-4 px-2 py-6 text-center">
-          <p className="text-[13px] text-zinc-500 dark:text-zinc-400">{hasMaterial ? t("quiz.intro") : t("quiz.needMaterial")}</p>
+          <p className="text-[13px] text-zinc-500 dark:text-zinc-400">{hasMaterial ? (hasSource ? t("quiz.introSource") : t("quiz.intro")) : t("quiz.needMaterial")}</p>
           {hasMaterial && (
             <>
               <div className="w-full px-1 text-left">
