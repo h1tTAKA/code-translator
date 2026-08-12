@@ -29,6 +29,12 @@ assert.strictEqual(parseAgentScreen(waiting).state, "waiting", "waiting 오판: 
 const idle = title(`${idleGlyph} Review notes`) + `╭───╮\n│ > │\n╰───╯  ? for shortcuts`;
 assert.deepStrictEqual(parseAgentScreen(idle), { agent: "claude", state: "idle" }, "idle 오판: " + JSON.stringify(parseAgentScreen(idle)));
 
+// idle: 대화 내용에 권한 문구가 인용돼 있어도(스크롤 위), 바닥은 입력창이면 idle(영역 스코핑).
+const quotedNotLive = title(`${idleGlyph} Task`) +
+  `I explained: "Do you want to proceed?" and "esc to cancel" and "1. Yes 2. No".\n`.repeat(20) +
+  `✻ churned for 3m\n─────\n❯ \n⏸ manual mode on · ← for agents · ctrl+v to paste`;
+assert.deepStrictEqual(parseAgentScreen(quotedNotLive), { agent: "claude", state: "idle" }, "인용문 오판(waiting): " + JSON.stringify(parseAgentScreen(quotedNotLive)));
+
 // 셸(타이틀·마커 없음) → null
 const shell = `hong@mac nunopi % ls\nREADME.md  package.json  src`;
 assert.strictEqual(parseAgentScreen(shell), null, "셸을 에이전트로 오판");

@@ -38,6 +38,17 @@ function lastTitle(rawTail) {
   return m.length ? m[m.length - 1][1] : "";
 }
 function firstCode(s) { return s ? s.codePointAt(0) : 0; }
+// 마지막 수평선(─ 3개 이상 라인) 이후 텍스트 = 현재 프롬프트/입력 박스 영역(herdr after_last_horizontal_rule).
+// claude 입력창·권한 박스는 ───── 로 둘러싸여 화면 하단에 뜬다. 대화에 인용된 마커는 이 위라 제외된다.
+function afterLastRule(screen) {
+  const lines = String(screen).split("\n");
+  let idx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.length >= 3 && /^[─━┄┅┈┉\s]+$/.test(t) && (t.match(/[─-╿]/g) || []).length >= 3) idx = i;
+  }
+  return idx >= 0 ? lines.slice(idx + 1).join("\n") : screen;
+}
 const isSpinnerGlyph = (c) => (c >= 0x2800 && c <= 0x28ff) || (c >= 0x25d0 && c <= 0x25d3); // 브라유/사분원
 const isClaudeIdleGlyph = (c) => c === 0x2733; // ✳
 
@@ -55,26 +66,28 @@ const CODEX_CHROME = /openaicodex|codex(session|resume)/i;
 function parseAgentScreen(buffer) {
   const title = lastTitle(recentRaw(buffer, 8000)); // 타이틀은 넓게(자주 갱신, 최신 확보)
   const tc = firstCode(title.trim());
-  // 본문은 좁게(2.5KB=현재 화면) — 답한 옛 권한 프롬프트가 오래 남아 stale waiting 되는 것 방지.
-  const compact = stripAnsi(recentRaw(buffer, 2500)).toLowerCase().replace(/\s+/g, "");
+  const compact = stripAnsi(recentRaw(buffer, 2500)).toLowerCase().replace(/\s+/g, ""); // 넓게 — chrome/작업 마커용
+  // ⚠️ 권한/대기 마커는 "마지막 수평선 이후"(현재 프롬프트 박스)에서만 매칭 — 대화에 인용된 "Do you want to
+  //   proceed?" 같은 문구(박스 위 스크롤)를 실제 프롬프트로 오인하지 않게(herdr 영역 스코핑).
+  const bottom = afterLastRule(stripAnsi(recentRaw(buffer, 4000))).toLowerCase().replace(/\s+/g, "");
   if (!compact && !title) return null;
 
   // ── Claude ──────────────────────────────
   const claudeTitle = isSpinnerGlyph(tc) || isClaudeIdleGlyph(tc); // claude가 세팅한 상태 글리프 타이틀
-  const isClaude = claudeTitle || CLAUDE_CHROME.test(compact) || CLAUDE_WORKING.test(compact) || CLAUDE_WAITING.test(compact);
+  const isClaude = claudeTitle || CLAUDE_CHROME.test(compact) || CLAUDE_WORKING.test(compact) || CLAUDE_WAITING.test(bottom);
   if (isClaude) {
-    // 타이틀 스피너 = 지금 이 순간 작업 중(프레임마다 갱신되는 최신 신호). 본문에 남은 옛 권한 텍스트보다 우선(herdr 우선순위).
-    if (isSpinnerGlyph(tc)) return { agent: "claude", state: "working" };
-    if (CLAUDE_WAITING.test(compact)) return { agent: "claude", state: "waiting" };       // 권한/선택/인터럽트(스피너 아닐 때만)
-    if (CLAUDE_WORKING.test(compact)) return { agent: "claude", state: "working" };        // 타이틀 없지만 본문 작업 마커
-    return { agent: "claude", state: "idle" };                                             // ✳ 타이틀 or claude인데 위 아님
+    if (isSpinnerGlyph(tc)) return { agent: "claude", state: "working" };                  // 스피너 타이틀 = 지금 작업 중(최우선)
+    if (CLAUDE_WAITING.test(bottom)) return { agent: "claude", state: "waiting" };          // 권한/선택/인터럽트(바닥에서만)
+    if (isClaudeIdleGlyph(tc)) return { agent: "claude", state: "idle" };                   // ✳ 타이틀 = 유휴(최신)
+    if (CLAUDE_WORKING.test(compact)) return { agent: "claude", state: "working" };         // 타이틀 없는 폴백(tokens)
+    return { agent: "claude", state: "idle" };
   }
 
   // ── Codex(보조) ─────────────────────────
   const codexTitle = title.toLowerCase().includes("action required") || isSpinnerGlyph(tc);
-  const isCodex = codexTitle || CODEX_CHROME.test(compact) || CODEX_WAITING.test(compact) || CODEX_WORKING.test(compact);
+  const isCodex = codexTitle || CODEX_CHROME.test(compact) || CODEX_WAITING.test(bottom) || CODEX_WORKING.test(compact);
   if (isCodex) {
-    if (CODEX_WAITING.test(compact) || title.toLowerCase().includes("action required")) return { agent: "codex", state: "waiting" };
+    if (title.toLowerCase().includes("action required") || CODEX_WAITING.test(bottom)) return { agent: "codex", state: "waiting" };
     if (isSpinnerGlyph(tc) || CODEX_WORKING.test(compact)) return { agent: "codex", state: "working" };
     return { agent: "codex", state: "idle" };
   }
