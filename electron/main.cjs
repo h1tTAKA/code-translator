@@ -11,6 +11,7 @@ const {
 } = require("@sna-sdk/core/electron");
 const { spawn } = require("node:child_process");
 const { createDaemonClient } = require("./daemon-client.cjs");
+const { writeHookHelper, writeEndpoint, ensureRepoHooks } = require("./agent-hooks.cjs");
 const { getProviderUsage } = require("./provider-usage.cjs");
 const { startWatch, stopWatch, stopAll: stopAllWatchers } = require("./repo-watcher.cjs");
 const { join } = require("node:path");
@@ -180,8 +181,11 @@ function createWindow(url) {
 }
 
 async function boot() {
+  const ud = app.getPath("userData");
+  writeHookHelper(ud); // #764 에이전트 상태 훅 헬퍼 1회 기록
   if (DEV_URL) {
     // dev: next dev가 자체 임베드(간섭 방지) → main은 SNA 안 띄움.
+    writeEndpoint(ud, DEV_URL); // #764 현재 엔드포인트(헬퍼가 읽음)
     createWindow(DEV_URL);
     return;
   }
@@ -191,6 +195,7 @@ async function boot() {
     SNA_BASE_URL: snaHandle.connection.baseUrl,
     SNA_AUTH_TOKEN: snaHandle.connection.authToken,
   });
+  writeEndpoint(ud, base); // #764 현재 엔드포인트(포트 변동 반영)
   createWindow(base);
 }
 
@@ -282,6 +287,7 @@ function persistBuffers() {
 setInterval(persistBuffers, 5000); // 크래시 대비 주기 저장(before-quit은 아래 quit 훅서)
 
 ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
+  try { ensureRepoHooks(cwd, app.getPath("userData")); } catch { /* 훅 주입 실패는 무시 — 터미널은 정상 */ } // #764 상태 훅 병합
   const r = await termClient.ensure({ id, cwd, cols, rows });
   if (!r.ok) return { ok: false, reason: r.reason || "daemon unavailable" };
   let buffer = r.buffer || "";
@@ -294,6 +300,7 @@ ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
 ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
 ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; }); // 탭 닫기 시 데몬 pty·저장분 정리
+ipcMain.handle("terminal:list", () => termClient.list()); // 세션 목록(#764) — 레포탭 호버 카드용
 
 // 단일 인스턴스.
 if (!app.requestSingleInstanceLock()) {

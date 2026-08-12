@@ -22,6 +22,8 @@ interface NunopiDesktopApi {
     input(payload: { id: string; data: string }): void;
     resize(payload: { id: string; cols: number; rows: number }): void;
     kill(payload: { id: string }): void;
+    // 세션 목록(#764) — 레포탭 호버 카드용. process=foreground 프로세스명(claude/codex/zsh…), cwd=spawn 디렉터리.
+    list(): Promise<{ id: string; cwd: string; process: string; pid: number }[]>;
     onData(cb: (p: { id: string; data: string }) => void): () => void;
     onExit(cb: (p: { id: string }) => void): () => void;
   };

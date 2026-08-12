@@ -1,0 +1,85 @@
+// 에이전트 브랜드 로고 + 프로세스명 식별(#764) — 레포탭 호버 카드에서 "어떤 에이전트가 도는가"를 아이콘으로.
+// 잘 알려진 에이전트는 인라인 브랜드 마크(CSP 안전), 그 외 알려진 에이전트는 브랜드색 모노그램. 셸/미지 프로세스는 에이전트 아님.
+
+export type AgentId = "claude" | "codex" | "gemini" | "aider" | "opencode" | "cursor" | "copilot" | "amp" | "grok" | "other";
+
+// 프로세스명 → 에이전트 매칭. foreground 프로세스명(node-pty proc.process)에 대해 검사.
+const MATCH: [AgentId, RegExp][] = [
+  ["claude", /claude/i],
+  ["codex", /codex/i],
+  ["gemini", /gemini/i],
+  ["aider", /aider/i],
+  ["opencode", /open-?code/i],
+  ["cursor", /cursor/i],
+  ["copilot", /copilot/i],
+  ["amp", /^amp$/i],
+  ["grok", /grok/i],
+];
+
+// 셸 프로세스명(유휴 상태 — 에이전트 안 돎). 선행 "-"(login shell) 정규화 후 비교.
+const SHELLS = new Set(["zsh", "bash", "sh", "fish", "dash", "ksh", "pwsh", "powershell", "cmd", "login", "screen", "tmux"]);
+
+function norm(processName: string | undefined): string {
+  return (processName || "").trim().toLowerCase().replace(/^-+/, "");
+}
+
+// 알려진 에이전트면 그 id, 아니면 null(셸이든 다른 프로세스든). 카드가 null을 "유휴/기타"로 분기.
+export function identifyAgent(processName: string | undefined): AgentId | null {
+  const p = norm(processName);
+  if (!p) return null;
+  for (const [id, re] of MATCH) if (re.test(p)) return id;
+  return null;
+}
+
+// 셸(프롬프트 대기 = 유휴)인가.
+export function isShellProcess(processName: string | undefined): boolean {
+  return SHELLS.has(norm(processName));
+}
+
+export const AGENT_META: Record<AgentId, { label: string; color: string }> = {
+  claude: { label: "Claude", color: "#D97757" },   // Anthropic coral
+  codex: { label: "Codex", color: "#10A37F" },     // OpenAI teal
+  gemini: { label: "Gemini", color: "#4285F4" },   // Google blue
+  aider: { label: "Aider", color: "#14B8A6" },
+  opencode: { label: "OpenCode", color: "#F59E0B" },
+  cursor: { label: "Cursor", color: "#6B7280" },
+  copilot: { label: "Copilot", color: "#8B5CF6" },
+  amp: { label: "Amp", color: "#F97316" },
+  grok: { label: "Grok", color: "#111827" },
+  other: { label: "Agent", color: "#6B7280" },
+};
+
+// 에이전트 브랜드 마크. claude/gemini/codex는 인라인 마크, 그 외는 브랜드색 모노그램 원형.
+export function AgentLogo({ agent, size = 14 }: { agent: AgentId; size?: number }) {
+  const c = AGENT_META[agent]?.color ?? "#6B7280";
+  const common = { width: size, height: size, viewBox: "0 0 24 24", "aria-hidden": true } as const;
+  if (agent === "claude") {
+    // Anthropic 선버스트 — 중심에서 12방향 광선.
+    return (
+      <svg {...common}>
+        <g stroke={c} strokeWidth={1.7} strokeLinecap="round">
+          {[0, 30, 60, 90, 120, 150].map((deg) => {
+            const a = (deg * Math.PI) / 180, dx = Math.cos(a) * 9, dy = Math.sin(a) * 9;
+            return <line key={deg} x1={12 - dx} y1={12 - dy} x2={12 + dx} y2={12 + dy} />;
+          })}
+        </g>
+      </svg>
+    );
+  }
+  if (agent === "gemini") {
+    // Gemini 4점 스파클.
+    return <svg {...common}><path d="M12 2c.4 5.3 4.3 9.6 10 10-5.7.4-9.6 4.3-10 10-.4-5.7-4.3-9.6-10-10 5.7-.4 9.6-4.3 10-10z" fill={c} /></svg>;
+  }
+  if (agent === "codex") {
+    // OpenAI 육엽 근사 — 3개 타원 회전.
+    return <svg {...common}><g fill="none" stroke={c} strokeWidth={1.6}>{[0, 60, 120].map((r) => <ellipse key={r} cx={12} cy={12} rx={4} ry={9} transform={`rotate(${r} 12 12)`} />)}</g></svg>;
+  }
+  // 그 외 알려진 에이전트 — 브랜드색 원형 + 첫 글자 모노그램.
+  const label = AGENT_META[agent]?.label ?? "A";
+  return (
+    <svg {...common}>
+      <circle cx={12} cy={12} r={9} fill="none" stroke={c} strokeWidth={1.6} />
+      <text x={12} y={16} textAnchor="middle" fontSize={11} fontWeight={700} fill={c}>{label[0]}</text>
+    </svg>
+  );
+}

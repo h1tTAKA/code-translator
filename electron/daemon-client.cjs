@@ -14,6 +14,7 @@ function createDaemonClient(opts) {
   let token = "";
   let spawning = false;
   const ensured = new Map(); // id → {resolve} 대기 중 ensure
+  const listWaiters = [];    // list 응답 대기 resolver 큐(FIFO). listed 페이로드는 현재 상태 스냅샷이라 상관 어긋나도 데이터는 유효(#764).
 
   // 기존 데몬 메타(토큰) 로드 or 새 토큰 생성.
   function loadOrMakeToken() {
@@ -28,6 +29,7 @@ function createDaemonClient(opts) {
     let m; try { m = JSON.parse(line); } catch { return; }
     if (m.t === "ready") { ready = true; return; }
     if (m.t === "ensured") { const w = ensured.get(m.id); if (w) { ensured.delete(m.id); w({ ok: m.ok, buffer: m.buffer, reason: m.reason }); } return; }
+    if (m.t === "listed") { const w = listWaiters.shift(); if (w) w(Array.isArray(m.sessions) ? m.sessions : []); return; }
     if (m.t === "data") { onData && onData(m.id, m.data); return; }
     if (m.t === "exit") { onExit && onExit(m.id); return; }
   }
@@ -87,6 +89,15 @@ function createDaemonClient(opts) {
         ensured.set(id, resolve);
         socket.write(JSON.stringify({ t: "ensure", id, cwd, cols, rows }) + "\n");
         setTimeout(() => { if (ensured.has(id)) { ensured.delete(id); resolve({ ok: false, reason: "ensure timeout" }); } }, 5000);
+      });
+    },
+    async list() { // 세션 목록(#764) — 레포탭 호버 카드. 데몬 없거나 타임아웃이면 빈 배열.
+      if (!(await ensureConnected())) return [];
+      return await new Promise((resolve) => {
+        listWaiters.push(resolve);
+        try { socket.write(JSON.stringify({ t: "list" }) + "\n"); }
+        catch { const i = listWaiters.indexOf(resolve); if (i >= 0) listWaiters.splice(i, 1); resolve([]); return; }
+        setTimeout(() => { const i = listWaiters.indexOf(resolve); if (i >= 0) { listWaiters.splice(i, 1); resolve([]); } }, 1200); // 낡은 데몬(list 미지원)에 오래 매달리지 않게(#764)
       });
     },
     input({ id, data }) { if (socket && ready) { try { socket.write(JSON.stringify({ t: "input", id, data }) + "\n"); } catch { /* ignore */ } } },
