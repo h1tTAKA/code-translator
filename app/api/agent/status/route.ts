@@ -1,6 +1,6 @@
 // 에이전트 상태 수신·조회(#764) — Claude Code 등 CLI 훅이 이벤트를 POST하면 저장 + SSE 푸시,
 // 레포탭/호버 카드가 GET(폴백)·SSE(실시간)로 읽는다. 저장·푸시 로직은 @/lib/agentStatus 싱글턴.
-import { upsert, query, emit, normPath, prune, type AgentState } from "@/lib/agentStatus";
+import { upsert, query, emit, remove, normPath, prune, type AgentState } from "@/lib/agentStatus";
 
 export const runtime = "nodejs";
 
@@ -33,10 +33,20 @@ export async function POST(request: Request): Promise<Response> {
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return Response.json({ error: "invalid body" }, { status: 400 }); }
   const cwd = typeof body.cwd === "string" ? normPath(body.cwd) : "";
+  // 세션 제거(#765) — 버퍼 드라이버가 에이전트 종료(셸 복귀) 감지 시. cwd+sessionId 엔트리 삭제 후 푸시.
+  if (body.clear === true) {
+    if (!cwd) return Response.json({ error: "cwd required" }, { status: 400 });
+    const removed = remove(cwd, typeof body.sessionId === "string" ? body.sessionId : "");
+    if (removed) emit(cwd);
+    return Response.json({ ok: true, cleared: removed });
+  }
   const event = typeof body.event === "string" ? body.event : "";
-  if (!cwd || !event) return Response.json({ error: "cwd and event required" }, { status: 400 });
+  // 소스 2가지: 훅(event→deriveState) 또는 버퍼 스크레이핑(explicit state, #765). 하나는 있어야 함.
+  const VALID: AgentState[] = ["working", "waiting", "blocked", "done"];
+  const explicit = typeof body.state === "string" && (VALID as string[]).includes(body.state) ? (body.state as AgentState) : null;
+  if (!cwd || (!event && !explicit)) return Response.json({ error: "cwd and (event or state) required" }, { status: 400 });
   const now = Date.now();
-  const state = deriveState(event);
+  const state = explicit ?? deriveState(event);
   if (state === null) { prune(now); return Response.json({ ok: true, ignored: event }); }
   upsert({
     cwd,

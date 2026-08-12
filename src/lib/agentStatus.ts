@@ -65,6 +65,11 @@ export function query(root: string, now: number): Array<{ sessionId: string; age
   return [...latest.values()].map((e) => ({ sessionId: e.sessionId, agent: e.agent, state: e.state, tool: e.tool, toolInput: e.toolInput, prompt: e.prompt, since: e.stateStartedAt, updatedAt: e.updatedAt }));
 }
 
+// 세션 상태 제거(#765) — 에이전트가 종료(포그라운드가 셸로 복귀)하면 카드에서 즉시 사라지게.
+export function remove(cwd: string, sessionId: string): boolean {
+  return store.delete(keyOf(cwd, sessionId));
+}
+
 // SSE — 변경 리스너 등록(해제 함수 반환) / fan-out.
 export function subscribe(fn: (cwd: string) => void): () => void {
   listeners.add(fn);
