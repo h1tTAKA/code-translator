@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconFiles, IconGitBranch, IconArrowUp, IconArrowDown, IconPencil, IconLoader2 } from "@tabler/icons-react";
+import { IconFiles, IconGitBranch, IconArrowUp, IconArrowDown, IconPencil, IconLoader2, IconCircleCheck, IconQuestionMark, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { AgentLogo, identifyAgent, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
 
@@ -29,8 +29,15 @@ function rel(iso: string): string {
 const asAgentId = (s: string): AgentId => (Object.prototype.hasOwnProperty.call(AGENT_META, s) ? (s as AgentId) : "other");
 
 const STATE_KEY: Record<AgentState, string> = { working: "workspace.agentWorking", waiting: "workspace.agentWaiting", blocked: "workspace.agentBlocked", done: "workspace.agentDone" };
-const STATE_DOT: Record<AgentState, string> = { working: "bg-emerald-500 animate-pulse", waiting: "bg-amber-500", blocked: "bg-rose-500", done: "bg-zinc-400" };
-const STATE_TEXT: Record<AgentState, string> = { working: "text-emerald-500", waiting: "text-amber-500", blocked: "text-rose-500", done: "text-zinc-400 dark:text-zinc-500" };
+const STATE_TEXT: Record<AgentState, string> = { working: "text-amber-500", waiting: "text-amber-500", blocked: "text-rose-500", done: "text-emerald-500" };
+// 상태 아이콘 — 작업중=앰버 스피너, 대기(yes/no)=물음표, 막힘=경고, 완료=초록 체크. 색은 부모 텍스트색 상속.
+function stateIcon(st: AgentState) {
+  const p = { size: 12, stroke: 2.5, "aria-hidden": true } as const;
+  if (st === "working") return <IconLoader2 {...p} className="animate-spin" />;
+  if (st === "waiting") return <IconQuestionMark {...p} />;
+  if (st === "blocked") return <IconAlertTriangle {...p} />;
+  return <IconCircleCheck {...p} />;
+}
 
 // path별 마지막 스냅샷 캐시 — 재호버 시 즉시 표시(빈 상태 깜빡임·지연 방지, #764).
 interface Snap { agents: AgentRow[]; idleTerms: number; hooks: HookStatus[]; worktrees: Worktree[] | null; }
@@ -134,7 +141,7 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
                   <AgentLogo agent={id} size={14} />
                   <span className="min-w-0 flex-1 truncate">{AGENT_META[id].label}</span>
                   <span className={`flex shrink-0 items-center gap-1 text-[10px] ${STATE_TEXT[h.state]}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${STATE_DOT[h.state]}`} />{t(STATE_KEY[h.state])}
+                    {stateIcon(h.state)}{t(STATE_KEY[h.state])}
                   </span>
                 </div>
                 {sub && <div className="ml-6 truncate text-[10px] text-zinc-400 dark:text-zinc-500" title={sub}>{sub}</div>}
@@ -145,7 +152,7 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
             <div key={a.id} className="flex items-center gap-2 text-[12px] text-zinc-700 dark:text-zinc-200">
               <AgentLogo agent={a.agent} size={14} />
               <span className="min-w-0 flex-1 truncate">{AGENT_META[a.agent].label}</span>
-              <span className="flex shrink-0 items-center gap-1 text-[10px] text-emerald-500"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />{t("workspace.agentRunning")}</span>
+              <span className="flex shrink-0 items-center gap-1 text-[10px] text-amber-500"><IconLoader2 size={12} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.agentRunning")}</span>
             </div>
           ))}
           {idleTerms > 0 && <div className="text-[10px] text-zinc-400 dark:text-zinc-500">{t("workspace.termsIdle", { n: idleTerms })}</div>}
