@@ -291,10 +291,10 @@ async function pushScreenState(id) {
   const state = mapScreenState(parsed.state);
   const prev = lastScreen.get(id);
   const now = Date.now();
-  const changed = !prev || prev.state !== state || prev.agent !== parsed.agent;
-  if (!changed && prev && now - prev.at < 30000) return; // 같은 상태면 30s마다만 재POST(TTL 유지, 과POST 억제)
-  lastScreen.set(id, { state, agent: parsed.agent, at: now });
-  await postStatus({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen" });
+  const changed = !prev || prev.state !== state || prev.agent !== parsed.agent || prev.task !== parsed.task;
+  if (!changed && prev && now - prev.at < 30000) return; // 상태·작업 동일하면 30s마다만 재POST(TTL 유지, 과POST 억제)
+  lastScreen.set(id, { state, agent: parsed.agent, task: parsed.task, at: now });
+  await postStatus({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen", prompt: parsed.task || undefined }); // task=Orca式 활동 서브라인
 }
 function scheduleScreenParse(id) {
   if (screenTimers.has(id)) return; // 코얼레스(버스트 억제)

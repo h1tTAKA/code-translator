@@ -38,6 +38,13 @@ function lastTitle(rawTail) {
   return m.length ? m[m.length - 1][1] : "";
 }
 function firstCode(s) { return s ? s.codePointAt(0) : 0; }
+// 타이틀에서 상태 글리프를 뗀 작업 설명 — Orca처럼 "지금 뭐 하는지" 서브라인용. 예: "⠐ Review notes" → "Review notes".
+function titleTask(title) {
+  const t = String(title).trim();
+  const c = firstCode(t);
+  const body = (isSpinnerGlyph(c) || isClaudeIdleGlyph(c)) ? t.slice(String.fromCodePoint(c).length).trim() : t;
+  return body.slice(0, 120);
+}
 // 마지막 수평선(─ 3개 이상 라인) 이후 텍스트 = 현재 프롬프트/입력 박스 영역(herdr after_last_horizontal_rule).
 // claude 입력창·권한 박스는 ───── 로 둘러싸여 화면 하단에 뜬다. 대화에 인용된 마커는 이 위라 제외된다.
 function afterLastRule(screen) {
@@ -71,25 +78,26 @@ function parseAgentScreen(buffer) {
   //   proceed?" 같은 문구(박스 위 스크롤)를 실제 프롬프트로 오인하지 않게(herdr 영역 스코핑).
   const bottom = afterLastRule(stripAnsi(recentRaw(buffer, 4000))).toLowerCase().replace(/\s+/g, "");
   if (!compact && !title) return null;
+  const task = titleTask(title); // "지금 뭐 하는지" 서브라인(타이틀의 작업 텍스트)
 
   // ── Claude ──────────────────────────────
   const claudeTitle = isSpinnerGlyph(tc) || isClaudeIdleGlyph(tc); // claude가 세팅한 상태 글리프 타이틀
   const isClaude = claudeTitle || CLAUDE_CHROME.test(compact) || CLAUDE_WORKING.test(compact) || CLAUDE_WAITING.test(bottom);
   if (isClaude) {
-    if (isSpinnerGlyph(tc)) return { agent: "claude", state: "working" };                  // 스피너 타이틀 = 지금 작업 중(최우선)
-    if (CLAUDE_WAITING.test(bottom)) return { agent: "claude", state: "waiting" };          // 권한/선택/인터럽트(바닥에서만)
-    if (isClaudeIdleGlyph(tc)) return { agent: "claude", state: "idle" };                   // ✳ 타이틀 = 유휴(최신)
-    if (CLAUDE_WORKING.test(compact)) return { agent: "claude", state: "working" };         // 타이틀 없는 폴백(tokens)
-    return { agent: "claude", state: "idle" };
+    if (isSpinnerGlyph(tc)) return { agent: "claude", state: "working", task };             // 스피너 타이틀 = 지금 작업 중(최우선)
+    if (CLAUDE_WAITING.test(bottom)) return { agent: "claude", state: "waiting", task };     // 권한/선택/인터럽트(바닥에서만)
+    if (isClaudeIdleGlyph(tc)) return { agent: "claude", state: "idle", task };              // ✳ 타이틀 = 유휴(최신)
+    if (CLAUDE_WORKING.test(compact)) return { agent: "claude", state: "working", task };    // 타이틀 없는 폴백(tokens)
+    return { agent: "claude", state: "idle", task };
   }
 
   // ── Codex(보조) ─────────────────────────
   const codexTitle = title.toLowerCase().includes("action required") || isSpinnerGlyph(tc);
   const isCodex = codexTitle || CODEX_CHROME.test(compact) || CODEX_WAITING.test(bottom) || CODEX_WORKING.test(compact);
   if (isCodex) {
-    if (title.toLowerCase().includes("action required") || CODEX_WAITING.test(bottom)) return { agent: "codex", state: "waiting" };
-    if (isSpinnerGlyph(tc) || CODEX_WORKING.test(compact)) return { agent: "codex", state: "working" };
-    return { agent: "codex", state: "idle" };
+    if (title.toLowerCase().includes("action required") || CODEX_WAITING.test(bottom)) return { agent: "codex", state: "waiting", task };
+    if (isSpinnerGlyph(tc) || CODEX_WORKING.test(compact)) return { agent: "codex", state: "working", task };
+    return { agent: "codex", state: "idle", task };
   }
 
   return null; // 셸 등
