@@ -261,32 +261,46 @@ const liveBuffers = new Map(); // id → buffer  — 데몬 data 미러(디스�
 const { parseAgentScreen } = require("./agent-screen.cjs");
 let appBase = null;              // Next 서버 베이스 URL(boot서 설정)
 const cwdById = new Map();       // id → cwd(레포 매핑)
+const procById = new Map();      // id → foreground 프로세스명(데몬 list) — 에이전트 종료(셸 복귀) 게이트
 const lastScreen = new Map();    // id → { state, agent, at }(변화·keep-alive 판단)
 const screenTimers = new Map();  // id → 디바운스 타이머
 const mapScreenState = (s) => (s === "idle" ? "done" : s); // 파서 idle → 스토어 done(present/ready)
+// 포그라운드가 셸이면 에이전트 종료로 간주(버퍼에 옛 화면이 남아도 무시). herdr도 포그라운드 프로세스로 게이트.
+const SHELLS = new Set(["zsh", "bash", "sh", "fish", "dash", "ksh", "pwsh", "powershell", "cmd", "login", "screen", "tmux"]);
+const isShellProc = (p) => SHELLS.has(String(p || "").trim().toLowerCase().replace(/^-+/, ""));
+async function refreshProcs() {
+  try { const ss = await termClient.list(); procById.clear(); for (const s of ss) procById.set(s.id, s.process); }
+  catch { /* 데몬 미응답 — procById 유지 */ }
+}
+async function postStatus(body) {
+  if (!appBase) return;
+  try { await fetch(`${appBase}/api/agent/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  catch { /* 서버 미준비 등 — 다음 틱에 재시도 */ }
+}
 async function pushScreenState(id) {
   const cwd = cwdById.get(id);
   if (!cwd || !appBase) return;
-  const buf = liveBuffers.get(id);
-  if (!buf) return;
-  const parsed = parseAgentScreen(buf); // {agent,state}|null
-  if (!parsed) return;                   // 에이전트 아님(셸 등)
+  const proc = procById.get(id);
+  const gone = proc !== undefined && isShellProc(proc);         // 포그라운드가 셸 = 에이전트 종료
+  const parsed = gone ? null : parseAgentScreen(liveBuffers.get(id)); // {agent,state}|null
+  if (!parsed) {
+    // 에이전트 없음(종료/셸) — 이전에 보고했으면 스토어에서 제거해 카드서 사라지게.
+    if (lastScreen.has(id)) { lastScreen.delete(id); await postStatus({ cwd, sessionId: id, clear: true }); }
+    return;
+  }
   const state = mapScreenState(parsed.state);
   const prev = lastScreen.get(id);
   const now = Date.now();
   const changed = !prev || prev.state !== state || prev.agent !== parsed.agent;
   if (!changed && prev && now - prev.at < 30000) return; // 같은 상태면 30s마다만 재POST(TTL 유지, 과POST 억제)
   lastScreen.set(id, { state, agent: parsed.agent, at: now });
-  try {
-    await fetch(`${appBase}/api/agent/status`, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen" }) });
-  } catch { /* 서버 미준비 등 — 다음 데이터에 재시도 */ }
+  await postStatus({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen" });
 }
 function scheduleScreenParse(id) {
   if (screenTimers.has(id)) return; // 코얼레스(버스트 억제)
   screenTimers.set(id, setTimeout(() => { screenTimers.delete(id); void pushScreenState(id); }, 150));
 }
-setInterval(() => { for (const id of liveBuffers.keys()) void pushScreenState(id); }, 4000); // idle keep-alive + 누락 보정
+setInterval(async () => { await refreshProcs(); for (const id of liveBuffers.keys()) void pushScreenState(id); }, 1200); // 프로세스 갱신 + 파싱(종료 감지·keep-alive)
 
 // 데몬 소켓 클라이언트 — 죽어있으면 fork(detached,unref)로 스폰. data/exit는 렌더러로 브로드캐스트.
 // 소켓 주소 — Windows는 파일 경로 리슨 불가라 네임드 파이프(net이 자동 인식).
