@@ -258,7 +258,7 @@ const liveBuffers = new Map(); // id → buffer  — 데몬 data 미러(디스�
 
 // #765 버퍼 스크레이핑 상태 드라이버 — liveBuffers를 파싱해 에이전트 상태를 상태 스토어로 POST(훅 대체).
 // 데몬 data 미러라 낡은 데몬·서버 재시작·훅 로드 타이밍과 무관하게 동작.
-const { parseAgentScreen } = require("./agent-screen.cjs");
+const { parseAgentScreen, agentFromProcess } = require("./agent-screen.cjs");
 let appBase = null;              // Next 서버 베이스 URL(boot서 설정)
 const cwdById = new Map();       // id → cwd(레포 매핑)
 const procById = new Map();      // id → foreground 프로세스명(데몬 list) — 에이전트 종료(셸 복귀) 게이트
@@ -283,19 +283,22 @@ async function pushScreenState(id) {
   const proc = procById.get(id);
   const gone = proc !== undefined && isShellProc(proc);         // 포그라운드가 셸 = 에이전트 종료
   const parsed = gone ? null : parseAgentScreen(liveBuffers.get(id)); // {agent,state}|null
-  if (!parsed) {
-    // 에이전트 없음(종료/셸) — 이전에 보고했으면 스토어에서 제거해 카드서 사라지게.
+  const procAgent = gone ? null : agentFromProcess(proc);       // 프로세스명으로 "존재" 판정(버퍼 미판정 대비)
+  let agent, state;
+  if (parsed) { agent = parsed.agent; state = mapScreenState(parsed.state); } // 버퍼가 상태 잡음(working/waiting/유휴→done)
+  else if (procAgent) { agent = procAgent; state = "done"; }    // 프로세스는 에이전트인데 버퍼 미판정 → 존재(유휴/체크), 스피너 아님
+  else {
+    // 에이전트 없음(종료/셸/미인식) — 이전에 보고했으면 스토어에서 제거해 카드서 사라지게.
     if (lastScreen.has(id)) { lastScreen.delete(id); await postStatus({ cwd, sessionId: id, clear: true }); }
     return;
   }
-  const state = mapScreenState(parsed.state);
   const prev = lastScreen.get(id);
   const now = Date.now();
-  const changed = !prev || prev.state !== state || prev.agent !== parsed.agent;
+  const changed = !prev || prev.state !== state || prev.agent !== agent;
   if (!changed && prev && now - prev.at < 30000) return; // 같은 상태면 30s마다만 재POST(TTL 유지, 과POST 억제)
-  lastScreen.set(id, { state, agent: parsed.agent, at: now });
+  lastScreen.set(id, { state, agent, at: now });
   // 서브라인은 안 붙인다 — OSC 타이틀은 세션 이름(첫 프롬프트 요약)이지 현재 활동이 아니라 오해 소지. 활동은 워크트리 커밋라인이 담당.
-  await postStatus({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen" });
+  await postStatus({ cwd, agent, state, sessionId: id, source: "screen" });
 }
 function scheduleScreenParse(id) {
   if (screenTimers.has(id)) return; // 코얼레스(버스트 억제)

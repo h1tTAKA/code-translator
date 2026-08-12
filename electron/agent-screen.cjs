@@ -69,6 +69,15 @@ const CODEX_WAITING = /actionrequired|allowcommand\?|pressentertoconfirmoresctoc
 const CODEX_WORKING = /•working\(|working\([^)]*esctointerrupt|esctointerrupt/i;
 const CODEX_CHROME = /openaicodex|codex(session|resume)/i;
 
+// 포그라운드 프로세스명 → 에이전트 id | null. "존재" 판정용(버퍼가 상태를 못 잡아도 에이전트가 떠 있음을 안다).
+const PROC_MATCH = [["claude", /claude/i], ["codex", /codex/i], ["gemini", /gemini/i], ["aider", /aider/i], ["opencode", /open-?code/i], ["cursor", /cursor/i], ["copilot", /copilot/i], ["amp", /^amp$/i], ["grok", /grok/i]];
+function agentFromProcess(name) {
+  const p = String(name || "").trim().toLowerCase().replace(/^-+/, "");
+  if (!p) return null;
+  for (const [id, re] of PROC_MATCH) if (re.test(p)) return id;
+  return null;
+}
+
 // 버퍼 → { agent, state } | null. 알려진 에이전트 TUI가 아니면 null(셸 등).
 function parseAgentScreen(buffer) {
   const title = lastTitle(recentRaw(buffer, 16000)); // 타이틀은 넓게(입력 에코로 밀려도 확보). 전체 200k는 perf 낭비라 16KB.
@@ -104,4 +113,4 @@ function parseAgentScreen(buffer) {
   return null; // 셸 등
 }
 
-module.exports = { parseAgentScreen, stripAnsi, recentScreen, lastTitle };
+module.exports = { parseAgentScreen, agentFromProcess, stripAnsi, recentScreen, lastTitle };

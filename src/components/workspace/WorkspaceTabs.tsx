@@ -29,7 +29,8 @@ function tabDot(st: TabState | null) {
   if (st === "done") return <IconCircleCheck size={13} stroke={2} className="shrink-0 text-emerald-500" aria-hidden />;
   if (st === "working") return <IconLoader2 size={13} stroke={2.5} className="shrink-0 animate-spin text-amber-500" aria-hidden />;
   if (st === "waiting") return <IconQuestionMark size={13} stroke={2.5} className="shrink-0 text-amber-500" aria-hidden />;
-  return <IconAlertTriangle size={13} stroke={2.5} className="shrink-0 text-rose-500" aria-hidden />; // blocked
+  if (st === "blocked") return <IconAlertTriangle size={13} stroke={2.5} className="shrink-0 text-rose-500" aria-hidden />;
+  return null; // 예상 밖 값 → 아무것도(빨간 삼각형 오탐 방지)
 }
 
 // 멀티 워크스페이스 탭(#731) — 여러 레포를 탭으로 열고 전환. 각 탭 = WorkspaceView 인스턴스(key=path).
