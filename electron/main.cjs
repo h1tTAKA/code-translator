@@ -185,6 +185,7 @@ async function boot() {
   writeHookHelper(ud); // #764 에이전트 상태 훅 헬퍼 1회 기록
   if (DEV_URL) {
     // dev: next dev가 자체 임베드(간섭 방지) → main은 SNA 안 띄움.
+    appBase = DEV_URL; // #765 버퍼 드라이버 POST 대상
     writeEndpoint(ud, DEV_URL); // #764 현재 엔드포인트(헬퍼가 읽음)
     createWindow(DEV_URL);
     return;
@@ -195,6 +196,7 @@ async function boot() {
     SNA_BASE_URL: snaHandle.connection.baseUrl,
     SNA_AUTH_TOKEN: snaHandle.connection.authToken,
   });
+  appBase = base; // #765 버퍼 드라이버 POST 대상
   writeEndpoint(ud, base); // #764 현재 엔드포인트(포트 변동 반영)
   createWindow(base);
 }
@@ -258,6 +260,38 @@ let savedBuffers = {};
 try { savedBuffers = JSON.parse(readFileSync(bufFile(), "utf8")) || {}; } catch { savedBuffers = {}; }
 const liveBuffers = new Map(); // id → buffer  — 데몬 data 미러(디스크 영속용)
 
+// #765 버퍼 스크레이핑 상태 드라이버 — liveBuffers를 파싱해 에이전트 상태를 상태 스토어로 POST(훅 대체).
+// 데몬 data 미러라 낡은 데몬·서버 재시작·훅 로드 타이밍과 무관하게 동작.
+const { parseAgentScreen } = require("./agent-screen.cjs");
+let appBase = null;              // Next 서버 베이스 URL(boot서 설정)
+const cwdById = new Map();       // id → cwd(레포 매핑)
+const lastScreen = new Map();    // id → { state, agent, at }(변화·keep-alive 판단)
+const screenTimers = new Map();  // id → 디바운스 타이머
+const mapScreenState = (s) => (s === "idle" ? "done" : s); // 파서 idle → 스토어 done(present/ready)
+async function pushScreenState(id) {
+  const cwd = cwdById.get(id);
+  if (!cwd || !appBase) return;
+  const buf = liveBuffers.get(id);
+  if (!buf) return;
+  const parsed = parseAgentScreen(buf); // {agent,state}|null
+  if (!parsed) return;                   // 에이전트 아님(셸 등)
+  const state = mapScreenState(parsed.state);
+  const prev = lastScreen.get(id);
+  const now = Date.now();
+  const changed = !prev || prev.state !== state || prev.agent !== parsed.agent;
+  if (!changed && prev && now - prev.at < 30000) return; // 같은 상태면 30s마다만 재POST(TTL 유지, 과POST 억제)
+  lastScreen.set(id, { state, agent: parsed.agent, at: now });
+  try {
+    await fetch(`${appBase}/api/agent/status`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen" }) });
+  } catch { /* 서버 미준비 등 — 다음 데이터에 재시도 */ }
+}
+function scheduleScreenParse(id) {
+  if (screenTimers.has(id)) return; // 코얼레스(버스트 억제)
+  screenTimers.set(id, setTimeout(() => { screenTimers.delete(id); void pushScreenState(id); }, 150));
+}
+setInterval(() => { for (const id of liveBuffers.keys()) void pushScreenState(id); }, 4000); // idle keep-alive + 누락 보정
+
 // 데몬 소켓 클라이언트 — 죽어있으면 fork(detached,unref)로 스폰. data/exit는 렌더러로 브로드캐스트.
 // 소켓 주소 — Windows는 파일 경로 리슨 불가라 네임드 파이프(net이 자동 인식).
 // ponytail: 파이프명 고정(단일 유저 가정). 멀티유저 격리 필요 시 userData 해시 접미.
@@ -275,8 +309,14 @@ const termClient = createDaemonClient({
     if (b.length > PTY_BUFFER_MAX) b = b.slice(-PTY_BUFFER_MAX);
     liveBuffers.set(id, b);
     broadcast("terminal:data", { id, data });
+    scheduleScreenParse(id); // #765 버퍼 변화 → 상태 파싱(디바운스)
   },
-  onExit: (id) => { liveBuffers.delete(id); delete savedBuffers[id]; broadcast("terminal:exit", { id }); },
+  onExit: (id) => {
+    liveBuffers.delete(id); delete savedBuffers[id];
+    cwdById.delete(id); lastScreen.delete(id); // #765 정리
+    const tm = screenTimers.get(id); if (tm) { clearTimeout(tm); screenTimers.delete(id); }
+    broadcast("terminal:exit", { id });
+  },
 });
 
 function persistBuffers() {
@@ -287,6 +327,7 @@ function persistBuffers() {
 setInterval(persistBuffers, 5000); // 크래시 대비 주기 저장(before-quit은 아래 quit 훅서)
 
 ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
+  cwdById.set(id, cwd); // #765 버퍼 파서 상태를 이 레포에 매핑
   try { ensureRepoHooks(cwd, app.getPath("userData")); } catch { /* 훅 주입 실패는 무시 — 터미널은 정상 */ } // #764 상태 훅 병합
   const r = await termClient.ensure({ id, cwd, cols, rows });
   if (!r.ok) return { ok: false, reason: r.reason || "daemon unavailable" };
@@ -299,7 +340,7 @@ ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
 });
 ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
-ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; }); // 탭 닫기 시 데몬 pty·저장분 정리
+ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태 정리
 ipcMain.handle("terminal:list", () => termClient.list()); // 세션 목록(#764) — 레포탭 호버 카드용
 
 // 단일 인스턴스.
