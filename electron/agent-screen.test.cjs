@@ -11,6 +11,14 @@ assert.ok(stripAnsi(colored).includes("Claude") && stripAnsi(colored).includes("
 const working = `${E}[2K${E}[36m✻${E}[0m Cerebrating… (${E}[1mesc to interrupt${E}[0m · 1.2k tokens)`;
 assert.deepStrictEqual(parseAgentScreen(working), { agent:"claude", state:"working" }, "working 오판: "+JSON.stringify(parseAgentScreen(working)));
 
+// working(실측 포맷) — "esc to interrupt" 없이 elapsed+tokens 라인만(이 버전 claude)
+const working2 = `${E}[36m✽${E}[0m Improvising… (55s · ${E}[2m↓ 1.4k tokens${E}[0m)`;
+assert.deepStrictEqual(parseAgentScreen(working2), { agent:"claude", state:"working" }, "working2 오판: "+JSON.stringify(parseAgentScreen(working2)));
+
+// interrupted → waiting(사용자 입력 대기). 옛 tokens 프레임이 tail에 남아도 waiting 우선.
+const interrupted = working2 + "\n".repeat(2) + `⎿  Interrupted · What should Claude do instead?\n❯ \n ⏸ manual mode on`;
+assert.strictEqual(parseAgentScreen(interrupted).state, "waiting", "interrupted 오판: "+JSON.stringify(parseAgentScreen(interrupted)));
+
 // waiting: 권한 프롬프트
 const waiting = `${E}[1mDo you want to proceed?${E}[0m\n ${E}[7m❯ 1. Yes${E}[0m\n   2. No, and tell Claude what to do differently`;
 assert.deepStrictEqual(parseAgentScreen(waiting), { agent:"claude", state:"waiting" }, "waiting 오판: "+JSON.stringify(parseAgentScreen(waiting)));
@@ -27,4 +35,4 @@ assert.strictEqual(parseAgentScreen(shell), null, "셸을 에이전트로 오판
 const mixed = working + "\n".repeat(3) + waiting;
 assert.strictEqual(parseAgentScreen(mixed).state, "waiting", "우선순위 실패");
 
-console.log("PASS — 6 assertions");
+console.log("PASS — all assertions");
