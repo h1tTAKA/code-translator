@@ -5,7 +5,6 @@ import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
 import RepoTabHoverCard from "@/components/workspace/RepoTabHoverCard";
-import { identifyAgent } from "@/components/workspace/AgentLogo";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const TABS_KEY = "nunopi:ws-tabs";       // 열린 워크스페이스 경로 배열(#731)
@@ -15,20 +14,20 @@ const OLD_PATH_KEY = "nunopi:workspace-path"; // 구 단일 워크스페이스 �
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const norm = (p: string) => p.replace(/\/+$/, "");
 
-// 탭 상태 도트(#764) — 레포에서 도는 에이전트의 종합 상태. 우선순위: 막힘>대기>작업중>완료>실행(휴리스틱).
-type TabState = "working" | "waiting" | "blocked" | "done" | "running";
-function aggregate(states: string[], heuristicAgent: boolean): TabState | null {
+// 탭 상태 도트(#764/#765) — 그 레포 에이전트의 종합 상태(버퍼 스크레이핑). 우선순위: 막힘>대기>작업중>완료.
+type TabState = "working" | "waiting" | "blocked" | "done";
+function aggregate(states: string[]): TabState | null {
   if (states.includes("blocked")) return "blocked";
   if (states.includes("waiting")) return "waiting";
   if (states.includes("working")) return "working";
   if (states.includes("done")) return "done";
-  return heuristicAgent ? "running" : null;
+  return null;
 }
-// 탭 상태 아이콘 — 호버 카드와 통일. 작업중·실행중=앰버 스피너, 대기(yes/no)=앰버 물음표, 막힘=빨간 경고, 완료=초록 체크.
+// 탭 상태 아이콘 — 호버 카드와 통일. 작업중=앰버 스피너, 대기(yes/no)=앰버 물음표, 막힘=빨간 경고, 완료=초록 체크.
 function tabDot(st: TabState | null) {
   if (!st) return null;
   if (st === "done") return <IconCircleCheck size={13} stroke={2} className="shrink-0 text-emerald-500" aria-hidden />;
-  if (st === "working" || st === "running") return <IconLoader2 size={13} stroke={2.5} className="shrink-0 animate-spin text-amber-500" aria-hidden />;
+  if (st === "working") return <IconLoader2 size={13} stroke={2.5} className="shrink-0 animate-spin text-amber-500" aria-hidden />;
   if (st === "waiting") return <IconQuestionMark size={13} stroke={2.5} className="shrink-0 text-amber-500" aria-hidden />;
   return <IconAlertTriangle size={13} stroke={2.5} className="shrink-0 text-rose-500" aria-hidden />; // blocked
 }
@@ -61,22 +60,12 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   useEffect(() => {
     if (!mounted || !active || paths.length === 0) return;
     let alive = true;
-    const d = window.nunopiDesktop;
-    // 훅 상태(빠름)와 terminal.list 휴리스틱(낡은 데몬이면 느림)을 분리 — 훅 신호가 데몬에 안 막히게(#764).
-    let hookStates: Record<string, string[]> = {};
-    let heur: Record<string, boolean> = {};
-    const withinP = (p: string, cwd: string) => { const a = norm(cwd), b = norm(p); return a === b || a.startsWith(b + "/"); };
-    const recompute = () => { if (!alive) return; const next: Record<string, TabState | null> = {}; for (const p of paths) next[p] = aggregate(hookStates[p] ?? [], heur[p] ?? false); setRepoStatus(next); };
+    // 각 레포의 에이전트 상태(버퍼 스크레이핑, /api/agent/status)로 종합 도트. 프로세스명 휴리스틱은 제거(#765).
     const poll = () => {
       Promise.all(paths.map(async (p) => {
-        try { const r = await fetch(`/api/agent/status?root=${encodeURIComponent(p)}`); const j = await r.json(); return [p, j?.ok ? (j.statuses ?? []).map((s: { state: string }) => s.state) : []] as const; }
-        catch { return [p, [] as string[]] as const; }
-      })).then((entries) => { hookStates = Object.fromEntries(entries); recompute(); });
-      if (d?.terminal?.list) d.terminal.list().then((sessions) => {
-        const h: Record<string, boolean> = {};
-        for (const p of paths) h[p] = sessions.some((s) => withinP(p, s.cwd) && !!identifyAgent(s.process));
-        heur = h; recompute();
-      }).catch(() => { /* ignore */ });
+        try { const r = await fetch(`/api/agent/status?root=${encodeURIComponent(p)}`); const j = await r.json(); return [p, aggregate(j?.ok ? (j.statuses ?? []).map((s: { state: string }) => s.state) : [])] as const; }
+        catch { return [p, null] as const; }
+      })).then((entries) => { if (alive) setRepoStatus(Object.fromEntries(entries)); });
     };
     void poll();
     // SSE 푸시(#764) — 훅이 열린 레포 중 하나의 cwd 상태를 바꾸면 즉시 재조회. 폴링은 폴백 하트비트(4s).

@@ -3,16 +3,15 @@
 import { useEffect, useState } from "react";
 import { IconFiles, IconGitBranch, IconArrowUp, IconArrowDown, IconPencil, IconLoader2, IconCircleCheck, IconQuestionMark, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
-import { AgentLogo, identifyAgent, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
+import { AgentLogo, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
 
-// 레포 탭 호버 카드(#764) — 그 레포에서 도는 에이전트 + git 워크트리를 실시간으로.
-// 에이전트는 2소스 병합: 훅 상태(/api/agent/status, working/waiting/blocked/done + 도구) 우선,
-// 훅이 커버 안 하는 에이전트는 프로세스명 휴리스틱(돌아가는중/유휴)으로 폴백. UsageMonitor 팝오버 패턴.
+// 레포 탭 호버 카드(#764/#765) — 그 레포에서 도는 에이전트 상태 + git 워크트리를 실시간으로.
+// 에이전트 상태는 pty 버퍼 스크레이핑(#765)으로 판정된 것을 /api/agent/status(스토어)에서 읽는다(SSE 푸시 + 폴백 폴링).
+// (프로세스명 휴리스틱은 유휴/작업 구분을 못 해 유휴에도 스피너를 띄우던 문제로 제거 — 버퍼 스크레이핑이 정확한 소스.)
 
 interface Worktree { path: string; branch: string | null; head: string; detached: boolean; bare: boolean; locked: boolean; dirty: number; ahead: number; behind: number; subject: string; committedAt: string; }
-interface AgentRow { id: string; agent: AgentId; }
 type AgentState = "working" | "waiting" | "blocked" | "done";
-interface HookStatus { sessionId: string; agent: string; state: AgentState; tool?: string; toolInput?: string; prompt?: string; since?: number; }
+interface AgentStatus { sessionId: string; agent: string; state: AgentState; tool?: string; toolInput?: string; prompt?: string; since?: number; }
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const norm = (p: string) => p.replace(/\/+$/, "");
@@ -40,7 +39,7 @@ function stateIcon(st: AgentState) {
 }
 
 // path별 마지막 스냅샷 캐시 — 재호버 시 즉시 표시(빈 상태 깜빡임·지연 방지, #764).
-interface Snap { agents: AgentRow[]; idleTerms: number; hooks: HookStatus[]; worktrees: Worktree[] | null; }
+interface Snap { statuses: AgentStatus[]; worktrees: Worktree[] | null; }
 const snapCache = new Map<string, Snap>();
 
 export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMouseLeave }: {
@@ -52,37 +51,24 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
 }) {
   const t = useT();
   const seed = snapCache.get(path);
-  const [agents, setAgents] = useState<AgentRow[]>(seed?.agents ?? []); // 프로세스명 휴리스틱
-  const [idleTerms, setIdleTerms] = useState(seed?.idleTerms ?? 0);
-  const [hooks, setHooks] = useState<HookStatus[]>(seed?.hooks ?? []); // 훅 상세 상태
+  const [statuses, setStatuses] = useState<AgentStatus[]>(seed?.statuses ?? []); // 버퍼 스크레이핑 상태
   const [worktrees, setWorktrees] = useState<Worktree[] | null>(seed?.worktrees ?? null); // null=로딩
 
-  // 에이전트 — 터미널(휴리스틱) + 훅 상태(상세). 열린 동안 폴링(프로세스명·상태 변화 push 없음).
+  // 에이전트 상태 — /api/agent/status. SSE 푸시(즉시) + 폴백 폴링(1.5s).
   useEffect(() => {
     let alive = true;
-    const d = typeof window !== "undefined" ? window.nunopiDesktop : undefined;
     const inRepo = (cwd: string) => { const a = norm(cwd), b = norm(path); return a === b || a.startsWith(b + "/"); };
     const cacheMerge = (patch: Partial<Snap>) => {
-      const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null };
-      if (!snapCache.has(path) && snapCache.size >= 100) { const oldest = snapCache.keys().next().value; if (oldest !== undefined) snapCache.delete(oldest); } // LRU 상한(무한 증가 방지)
+      const prev = snapCache.get(path) ?? { statuses: [], worktrees: null };
+      if (!snapCache.has(path) && snapCache.size >= 100) { const oldest = snapCache.keys().next().value; if (oldest !== undefined) snapCache.delete(oldest); } // LRU 상한
       snapCache.set(path, { ...prev, ...patch });
     };
-    // 훅 상태(빠름·중요)와 터미널 휴리스틱(낡은 데몬이면 느릴 수 있음)을 분리 실행 — 서로 안 막히게(#764).
     const load = () => {
       fetch(`/api/agent/status?root=${encodeURIComponent(path)}`).then((r) => r.json()).then((j) => {
-        if (!alive) return; const hs: HookStatus[] = j?.ok ? (j.statuses ?? []) : []; setHooks(hs); cacheMerge({ hooks: hs });
+        if (!alive) return; const ss: AgentStatus[] = j?.ok ? (j.statuses ?? []) : []; setStatuses(ss); cacheMerge({ statuses: ss });
       }).catch(() => { /* ignore */ });
-      if (d?.terminal?.list) {
-        d.terminal.list().then((sessions) => {
-          if (!alive) return;
-          const ag: AgentRow[] = []; let idle = 0;
-          for (const s of sessions) { if (!inRepo(s.cwd)) continue; const a = identifyAgent(s.process); if (a) ag.push({ id: s.id, agent: a }); else idle++; }
-          setAgents(ag); setIdleTerms(idle); cacheMerge({ agents: ag, idleTerms: idle });
-        }).catch(() => { /* ignore */ });
-      }
     };
     void load();
-    // SSE 푸시(#764) — 훅이 이 레포 cwd 상태를 바꾸면 그 즉시 재조회. 폴링은 폴백 하트비트(4s).
     let es: EventSource | null = null;
     try {
       es = new EventSource("/api/agent/status/stream");
@@ -102,7 +88,7 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
         const list: Worktree[] = r.ok && d.ok ? (d.worktrees ?? []) : [];
         if (!alive) return;
         setWorktrees(list);
-        const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null };
+        const prev = snapCache.get(path) ?? { statuses: [], worktrees: null };
         snapCache.set(path, { ...prev, worktrees: list });
       } catch { if (alive) setWorktrees([]); }
     };
@@ -110,11 +96,6 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
     const off = (typeof window !== "undefined" ? window.nunopiDesktop : undefined)?.repo?.onChanged?.((p) => { if (p.id === path) void load(); });
     return () => { alive = false; off?.(); };
   }, [path]);
-
-  // 병합: 훅 상태(상세) 우선, 훅이 커버 안 하는 에이전트 타입만 휴리스틱으로 추가.
-  const covered = new Set(hooks.map((h) => h.agent));
-  const extra = agents.filter((a) => !covered.has(a.agent));
-  const hasAny = hooks.length > 0 || extra.length > 0;
 
   return (
     <div style={{ left, top }} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
@@ -126,16 +107,15 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
 
       {/* 에이전트 */}
       <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{t("workspace.agents")}</div>
-      {!hasAny ? (
-        <div className="text-[11px] text-zinc-400 dark:text-zinc-500">{idleTerms > 0 ? t("workspace.termsIdle", { n: idleTerms }) : t("workspace.noAgents")}</div>
+      {statuses.length === 0 ? (
+        <div className="text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.noAgents")}</div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {hooks.map((h, i) => {
+          {statuses.map((h, i) => {
             const id = asAgentId(h.agent);
-            // 서브라인 — 작업 중이면 현재 도구, 아니면 마지막 프롬프트("뭐 하는지").
-            const sub = h.state === "working" && h.tool ? (h.toolInput ? `${h.tool}: ${h.toolInput}` : h.tool) : (h.prompt || "");
+            const sub = h.state === "working" && h.tool ? (h.toolInput ? `${h.tool}: ${h.toolInput}` : h.tool) : "";
             return (
-              <div key={`h${i}`}>
+              <div key={`s${i}`}>
                 <div className="flex items-center gap-2 text-[12px] text-zinc-700 dark:text-zinc-200">
                   <AgentLogo agent={id} size={14} />
                   <span className="min-w-0 flex-1 truncate">{AGENT_META[id].label}</span>
@@ -147,14 +127,6 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
               </div>
             );
           })}
-          {extra.map((a) => (
-            <div key={a.id} className="flex items-center gap-2 text-[12px] text-zinc-700 dark:text-zinc-200">
-              <AgentLogo agent={a.agent} size={14} />
-              <span className="min-w-0 flex-1 truncate">{AGENT_META[a.agent].label}</span>
-              <span className="flex shrink-0 items-center gap-1 text-[10px] text-amber-500"><IconLoader2 size={12} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.agentRunning")}</span>
-            </div>
-          ))}
-          {idleTerms > 0 && <div className="text-[10px] text-zinc-400 dark:text-zinc-500">{t("workspace.termsIdle", { n: idleTerms })}</div>}
         </div>
       )}
 

@@ -71,18 +71,19 @@ const CODEX_CHROME = /openaicodex|codex(session|resume)/i;
 
 // 버퍼 → { agent, state } | null. 알려진 에이전트 TUI가 아니면 null(셸 등).
 function parseAgentScreen(buffer) {
-  const title = lastTitle(recentRaw(buffer, 8000)); // 타이틀은 넓게(자주 갱신, 최신 확보)
+  const title = lastTitle(recentRaw(buffer, 16000)); // 타이틀은 넓게(입력 에코로 밀려도 확보). 전체 200k는 perf 낭비라 16KB.
   const tc = firstCode(title.trim());
-  const compact = stripAnsi(recentRaw(buffer, 2500)).toLowerCase().replace(/\s+/g, ""); // 넓게 — chrome/작업 마커용
+  const wide = stripAnsi(recentRaw(buffer, 8000)).toLowerCase().replace(/\s+/g, "");    // 넓게 — chrome 감지(입력 에코 많아도 놓치지 않게)
+  const compact = stripAnsi(recentRaw(buffer, 2500)).toLowerCase().replace(/\s+/g, ""); // 좁게 — 작업 마커(옛 tokens stale 방지)
   // ⚠️ 권한/대기 마커는 "마지막 수평선 이후"(현재 프롬프트 박스)에서만 매칭 — 대화에 인용된 "Do you want to
   //   proceed?" 같은 문구(박스 위 스크롤)를 실제 프롬프트로 오인하지 않게(herdr 영역 스코핑).
   const bottom = afterLastRule(stripAnsi(recentRaw(buffer, 4000))).toLowerCase().replace(/\s+/g, "");
-  if (!compact && !title) return null;
+  if (!wide && !title) return null;
   const task = titleTask(title); // "지금 뭐 하는지" 서브라인(타이틀의 작업 텍스트)
 
   // ── Claude ──────────────────────────────
   const claudeTitle = isSpinnerGlyph(tc) || isClaudeIdleGlyph(tc); // claude가 세팅한 상태 글리프 타이틀
-  const isClaude = claudeTitle || CLAUDE_CHROME.test(compact) || CLAUDE_WORKING.test(compact) || CLAUDE_WAITING.test(bottom);
+  const isClaude = claudeTitle || CLAUDE_CHROME.test(wide) || CLAUDE_WORKING.test(compact) || CLAUDE_WAITING.test(bottom);
   if (isClaude) {
     if (isSpinnerGlyph(tc)) return { agent: "claude", state: "working", task };             // 스피너 타이틀 = 지금 작업 중(최우선)
     if (CLAUDE_WAITING.test(bottom)) return { agent: "claude", state: "waiting", task };     // 권한/선택/인터럽트(바닥에서만)
