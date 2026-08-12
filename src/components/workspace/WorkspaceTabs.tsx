@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconFiles, IconFolderOpen, IconPlus, IconX } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
+import RepoTabHoverCard from "@/components/workspace/RepoTabHoverCard";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const TABS_KEY = "nunopi:ws-tabs";       // 열린 워크스페이스 경로 배열(#731)
@@ -22,6 +23,19 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   // 한 번이라도 활성화된 경로 — 이 집합만 실제 마운트(keep-alive). 안 연 탭은 마운트 안 함.
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [picking, setPicking] = useState(false);
+  // 레포 탭 호버 카드(#764) — 에이전트·워크트리 실시간. 탭↔카드 사이 이동 허용 위해 지연 닫기.
+  const [hover, setHover] = useState<{ path: string; left: number; top: number } | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } };
+  const scheduleClose = () => { cancelClose(); closeTimer.current = setTimeout(() => setHover(null), 150); };
+  const openHover = (p: string, el: HTMLElement) => {
+    cancelClose();
+    const r = el.getBoundingClientRect();
+    const W = 288, M = 8; // 카드 폭(w-72) · 화면 여백
+    const left = Math.max(M, Math.min(r.left, window.innerWidth - W - M));
+    setHover({ path: p, left, top: r.bottom + 6 }); // 탭 아래로
+  };
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
   useEffect(() => {
     let ps: string[] = [];
@@ -90,6 +104,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         const on = p === activePath;
         return (
           <div key={p} onClick={() => activate(p)} title={p}
+            onMouseEnter={(e) => openHover(p, e.currentTarget)} onMouseLeave={scheduleClose}
             className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
             <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
@@ -142,6 +157,10 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
           ))
         )}
       </div>
+      {hover && (
+        <RepoTabHoverCard path={hover.path} left={hover.left} top={hover.top}
+          onMouseEnter={cancelClose} onMouseLeave={scheduleClose} />
+      )}
     </div>
   );
 }
