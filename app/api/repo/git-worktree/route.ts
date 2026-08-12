@@ -17,11 +17,14 @@ export interface WorktreeInfo {
   dirty: number; // 커밋 전 변경 파일 수(0=clean)
   ahead: number; // 업스트림 대비 앞선 커밋 수
   behind: number; // 업스트림 대비 뒤진 커밋 수
+  subject: string; // 최신 커밋 메시지 제목(무슨 작업 중인지, #764)
+  committedAt: string; // 최신 커밋 시각 ISO(상대시각 표시용)
 }
 
 // --porcelain 블록(빈 줄 구분): "worktree <path>" / "HEAD <sha>" / "branch <ref>" | "detached" / "bare" / "locked [reason]".
-function parsePorcelain(out: string): Omit<WorktreeInfo, "dirty" | "ahead" | "behind">[] {
-  const list: Omit<WorktreeInfo, "dirty" | "ahead" | "behind">[] = [];
+type WorktreeBase = Omit<WorktreeInfo, "dirty" | "ahead" | "behind" | "subject" | "committedAt">;
+function parsePorcelain(out: string): WorktreeBase[] {
+  const list: WorktreeBase[] = [];
   let cur: Partial<WorktreeInfo> | null = null;
   const flush = () => {
     if (cur?.path) list.push({ path: cur.path, branch: cur.branch ?? null, head: cur.head ?? "", detached: !!cur.detached, bare: !!cur.bare, locked: !!cur.locked });
@@ -52,7 +55,7 @@ export async function POST(request: Request): Promise<Response> {
     const base = parsePorcelain(stdout);
     // 워크트리별 dirty·ahead/behind는 각 트리 cwd에서 조회(실패는 0으로 관대 처리).
     const worktrees: WorktreeInfo[] = await Promise.all(base.map(async (w) => {
-      let dirty = 0, ahead = 0, behind = 0;
+      let dirty = 0, ahead = 0, behind = 0, subject = "", committedAt = "";
       if (!w.bare && existsSync(w.path)) {
         const o = { cwd: w.path, maxBuffer: 10_000_000, timeout: 8000 } as const;
         try { const s = (await pexecFile("git", ["status", "--porcelain", "-uall"], o)).stdout.trim(); dirty = s ? s.split("\n").length : 0; } catch { /* ignore */ }
@@ -61,8 +64,13 @@ export async function POST(request: Request): Promise<Response> {
           const lr = (await pexecFile("git", ["rev-list", "--left-right", "--count", "@{u}...HEAD"], o)).stdout.trim().split(/\s+/);
           behind = Number(lr[0]) || 0; ahead = Number(lr[1]) || 0;
         } catch { /* 업스트림 없음 */ }
+        try {
+          // 최신 커밋 제목 + 시각(한 번에). %s=제목, %cI=커밋 ISO 시각.
+          const [s, c] = (await pexecFile("git", ["log", "-1", "--format=%s%n%cI"], o)).stdout.split("\n");
+          subject = (s ?? "").slice(0, 140); committedAt = (c ?? "").trim();
+        } catch { /* 커밋 없음 */ }
       }
-      return { ...w, dirty, ahead, behind };
+      return { ...w, dirty, ahead, behind, subject, committedAt };
     }));
     return Response.json({ ok: true, isGit: true, worktrees });
   } catch {

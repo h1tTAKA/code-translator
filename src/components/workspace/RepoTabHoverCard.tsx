@@ -9,13 +9,23 @@ import { AgentLogo, identifyAgent, AGENT_META, type AgentId } from "@/components
 // 에이전트는 2소스 병합: 훅 상태(/api/agent/status, working/waiting/blocked/done + 도구) 우선,
 // 훅이 커버 안 하는 에이전트는 프로세스명 휴리스틱(돌아가는중/유휴)으로 폴백. UsageMonitor 팝오버 패턴.
 
-interface Worktree { path: string; branch: string | null; head: string; detached: boolean; bare: boolean; locked: boolean; dirty: number; ahead: number; behind: number; }
+interface Worktree { path: string; branch: string | null; head: string; detached: boolean; bare: boolean; locked: boolean; dirty: number; ahead: number; behind: number; subject: string; committedAt: string; }
 interface AgentRow { id: string; agent: AgentId; }
 type AgentState = "working" | "waiting" | "blocked" | "done";
-interface HookStatus { sessionId: string; agent: string; state: AgentState; tool?: string; toolInput?: string; since?: number; }
+interface HookStatus { sessionId: string; agent: string; state: AgentState; tool?: string; toolInput?: string; prompt?: string; since?: number; }
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const norm = (p: string) => p.replace(/\/+$/, "");
+// 상대시각(간결) — "3s"/"5m"/"2h"/"4d". committedAt ISO 기준.
+function rel(iso: string): string {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return "";
+  const s = Math.max(0, (Date.now() - then) / 1000);
+  if (s < 60) return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
 const asAgentId = (s: string): AgentId => (Object.prototype.hasOwnProperty.call(AGENT_META, s) ? (s as AgentId) : "other");
 
 const STATE_KEY: Record<AgentState, string> = { working: "workspace.agentWorking", waiting: "workspace.agentWaiting", blocked: "workspace.agentBlocked", done: "workspace.agentDone" };
@@ -116,6 +126,8 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
         <div className="flex flex-col gap-1.5">
           {hooks.map((h, i) => {
             const id = asAgentId(h.agent);
+            // 서브라인 — 작업 중이면 현재 도구, 아니면 마지막 프롬프트("뭐 하는지").
+            const sub = h.state === "working" && h.tool ? (h.toolInput ? `${h.tool}: ${h.toolInput}` : h.tool) : (h.prompt || "");
             return (
               <div key={`h${i}`}>
                 <div className="flex items-center gap-2 text-[12px] text-zinc-700 dark:text-zinc-200">
@@ -125,9 +137,7 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
                     <span className={`h-1.5 w-1.5 rounded-full ${STATE_DOT[h.state]}`} />{t(STATE_KEY[h.state])}
                   </span>
                 </div>
-                {h.state === "working" && h.tool && (
-                  <div className="ml-6 truncate text-[10px] text-zinc-400 dark:text-zinc-500" title={h.toolInput ? `${h.tool}: ${h.toolInput}` : h.tool}>{h.tool}{h.toolInput ? `: ${h.toolInput}` : ""}</div>
-                )}
+                {sub && <div className="ml-6 truncate text-[10px] text-zinc-400 dark:text-zinc-500" title={sub}>{sub}</div>}
               </div>
             );
           })}
@@ -149,16 +159,27 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
       ) : worktrees.length === 0 ? (
         <div className="text-[11px] text-zinc-400 dark:text-zinc-500">{t("workspace.noWorktrees")}</div>
       ) : (
-        <div className="flex flex-col gap-1">
-          {worktrees.map((w) => (
-            <div key={w.path} className="flex items-center gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-300">
-              <IconGitBranch size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
-              <span className="min-w-0 flex-1 truncate" title={w.path}>{w.detached ? `${w.head} (detached)` : (w.branch ?? basename(w.path))}</span>
-              {w.ahead > 0 && <span className="flex shrink-0 items-center text-emerald-500"><IconArrowUp size={11} stroke={2.5} aria-hidden />{w.ahead}</span>}
-              {w.behind > 0 && <span className="flex shrink-0 items-center text-amber-500"><IconArrowDown size={11} stroke={2.5} aria-hidden />{w.behind}</span>}
-              {w.dirty > 0 && <span className="flex shrink-0 items-center gap-0.5 text-zinc-400" title={t("workspace.dirtyFiles", { n: w.dirty })}><IconPencil size={10} stroke={2} aria-hidden />{w.dirty}</span>}
-            </div>
-          ))}
+        <div className="flex flex-col gap-1.5">
+          {worktrees.map((w) => {
+            const age = rel(w.committedAt);
+            return (
+              <div key={w.path}>
+                <div className="flex items-center gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-300">
+                  <IconGitBranch size={12} stroke={2} className="shrink-0 text-zinc-400" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate" title={w.path}>{w.detached ? `${w.head} (detached)` : (w.branch ?? basename(w.path))}</span>
+                  {w.ahead > 0 && <span className="flex shrink-0 items-center text-emerald-500"><IconArrowUp size={11} stroke={2.5} aria-hidden />{w.ahead}</span>}
+                  {w.behind > 0 && <span className="flex shrink-0 items-center text-amber-500"><IconArrowDown size={11} stroke={2.5} aria-hidden />{w.behind}</span>}
+                  {w.dirty > 0 && <span className="flex shrink-0 items-center gap-0.5 text-zinc-400" title={t("workspace.dirtyFiles", { n: w.dirty })}><IconPencil size={10} stroke={2} aria-hidden />{w.dirty}</span>}
+                </div>
+                {w.subject && (
+                  <div className="ml-[18px] flex items-center gap-1 text-[10px] text-zinc-400 dark:text-zinc-500">
+                    <span className="min-w-0 truncate" title={w.subject}>{w.subject}</span>
+                    {age && <span className="shrink-0 tabular-nums text-zinc-300 dark:text-zinc-600">· {age}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
