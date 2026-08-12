@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2 } from "@tabler/icons-react";
+import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
 import RepoTabHoverCard from "@/components/workspace/RepoTabHoverCard";
@@ -24,13 +24,13 @@ function aggregate(states: string[], heuristicAgent: boolean): TabState | null {
   if (states.includes("done")) return "done";
   return heuristicAgent ? "running" : null;
 }
+// 탭 상태 아이콘 — 호버 카드와 통일. 작업중·실행중=앰버 스피너, 대기(yes/no)=앰버 물음표, 막힘=빨간 경고, 완료=초록 체크.
 function tabDot(st: TabState | null) {
   if (!st) return null;
   if (st === "done") return <IconCircleCheck size={13} stroke={2} className="shrink-0 text-emerald-500" aria-hidden />;
-  // 작업중·실행중 = 앰버 스피너(Orca式). 대기=앰버 점, 막힘=빨간 점(정지 도트라 스피너와 구분).
   if (st === "working" || st === "running") return <IconLoader2 size={13} stroke={2.5} className="shrink-0 animate-spin text-amber-500" aria-hidden />;
-  const cls = st === "blocked" ? "bg-rose-500" : "bg-amber-500"; // waiting
-  return <span className={`h-2 w-2 shrink-0 rounded-full ${cls}`} aria-hidden />;
+  if (st === "waiting") return <IconQuestionMark size={13} stroke={2.5} className="shrink-0 text-amber-500" aria-hidden />;
+  return <IconAlertTriangle size={13} stroke={2.5} className="shrink-0 text-rose-500" aria-hidden />; // blocked
 }
 
 // 멀티 워크스페이스 탭(#731) — 여러 레포를 탭으로 열고 전환. 각 탭 = WorkspaceView 인스턴스(key=path).
@@ -77,7 +77,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
       if (alive) setRepoStatus(next);
     };
     void poll();
-    const iv = setInterval(poll, 2500);
+    const iv = setInterval(poll, 1200); // 반응성 위해 촘촘히(#764)
     return () => { alive = false; clearInterval(iv); };
   }, [mounted, active, paths]);
 

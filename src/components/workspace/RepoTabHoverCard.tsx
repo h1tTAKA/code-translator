@@ -89,7 +89,7 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
       snapCache.set(path, { agents: nextAgents ?? prev.agents, idleTerms: nextAgents ? nextIdle : prev.idleTerms, hooks: nextHooks ?? prev.hooks, worktrees: prev.worktrees });
     };
     void load();
-    const iv = setInterval(load, 1500);
+    const iv = setInterval(load, 800); // 반응성 위해 촘촘히(#764)
     return () => { alive = false; clearInterval(iv); };
   }, [path]);
 
