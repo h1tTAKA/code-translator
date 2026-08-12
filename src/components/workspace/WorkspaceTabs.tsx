@@ -158,7 +158,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         )}
       </div>
       {hover && (
-        <RepoTabHoverCard path={hover.path} left={hover.left} top={hover.top}
+        <RepoTabHoverCard key={hover.path} path={hover.path} left={hover.left} top={hover.top}
           onMouseEnter={cancelClose} onMouseLeave={scheduleClose} />
       )}
     </div>

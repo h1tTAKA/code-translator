@@ -22,6 +22,10 @@ const STATE_KEY: Record<AgentState, string> = { working: "workspace.agentWorking
 const STATE_DOT: Record<AgentState, string> = { working: "bg-emerald-500 animate-pulse", waiting: "bg-amber-500", blocked: "bg-rose-500", done: "bg-zinc-400" };
 const STATE_TEXT: Record<AgentState, string> = { working: "text-emerald-500", waiting: "text-amber-500", blocked: "text-rose-500", done: "text-zinc-400 dark:text-zinc-500" };
 
+// path별 마지막 스냅샷 캐시 — 재호버 시 즉시 표시(빈 상태 깜빡임·지연 방지, #764).
+interface Snap { agents: AgentRow[]; idleTerms: number; hooks: HookStatus[]; worktrees: Worktree[] | null; }
+const snapCache = new Map<string, Snap>();
+
 export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMouseLeave }: {
   path: string;
   left: number;
@@ -30,10 +34,11 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
   onMouseLeave: () => void;
 }) {
   const t = useT();
-  const [agents, setAgents] = useState<AgentRow[]>([]); // 프로세스명 휴리스틱
-  const [idleTerms, setIdleTerms] = useState(0);
-  const [hooks, setHooks] = useState<HookStatus[]>([]); // 훅 상세 상태
-  const [worktrees, setWorktrees] = useState<Worktree[] | null>(null); // null=로딩
+  const seed = snapCache.get(path);
+  const [agents, setAgents] = useState<AgentRow[]>(seed?.agents ?? []); // 프로세스명 휴리스틱
+  const [idleTerms, setIdleTerms] = useState(seed?.idleTerms ?? 0);
+  const [hooks, setHooks] = useState<HookStatus[]>(seed?.hooks ?? []); // 훅 상세 상태
+  const [worktrees, setWorktrees] = useState<Worktree[] | null>(seed?.worktrees ?? null); // null=로딩
 
   // 에이전트 — 터미널(휴리스틱) + 훅 상태(상세). 열린 동안 폴링(프로세스명·상태 변화 push 없음).
   useEffect(() => {
@@ -41,26 +46,30 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
     const d = typeof window !== "undefined" ? window.nunopiDesktop : undefined;
     const inRepo = (cwd: string) => { const a = norm(cwd), b = norm(path); return a === b || a.startsWith(b + "/"); };
     const load = async () => {
+      let nextAgents: AgentRow[] | null = null, nextIdle = 0, nextHooks: HookStatus[] | null = null;
       if (d?.terminal?.list) {
         try {
           const sessions = await d.terminal.list();
-          if (alive) {
-            const ag: AgentRow[] = [];
-            let idle = 0;
-            for (const s of sessions) {
-              if (!inRepo(s.cwd)) continue;
-              const a = identifyAgent(s.process);
-              if (a) ag.push({ id: s.id, agent: a }); else idle++;
-            }
-            setAgents(ag); setIdleTerms(idle);
+          const ag: AgentRow[] = [];
+          let idle = 0;
+          for (const s of sessions) {
+            if (!inRepo(s.cwd)) continue;
+            const a = identifyAgent(s.process);
+            if (a) ag.push({ id: s.id, agent: a }); else idle++;
           }
+          nextAgents = ag; nextIdle = idle;
         } catch { /* ignore */ }
       }
       try {
         const r = await fetch(`/api/agent/status?root=${encodeURIComponent(path)}`);
         const j = await r.json();
-        if (alive) setHooks(r.ok && j.ok ? (j.statuses ?? []) : []);
+        nextHooks = r.ok && j.ok ? (j.statuses ?? []) : [];
       } catch { /* ignore */ }
+      if (!alive) return;
+      if (nextAgents) { setAgents(nextAgents); setIdleTerms(nextIdle); }
+      if (nextHooks) setHooks(nextHooks);
+      const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null };
+      snapCache.set(path, { agents: nextAgents ?? prev.agents, idleTerms: nextAgents ? nextIdle : prev.idleTerms, hooks: nextHooks ?? prev.hooks, worktrees: prev.worktrees });
     };
     void load();
     const iv = setInterval(load, 1500);
@@ -74,7 +83,11 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
       try {
         const r = await fetch("/api/repo/git-worktree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
         const d = await r.json();
-        if (alive) setWorktrees(r.ok && d.ok ? (d.worktrees ?? []) : []);
+        const list: Worktree[] = r.ok && d.ok ? (d.worktrees ?? []) : [];
+        if (!alive) return;
+        setWorktrees(list);
+        const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null };
+        snapCache.set(path, { ...prev, worktrees: list });
       } catch { if (alive) setWorktrees([]); }
     };
     void load();
