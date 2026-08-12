@@ -294,6 +294,7 @@ ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
 ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
 ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; }); // 탭 닫기 시 데몬 pty·저장분 정리
+ipcMain.handle("terminal:list", () => termClient.list()); // 세션 목록(#764) — 레포탭 호버 카드용
 
 // 단일 인스턴스.
 if (!app.requestSingleInstanceLock()) {

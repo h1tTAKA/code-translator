@@ -2,7 +2,7 @@
 // electron이 fork(detached,unref)로 스폰, 유닉스 소켓(토큰 인증)으로 통신. 재실행 시 재접속해 live reattach.
 // 프로토콜: 개행 구분 JSON. 클라 → { t, ... }, 데몬 → { t, ... }.
 //   attach(id?) 인증 → ok. ensure{id,cwd,cols,rows} → ensured{id,ok,buffer}. input{id,data} / resize{id,cols,rows} / kill{id}.
-//   데몬 push: data{id,data} / exit{id}.
+//   list → listed{sessions:[{id,cwd,process,pid}]}(#764). 데몬 push: data{id,data} / exit{id}.
 const net = require("node:net");
 const fs = require("node:fs");
 
@@ -77,6 +77,15 @@ const server = net.createServer((sock) => {
       else if (m.t === "input") { const s = ptys.get(m.id); if (s) { try { s.proc.write(m.data); } catch { /* ignore */ } } }
       else if (m.t === "resize") { const s = ptys.get(m.id); if (s && m.cols > 0 && m.rows > 0) { try { s.proc.resize(m.cols, m.rows); } catch { /* ignore */ } } }
       else if (m.t === "kill") { const s = ptys.get(m.id); if (s) { try { s.proc.kill(); } catch { /* ignore */ } ptys.delete(m.id); } scheduleIdleReap(); }
+      else if (m.t === "list") { // 세션 목록(#764) — 레포탭 호버 카드용. cwd·foreground 프로세스명·pid.
+        const sessions = [];
+        for (const [id, s] of ptys) {
+          let procName = "";
+          try { procName = s.proc.process || ""; } catch { /* node-pty getter 실패 관대 */ }
+          sessions.push({ id, cwd: s.cwd, process: procName, pid: s.proc.pid });
+        }
+        send(sock, { t: "listed", sessions });
+      }
     }
   });
   sock.on("close", () => { clearTimeout(authTimer); clients.delete(sock); scheduleIdleReap(); });
