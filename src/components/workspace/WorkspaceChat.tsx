@@ -182,10 +182,11 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
   // 이 세션에서 추가된 카드(#750) — 전역 카드 풀에서 workspace + 현재 세션 것만. 최신순.
   const reloadCards = useCallback(() => {
     const all = collectCards(["token", "concept", "term"], new Date());
-    const mine = all.filter((c) => c.sourceKind === "workspace" && c.sourceSessionId === activeKey);
+    // 레포별 격리(#762) — 세션 키("repo"/"file:…")는 레포 간 겹치므로 root까지 일치해야 이 레포 카드.
+    const mine = all.filter((c) => c.sourceKind === "workspace" && c.sourceRoot === root && c.sourceSessionId === activeKey);
     mine.sort((a, b) => (b.bookmarkedAt ?? "").localeCompare(a.bookmarkedAt ?? ""));
     setSessionCards(mine);
-  }, [activeKey]);
+  }, [activeKey, root]);
   // 세션 전환/카드 생성(CARDS_CHANGED_EVENT) 시 재수집.
   useEffect(() => {
     reloadCards();
@@ -522,7 +523,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
       // 출처 = 세션 무관 레포 이름으로 통일: 워크스페이스 "<레포>" 레포지트리.
       const repoName = root.split("/").filter(Boolean).pop() ?? root;
       // 이 챗 세션에 태깅(#750) — 세션별 "추가된 카드" 목록 필터 기준.
-      const ok = createChatCard(c.kind ?? "term", c.term, c.definition, t("card.workspaceSource", { repo: repoName }), undefined, { kind: "workspace", sessionId: key, subId });
+      const ok = createChatCard(c.kind ?? "term", c.term, c.definition, t("card.workspaceSource", { repo: repoName }), undefined, { kind: "workspace", sessionId: key, subId, root });
       toast(ok ? t("card.added", { term: c.term }) : t("card.exists"));
       editMessage(key, subId, msgIndex, (content) => removeSuggestedCard(content, c.term));
     } else if (action.dismiss) {

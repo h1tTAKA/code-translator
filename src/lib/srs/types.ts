@@ -38,6 +38,7 @@ export interface Card {
   sourceSessionId?: string; // analysis 출처의 챗 세션 id / ask 질문 세션 id
   originCardKey?: string; // card 출처(챗에서 생성)의 생성처 카드 key
   sourceSubId?: string; // ask 출처의 질문(서브세션) id
+  sourceRoot?: string; // workspace 출처의 레포 절대경로 — 세션 카드 목록 레포별 격리용(#762)
   state: SrsState;
 }
 
