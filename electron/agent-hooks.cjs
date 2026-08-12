@@ -50,17 +50,13 @@ function hookCommand(userData, event) {
   return `node ${JSON.stringify(helperPath(userData))} ${event}`;
 }
 
-// event → settings 엔트리. tool 이벤트는 matcher(""=전체) 포함, 나머지는 matcher 없음.
+// event → settings 엔트리. matcher는 전부 생략 — 생략 시 전체 매칭이라 tool 이벤트도 모든 도구에 적용(빈 문자열 matcher는 스키마 불확실해 회피).
 function buildBlock(userData) {
-  const entry = (event, matcher) => {
-    const h = { hooks: [{ type: "command", command: hookCommand(userData, event) }] };
-    if (matcher !== undefined) h.matcher = matcher;
-    return h;
-  };
+  const entry = (event) => ({ hooks: [{ type: "command", command: hookCommand(userData, event) }] });
   return {
     UserPromptSubmit: [entry("UserPromptSubmit")],
-    PreToolUse: [entry("PreToolUse", "")],
-    PostToolUse: [entry("PostToolUse", "")],
+    PreToolUse: [entry("PreToolUse")],
+    PostToolUse: [entry("PostToolUse")],
     Notification: [entry("Notification")],
     Stop: [entry("Stop")],
   };

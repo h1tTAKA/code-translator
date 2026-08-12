@@ -62,7 +62,11 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
     let alive = true;
     const d = typeof window !== "undefined" ? window.nunopiDesktop : undefined;
     const inRepo = (cwd: string) => { const a = norm(cwd), b = norm(path); return a === b || a.startsWith(b + "/"); };
-    const cacheMerge = (patch: Partial<Snap>) => { const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null }; snapCache.set(path, { ...prev, ...patch }); };
+    const cacheMerge = (patch: Partial<Snap>) => {
+      const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null };
+      if (!snapCache.has(path) && snapCache.size >= 100) { const oldest = snapCache.keys().next().value; if (oldest !== undefined) snapCache.delete(oldest); } // LRU 상한(무한 증가 방지)
+      snapCache.set(path, { ...prev, ...patch });
+    };
     // 훅 상태(빠름·중요)와 터미널 휴리스틱(낡은 데몬이면 느릴 수 있음)을 분리 실행 — 서로 안 막히게(#764).
     const load = () => {
       fetch(`/api/agent/status?root=${encodeURIComponent(path)}`).then((r) => r.json()).then((j) => {

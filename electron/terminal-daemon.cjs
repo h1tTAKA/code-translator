@@ -80,9 +80,10 @@ const server = net.createServer((sock) => {
       else if (m.t === "list") { // 세션 목록(#764) — 레포탭 호버 카드용. cwd·foreground 프로세스명·pid.
         const sessions = [];
         for (const [id, s] of ptys) {
-          let procName = "";
+          let procName = "", pid = 0;
           try { procName = s.proc.process || ""; } catch { /* node-pty getter 실패 관대 */ }
-          sessions.push({ id, cwd: s.cwd, process: procName, pid: s.proc.pid });
+          try { pid = s.proc.pid || 0; } catch { /* pid getter도 관대 — 하나 throw로 list 통째 실패 방지 */ }
+          sessions.push({ id, cwd: s.cwd, process: procName, pid });
         }
         send(sock, { t: "listed", sessions });
       }
