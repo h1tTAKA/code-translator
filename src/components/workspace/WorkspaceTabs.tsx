@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconFiles, IconFolderOpen, IconPlus, IconX } from "@tabler/icons-react";
+import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
 import RepoTabHoverCard from "@/components/workspace/RepoTabHoverCard";
+import { identifyAgent } from "@/components/workspace/AgentLogo";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
 const TABS_KEY = "nunopi:ws-tabs";       // 열린 워크스페이스 경로 배열(#731)
@@ -12,6 +13,23 @@ const ACTIVE_KEY = "nunopi:ws-active";   // 활성 경로
 const OLD_PATH_KEY = "nunopi:workspace-path"; // 구 단일 워크스페이스 경로 — 최초 1회 마이그레이션
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
+const norm = (p: string) => p.replace(/\/+$/, "");
+
+// 탭 상태 도트(#764) — 레포에서 도는 에이전트의 종합 상태. 우선순위: 막힘>대기>작업중>완료>실행(휴리스틱).
+type TabState = "working" | "waiting" | "blocked" | "done" | "running";
+function aggregate(states: string[], heuristicAgent: boolean): TabState | null {
+  if (states.includes("blocked")) return "blocked";
+  if (states.includes("waiting")) return "waiting";
+  if (states.includes("working")) return "working";
+  if (states.includes("done")) return "done";
+  return heuristicAgent ? "running" : null;
+}
+function tabDot(st: TabState | null) {
+  if (!st) return null;
+  if (st === "done") return <IconCircleCheck size={13} stroke={2} className="shrink-0 text-emerald-500" aria-hidden />;
+  const cls = st === "waiting" ? "bg-amber-500" : st === "blocked" ? "bg-rose-500" : "bg-emerald-500 animate-pulse"; // working·running=초록 맥박
+  return <span className={`h-2 w-2 shrink-0 rounded-full ${cls}`} aria-hidden />;
+}
 
 // 멀티 워크스페이스 탭(#731) — 여러 레포를 탭으로 열고 전환. 각 탭 = WorkspaceView 인스턴스(key=path).
 // 방문한 탭은 숨긴 채 계속 마운트(lazy keep-alive) — 전환해도 도킹/에디터/터미널 상태 보존.
@@ -36,6 +54,30 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     setHover({ path: p, left, top: r.bottom + 6 }); // 탭 아래로
   };
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  // 탭별 종합 상태(#764) — 호버 없이도 돌아가는중/완료/대기를 도트로. 워크스페이스 활성 동안 폴링.
+  const [repoStatus, setRepoStatus] = useState<Record<string, TabState | null>>({});
+  useEffect(() => {
+    if (!mounted || !active || paths.length === 0) return;
+    let alive = true;
+    const d = window.nunopiDesktop;
+    const poll = async () => {
+      let sessions: { cwd: string; process: string }[] = [];
+      if (d?.terminal?.list) { try { sessions = await d.terminal.list(); } catch { /* ignore */ } }
+      const next: Record<string, TabState | null> = {};
+      await Promise.all(paths.map(async (p) => {
+        const nb = norm(p);
+        const inRepo = (cwd: string) => { const a = norm(cwd); return a === nb || a.startsWith(nb + "/"); };
+        let states: string[] = [];
+        try { const r = await fetch(`/api/agent/status?root=${encodeURIComponent(p)}`); const j = await r.json(); if (r.ok && j.ok) states = (j.statuses ?? []).map((s: { state: string }) => s.state); } catch { /* ignore */ }
+        const heur = sessions.some((s) => inRepo(s.cwd) && identifyAgent(s.process));
+        next[p] = aggregate(states, heur);
+      }));
+      if (alive) setRepoStatus(next);
+    };
+    void poll();
+    const iv = setInterval(poll, 2500);
+    return () => { alive = false; clearInterval(iv); };
+  }, [mounted, active, paths]);
 
   useEffect(() => {
     let ps: string[] = [];
@@ -106,6 +148,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
           <div key={p} onClick={() => activate(p)} title={p}
             onMouseEnter={(e) => openHover(p, e.currentTarget)} onMouseLeave={scheduleClose}
             className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
+            {tabDot(repoStatus[p] ?? null)}
             <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{basename(p)}</span>
             <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(p); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
