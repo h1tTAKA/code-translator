@@ -89,8 +89,14 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
       snapCache.set(path, { agents: nextAgents ?? prev.agents, idleTerms: nextAgents ? nextIdle : prev.idleTerms, hooks: nextHooks ?? prev.hooks, worktrees: prev.worktrees });
     };
     void load();
-    const iv = setInterval(load, 800); // 반응성 위해 촘촘히(#764)
-    return () => { alive = false; clearInterval(iv); };
+    // SSE 푸시(#764) — 훅이 이 레포 cwd 상태를 바꾸면 그 즉시 재조회. 폴링은 폴백 하트비트(4s).
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/agent/status/stream");
+      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (typeof d?.cwd === "string" && inRepo(d.cwd)) void load(); } catch { /* ignore */ } };
+    } catch { /* EventSource 미지원 → 폴링만 */ }
+    const iv = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(iv); es?.close(); };
   }, [path]);
 
   // 워크트리 — 열 때 + 레포 파일 변경(#739) 시 재조회.

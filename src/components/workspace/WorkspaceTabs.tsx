@@ -77,8 +77,15 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
       if (alive) setRepoStatus(next);
     };
     void poll();
-    const iv = setInterval(poll, 1200); // 반응성 위해 촘촘히(#764)
-    return () => { alive = false; clearInterval(iv); };
+    // SSE 푸시(#764) — 훅이 열린 레포 중 하나의 cwd 상태를 바꾸면 즉시 재조회. 폴링은 폴백 하트비트(4s).
+    const within = (cwd: string) => { const a = norm(cwd); return paths.some((p) => { const b = norm(p); return a === b || a.startsWith(b + "/"); }); };
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/agent/status/stream");
+      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (typeof d?.cwd === "string" && within(d.cwd)) void poll(); } catch { /* ignore */ } };
+    } catch { /* EventSource 미지원 → 폴링만 */ }
+    const iv = setInterval(poll, 4000);
+    return () => { alive = false; clearInterval(iv); es?.close(); };
   }, [mounted, active, paths]);
 
   useEffect(() => {
