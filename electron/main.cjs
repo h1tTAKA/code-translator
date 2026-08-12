@@ -291,10 +291,11 @@ async function pushScreenState(id) {
   const state = mapScreenState(parsed.state);
   const prev = lastScreen.get(id);
   const now = Date.now();
-  const changed = !prev || prev.state !== state || prev.agent !== parsed.agent || prev.task !== parsed.task;
-  if (!changed && prev && now - prev.at < 30000) return; // 상태·작업 동일하면 30s마다만 재POST(TTL 유지, 과POST 억제)
-  lastScreen.set(id, { state, agent: parsed.agent, task: parsed.task, at: now });
-  await postStatus({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen", prompt: parsed.task || undefined }); // task=Orca式 활동 서브라인
+  const changed = !prev || prev.state !== state || prev.agent !== parsed.agent;
+  if (!changed && prev && now - prev.at < 30000) return; // 같은 상태면 30s마다만 재POST(TTL 유지, 과POST 억제)
+  lastScreen.set(id, { state, agent: parsed.agent, at: now });
+  // 서브라인은 안 붙인다 — OSC 타이틀은 세션 이름(첫 프롬프트 요약)이지 현재 활동이 아니라 오해 소지. 활동은 워크트리 커밋라인이 담당.
+  await postStatus({ cwd, agent: parsed.agent, state, sessionId: id, source: "screen" });
 }
 function scheduleScreenParse(id) {
   if (screenTimers.has(id)) return; // 코얼레스(버스트 억제)
