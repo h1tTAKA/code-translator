@@ -34,9 +34,12 @@ export async function POST(request: Request): Promise<Response> {
   try { body = await request.json(); } catch { return Response.json({ error: "invalid body" }, { status: 400 }); }
   const cwd = typeof body.cwd === "string" ? normPath(body.cwd) : "";
   const event = typeof body.event === "string" ? body.event : "";
-  if (!cwd || !event) return Response.json({ error: "cwd and event required" }, { status: 400 });
+  // 소스 2가지: 훅(event→deriveState) 또는 버퍼 스크레이핑(explicit state, #765). 하나는 있어야 함.
+  const VALID: AgentState[] = ["working", "waiting", "blocked", "done"];
+  const explicit = typeof body.state === "string" && (VALID as string[]).includes(body.state) ? (body.state as AgentState) : null;
+  if (!cwd || (!event && !explicit)) return Response.json({ error: "cwd and (event or state) required" }, { status: 400 });
   const now = Date.now();
-  const state = deriveState(event);
+  const state = explicit ?? deriveState(event);
   if (state === null) { prune(now); return Response.json({ ok: true, ignored: event }); }
   upsert({
     cwd,
