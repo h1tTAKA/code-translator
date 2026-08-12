@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck } from "@tabler/icons-react";
+import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
 import RepoTabHoverCard from "@/components/workspace/RepoTabHoverCard";
@@ -27,7 +27,9 @@ function aggregate(states: string[], heuristicAgent: boolean): TabState | null {
 function tabDot(st: TabState | null) {
   if (!st) return null;
   if (st === "done") return <IconCircleCheck size={13} stroke={2} className="shrink-0 text-emerald-500" aria-hidden />;
-  const cls = st === "waiting" ? "bg-amber-500" : st === "blocked" ? "bg-rose-500" : "bg-emerald-500 animate-pulse"; // working·running=초록 맥박
+  // 작업중·실행중 = 앰버 스피너(Orca式). 대기=앰버 점, 막힘=빨간 점(정지 도트라 스피너와 구분).
+  if (st === "working" || st === "running") return <IconLoader2 size={13} stroke={2.5} className="shrink-0 animate-spin text-amber-500" aria-hidden />;
+  const cls = st === "blocked" ? "bg-rose-500" : "bg-amber-500"; // waiting
   return <span className={`h-2 w-2 shrink-0 rounded-full ${cls}`} aria-hidden />;
 }
 
