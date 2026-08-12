@@ -11,6 +11,7 @@ export interface SourceExtra {
   sessionId?: string; // analysis: 그 분석의 챗 세션 id / ask: 질문 세션 id
   originCardKey?: string; // card: 생성처(그 챗룸을 연) 카드 key
   subId?: string; // ask: 카드가 생성된 질문(서브세션) id
+  root?: string; // workspace: 카드를 만든 레포 절대경로 — 세션 카드 목록 레포별 격리용(#762)
 }
 
 // 북마크 detail 공통 출처 필드(전부 옵셔널 — 기존 데이터 하위호환).
@@ -21,6 +22,7 @@ interface SourceFields {
   sourceSessionId?: string; // analysis 출처의 챗 세션 id / ask 질문 세션 id
   originCardKey?: string; // card 출처의 생성처 카드 key
   sourceSubId?: string; // ask 출처의 질문(서브세션) id
+  sourceRoot?: string; // workspace 출처의 레포 절대경로 — 세션 카드 목록 레포별 격리용(#762)
 }
 
 export interface BookmarkedTokenDetail extends CodeToken, SourceFields {
@@ -46,6 +48,7 @@ function sourceFields(sourceTitle?: string, sourceId?: string, extra?: SourceExt
     sourceSessionId: extra?.sessionId,
     originCardKey: extra?.originCardKey,
     sourceSubId: extra?.subId,
+    sourceRoot: extra?.root,
   };
 }
 
