@@ -62,19 +62,21 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     if (!mounted || !active || paths.length === 0) return;
     let alive = true;
     const d = window.nunopiDesktop;
-    const poll = async () => {
-      let sessions: { cwd: string; process: string }[] = [];
-      if (d?.terminal?.list) { try { sessions = await d.terminal.list(); } catch { /* ignore */ } }
-      const next: Record<string, TabState | null> = {};
-      await Promise.all(paths.map(async (p) => {
-        const nb = norm(p);
-        const inRepo = (cwd: string) => { const a = norm(cwd); return a === nb || a.startsWith(nb + "/"); };
-        let states: string[] = [];
-        try { const r = await fetch(`/api/agent/status?root=${encodeURIComponent(p)}`); const j = await r.json(); if (r.ok && j.ok) states = (j.statuses ?? []).map((s: { state: string }) => s.state); } catch { /* ignore */ }
-        const heur = sessions.some((s) => inRepo(s.cwd) && identifyAgent(s.process));
-        next[p] = aggregate(states, heur);
-      }));
-      if (alive) setRepoStatus(next);
+    // 훅 상태(빠름)와 terminal.list 휴리스틱(낡은 데몬이면 느림)을 분리 — 훅 신호가 데몬에 안 막히게(#764).
+    let hookStates: Record<string, string[]> = {};
+    let heur: Record<string, boolean> = {};
+    const withinP = (p: string, cwd: string) => { const a = norm(cwd), b = norm(p); return a === b || a.startsWith(b + "/"); };
+    const recompute = () => { if (!alive) return; const next: Record<string, TabState | null> = {}; for (const p of paths) next[p] = aggregate(hookStates[p] ?? [], heur[p] ?? false); setRepoStatus(next); };
+    const poll = () => {
+      Promise.all(paths.map(async (p) => {
+        try { const r = await fetch(`/api/agent/status?root=${encodeURIComponent(p)}`); const j = await r.json(); return [p, j?.ok ? (j.statuses ?? []).map((s: { state: string }) => s.state) : []] as const; }
+        catch { return [p, [] as string[]] as const; }
+      })).then((entries) => { hookStates = Object.fromEntries(entries); recompute(); });
+      if (d?.terminal?.list) d.terminal.list().then((sessions) => {
+        const h: Record<string, boolean> = {};
+        for (const p of paths) h[p] = sessions.some((s) => withinP(p, s.cwd) && !!identifyAgent(s.process));
+        heur = h; recompute();
+      }).catch(() => { /* ignore */ });
     };
     void poll();
     // SSE 푸시(#764) — 훅이 열린 레포 중 하나의 cwd 상태를 바꾸면 즉시 재조회. 폴링은 폴백 하트비트(4s).
@@ -84,7 +86,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
       es = new EventSource("/api/agent/status/stream");
       es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (typeof d?.cwd === "string" && within(d.cwd)) void poll(); } catch { /* ignore */ } };
     } catch { /* EventSource 미지원 → 폴링만 */ }
-    const iv = setInterval(poll, 4000);
+    const iv = setInterval(poll, 1500);
     return () => { alive = false; clearInterval(iv); es?.close(); };
   }, [mounted, active, paths]);
 

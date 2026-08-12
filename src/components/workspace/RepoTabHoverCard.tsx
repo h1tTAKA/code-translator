@@ -62,31 +62,20 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
     let alive = true;
     const d = typeof window !== "undefined" ? window.nunopiDesktop : undefined;
     const inRepo = (cwd: string) => { const a = norm(cwd), b = norm(path); return a === b || a.startsWith(b + "/"); };
-    const load = async () => {
-      let nextAgents: AgentRow[] | null = null, nextIdle = 0, nextHooks: HookStatus[] | null = null;
+    const cacheMerge = (patch: Partial<Snap>) => { const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null }; snapCache.set(path, { ...prev, ...patch }); };
+    // 훅 상태(빠름·중요)와 터미널 휴리스틱(낡은 데몬이면 느릴 수 있음)을 분리 실행 — 서로 안 막히게(#764).
+    const load = () => {
+      fetch(`/api/agent/status?root=${encodeURIComponent(path)}`).then((r) => r.json()).then((j) => {
+        if (!alive) return; const hs: HookStatus[] = j?.ok ? (j.statuses ?? []) : []; setHooks(hs); cacheMerge({ hooks: hs });
+      }).catch(() => { /* ignore */ });
       if (d?.terminal?.list) {
-        try {
-          const sessions = await d.terminal.list();
-          const ag: AgentRow[] = [];
-          let idle = 0;
-          for (const s of sessions) {
-            if (!inRepo(s.cwd)) continue;
-            const a = identifyAgent(s.process);
-            if (a) ag.push({ id: s.id, agent: a }); else idle++;
-          }
-          nextAgents = ag; nextIdle = idle;
-        } catch { /* ignore */ }
+        d.terminal.list().then((sessions) => {
+          if (!alive) return;
+          const ag: AgentRow[] = []; let idle = 0;
+          for (const s of sessions) { if (!inRepo(s.cwd)) continue; const a = identifyAgent(s.process); if (a) ag.push({ id: s.id, agent: a }); else idle++; }
+          setAgents(ag); setIdleTerms(idle); cacheMerge({ agents: ag, idleTerms: idle });
+        }).catch(() => { /* ignore */ });
       }
-      try {
-        const r = await fetch(`/api/agent/status?root=${encodeURIComponent(path)}`);
-        const j = await r.json();
-        nextHooks = r.ok && j.ok ? (j.statuses ?? []) : [];
-      } catch { /* ignore */ }
-      if (!alive) return;
-      if (nextAgents) { setAgents(nextAgents); setIdleTerms(nextIdle); }
-      if (nextHooks) setHooks(nextHooks);
-      const prev = snapCache.get(path) ?? { agents: [], idleTerms: 0, hooks: [], worktrees: null };
-      snapCache.set(path, { agents: nextAgents ?? prev.agents, idleTerms: nextAgents ? nextIdle : prev.idleTerms, hooks: nextHooks ?? prev.hooks, worktrees: prev.worktrees });
     };
     void load();
     // SSE 푸시(#764) — 훅이 이 레포 cwd 상태를 바꾸면 그 즉시 재조회. 폴링은 폴백 하트비트(4s).
@@ -95,7 +84,7 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
       es = new EventSource("/api/agent/status/stream");
       es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (typeof d?.cwd === "string" && inRepo(d.cwd)) void load(); } catch { /* ignore */ } };
     } catch { /* EventSource 미지원 → 폴링만 */ }
-    const iv = setInterval(load, 4000);
+    const iv = setInterval(load, 1500);
     return () => { alive = false; clearInterval(iv); es?.close(); };
   }, [path]);
 

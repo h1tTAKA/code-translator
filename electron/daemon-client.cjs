@@ -97,7 +97,7 @@ function createDaemonClient(opts) {
         listWaiters.push(resolve);
         try { socket.write(JSON.stringify({ t: "list" }) + "\n"); }
         catch { const i = listWaiters.indexOf(resolve); if (i >= 0) listWaiters.splice(i, 1); resolve([]); return; }
-        setTimeout(() => { const i = listWaiters.indexOf(resolve); if (i >= 0) { listWaiters.splice(i, 1); resolve([]); } }, 3000);
+        setTimeout(() => { const i = listWaiters.indexOf(resolve); if (i >= 0) { listWaiters.splice(i, 1); resolve([]); } }, 1200); // 낡은 데몬(list 미지원)에 오래 매달리지 않게(#764)
       });
     },
     input({ id, data }) { if (socket && ready) { try { socket.write(JSON.stringify({ t: "input", id, data }) + "\n"); } catch { /* ignore */ } } },
