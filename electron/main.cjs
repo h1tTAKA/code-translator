@@ -11,7 +11,7 @@ const {
 } = require("@sna-sdk/core/electron");
 const { spawn } = require("node:child_process");
 const { createDaemonClient } = require("./daemon-client.cjs");
-const { writeHookHelper, writeEndpoint, ensureRepoHooks } = require("./agent-hooks.cjs");
+const { removeRepoHooks } = require("./agent-hooks.cjs");
 const { getProviderUsage } = require("./provider-usage.cjs");
 const { startWatch, stopWatch, stopAll: stopAllWatchers } = require("./repo-watcher.cjs");
 const { join } = require("node:path");
@@ -181,12 +181,9 @@ function createWindow(url) {
 }
 
 async function boot() {
-  const ud = app.getPath("userData");
-  writeHookHelper(ud); // #764 에이전트 상태 훅 헬퍼 1회 기록
   if (DEV_URL) {
     // dev: next dev가 자체 임베드(간섭 방지) → main은 SNA 안 띄움.
     appBase = DEV_URL; // #765 버퍼 드라이버 POST 대상
-    writeEndpoint(ud, DEV_URL); // #764 현재 엔드포인트(헬퍼가 읽음)
     createWindow(DEV_URL);
     return;
   }
@@ -197,7 +194,6 @@ async function boot() {
     SNA_AUTH_TOKEN: snaHandle.connection.authToken,
   });
   appBase = base; // #765 버퍼 드라이버 POST 대상
-  writeEndpoint(ud, base); // #764 현재 엔드포인트(포트 변동 반영)
   createWindow(base);
 }
 
@@ -328,7 +324,7 @@ setInterval(persistBuffers, 5000); // 크래시 대비 주기 저장(before-quit
 
 ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
   cwdById.set(id, cwd); // #765 버퍼 파서 상태를 이 레포에 매핑
-  try { ensureRepoHooks(cwd, app.getPath("userData")); } catch { /* 훅 주입 실패는 무시 — 터미널은 정상 */ } // #764 상태 훅 병합
+  try { removeRepoHooks(cwd, app.getPath("userData")); } catch { /* 무시 */ } // #765 예전 #764 훅 주입분 정리(버퍼 스크레이핑이 대체)
   const r = await termClient.ensure({ id, cwd, cols, rows });
   if (!r.ok) return { ok: false, reason: r.reason || "daemon unavailable" };
   let buffer = r.buffer || "";
