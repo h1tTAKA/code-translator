@@ -8,6 +8,11 @@ interface NunopiDesktopApi {
   notify(payload: { title: string; body?: string }): Promise<{ ok: boolean; reason?: string }>;
   // 레포 폴더 선택(OS 네이티브 창). 취소 시 { canceled: true }.
   pickRepoFolder(): Promise<{ canceled: boolean; path?: string }>;
+  // 창 전체화면 상태(#779) — 신호등 자리 좌측 패딩 토글용. onFullscreen은 해제 함수 반환.
+  window?: {
+    isFullscreen(): Promise<boolean>;
+    onFullscreen(cb: (v: boolean) => void): () => void;
+  };
   // Claude·Codex 구독 사용 한도(세션/주간/Fable) 조회(#735). 상세 타입은 @/lib/usage/types.
   getProviderUsage?(): Promise<import("@/lib/usage/types").ProviderUsageResult>;
   // 레포 파일 워처(#739) — 활성 레포 변경 감지. recursive 미지원 플랫폼은 supported:false → 폴백.
