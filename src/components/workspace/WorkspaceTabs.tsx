@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle, IconMessages, IconFileCode, IconFileText } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
 import WorkspaceModePane from "@/components/workspace/WorkspaceModePane";
+import RepoAvatar from "@/components/workspace/RepoAvatar";
 import WorkspaceAddMenu, { type AddKind } from "@/components/workspace/WorkspaceAddMenu";
 import RepoTabHoverCard from "@/components/workspace/RepoTabHoverCard";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
@@ -66,6 +68,7 @@ function tabDot(st: TabState | null) {
 // 방문한 탭은 숨긴 채 계속 마운트(lazy keep-alive) — 전환해도 도킹/에디터/터미널 상태 보존.
 export default function WorkspaceTabs({ active = true, providerId, providerSettings, onExitWorkspace, onOpenMemorize, onOpenSettings }: { active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onExitWorkspace?: () => void; onOpenMemorize?: () => void; onOpenSettings?: () => void }) {
   const t = useT();
+  const confirm = useConfirm();
   const [mounted, setMounted] = useState(false);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -287,11 +290,11 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
             onPointerMove={tabPointerMove}
             onPointerUp={tabPointerUp}
             onMouseEnter={p ? (e) => openHover(p, e.currentTarget) : undefined} onMouseLeave={p ? scheduleClose : undefined}
-            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
+            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-white text-zinc-800 shadow-sm ring-1 ring-inset ring-[#3B34E2]/55 dark:bg-[#0b0c12] dark:text-zinc-100 dark:ring-[#8b86f5]/45" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
             {p ? tabDot(repoStatus[p] ?? null) : null}
-            <Icon size={13} stroke={2} className={`shrink-0 ${iconColor}`} aria-hidden />
+            {p ? <RepoAvatar path={p} size={13} iconClassName={`shrink-0 ${iconColor}`} /> : <Icon size={13} stroke={2} className={`shrink-0 ${iconColor}`} aria-hidden />}
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{label}</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(key); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
+            <button type="button" onClick={async (e) => { e.stopPropagation(); if (await confirm({ title: label, message: t("workspace.closeTabConfirm"), detail: t("workspace.closeTabConfirmDetail"), confirmText: t("workspace.closeTab"), tone: "warn" })) closeTab(key); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
               className={`ml-0.5 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
               <IconX size={12} stroke={2.5} aria-hidden />
             </button>
