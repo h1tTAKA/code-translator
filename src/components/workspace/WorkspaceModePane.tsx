@@ -56,7 +56,8 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
         {kind === "ask" ? (
           <AskView active={active} providerId={providerId} providerSettings={providerSettings} />
         ) : (
-          <CodeAnalysisView mode={kind} />
+          // key={kind} — mode는 초기값이라, 만일 kind가 바뀌면 인스턴스를 새로 만들어 훅 상태를 재초기화.
+          <CodeAnalysisView key={kind} mode={kind} />
         )}
       </div>
     </div>
