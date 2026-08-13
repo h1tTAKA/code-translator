@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { IconMessages, IconBrain } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { useFullscreen } from "@/hooks/useFullscreen";
 import AskView from "@/components/ask/AskView";
 import CodeAnalysisView from "@/components/analyze/CodeAnalysisView";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
@@ -22,13 +23,14 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
   onOpenMemorize?: () => void;
 }) {
   const t = useT();
+  const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 신호등 자리 좌측 패딩 토글
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {/* 헤더 한 줄 — 레포 탭 헤더와 시각 일관(border-b). 좌: nunopi lockup 로고를 레포 도크 툴바와 동일한
           폭(≈161px = pl 6 + 버튼5×28 + 구분선 5 + gap 10)으로 두어(#771), 레포↔모드 탭 전환에도 탭
           스트립 시작점이 안 밀리게. 로고는 왼쪽 정렬, 나머지는 여백. 우: 공통 영역 컨트롤. */}
-      <header className="flex items-center gap-2 border-b border-zinc-200 pr-2 dark:border-zinc-800">
-        <div className="flex w-[161px] shrink-0 items-center pl-1.5">
+      <header className={`titlebar-drag flex h-10 shrink-0 items-center gap-2 border-b border-zinc-200 pr-2 dark:border-zinc-800 ${fullscreen ? "" : "pl-[78px]"}`}>
+        <div className="flex w-[161px] shrink-0 items-center pl-0.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/nunopi-lockup-light.png" alt="nunopi" className="block h-7 w-auto dark:hidden" />
           {/* eslint-disable-next-line @next/next/no-img-element */}

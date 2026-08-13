@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMessages, IconBrain, IconSettings, IconSitemap, IconTerminal2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { useFullscreen } from "@/hooks/useFullscreen";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceChat";
@@ -45,6 +46,7 @@ function ZonePlaceholder({ Icon, label }: { Icon: typeof IconFiles; label: strin
 // path(레포)는 WorkspaceTabs가 소유해 prop로 내려준다(#731). key={path}로 탭마다 인스턴스 분리.
 export default function WorkspaceView({ path, active = true, providerId, providerSettings, onExitWorkspace, onOpenMemorize, onOpenSettings, tabStrip }: { path: string; active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onExitWorkspace?: () => void; onOpenMemorize?: () => void; onOpenSettings?: () => void; tabStrip?: ReactNode }) {
   const t = useT();
+  const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 신호등 자리 좌측 패딩 토글
   const [picking, setPicking] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
   const [fileStatus, setFileStatus] = useState<Record<string, "added" | "modified">>({}); // 변경 파일 도트(#687)
@@ -449,7 +451,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {/* 헤더 한 줄(#731) — 좌: 워크스페이스 탭(이름이 탭에 있어 별도 폴더명 줄 없음), 우: 영역 컨트롤. */}
-      <header className="flex items-center gap-2 border-b border-zinc-200 pr-2 dark:border-zinc-800">
+      <header className={`titlebar-drag flex h-10 shrink-0 items-center gap-2 border-b border-zinc-200 pr-2 dark:border-zinc-800 ${fullscreen ? "" : "pl-[78px]"}`}>
         {/* 좌측 도크 툴바(#758) — 왼쪽 사이드바 토글 | (커밋2: 중앙 패널 접기/펴기 토글들). */}
         <div className="flex shrink-0 items-center gap-0.5 pl-1.5">
           <button type="button" onClick={toggleLeft} title={leftOpen ? t("workspace.leftCollapse") : t("workspace.leftExpand")} aria-label={leftOpen ? t("workspace.leftCollapse") : t("workspace.leftExpand")} aria-pressed={leftOpen}

@@ -26,7 +26,7 @@ export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQ
   const isMemorize = viewMode === "memorize";
   const isHistory = viewMode === "history"; // 홈(전역 대시보드) — 로고 진입, 영역 중립(#729)
   const inQA = !isWorkspace && !isMemorize && !isHistory; // 질문·분석 하위뷰(질문·코드·글)일 때만
-  const base = "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
+  const base = "flex h-6 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
   return (
     <div role="tablist" aria-label={t("nav.area")} className={SEG_WRAP}>
       <button type="button" role="tab" aria-selected={isWorkspace} disabled={disabled}
@@ -82,8 +82,8 @@ export function QASubToggle({ viewMode, onViewModeChange, disabled = false }: QA
         return (
           <button key={opt.value} type="button" role="tab" aria-selected={selected} aria-label={label} title={label} disabled={disabled}
             onClick={() => onViewModeChange(opt.value)}
-            className={`flex items-center justify-center rounded-lg px-6 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${selected ? SEG_ON : SEG_OFF}`}>
-            <Icon size={18} stroke={2} aria-hidden />
+            className={`flex h-6 items-center justify-center rounded-lg px-6 transition disabled:cursor-not-allowed disabled:opacity-60 ${selected ? SEG_ON : SEG_OFF}`}>
+            <Icon size={16} stroke={2} aria-hidden />
           </button>
         );
       })}

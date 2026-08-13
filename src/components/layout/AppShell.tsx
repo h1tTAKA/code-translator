@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconSettings } from "@tabler/icons-react";
 import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { useFullscreen } from "@/hooks/useFullscreen";
 
 interface AppShellProps {
   editor: React.ReactNode;
@@ -49,6 +50,7 @@ function clampPct(value: number): number {
 
 export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
   const t = useT();
+  const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 헤더 좌측 신호등 자리 패딩 토글
   const mainRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState(DEFAULT_LEFT_PCT);
   const [topPct, setTopPct] = useState(DEFAULT_TOP_PCT);
@@ -147,10 +149,11 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
       {/* 질문·분석 영역: full-width 헤더 바 대신 얇은 상단 스트립에 우측 정렬 pill(모드 토글+설정) — orca식.
           투명 배경·최소 높이라 옛 헤더보다 얇고, 콘텐츠는 아래로 흘러 뷰 툴바와 안 겹침(#723). 워크스페이스는 자체 컨트롤(#721)이라 미표시. */}
       {!workspace && (
-        <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-zinc-200 px-4 py-1.5 dark:border-zinc-800">
-          {/* 좌: 브랜드 로고 — 클릭 시 홈(전역 대시보드)(#729). 라이트=네이비, 다크=흰 워드마크. */}
+        <div className="titlebar-drag grid h-10 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-zinc-200 px-4 dark:border-zinc-800">
+          {/* 좌: 브랜드 로고 — 클릭 시 홈(전역 대시보드)(#729). 라이트=네이비, 다크=흰 워드마크.
+              신호등 자리는 로고에만 ml로(그리드는 좌우 대칭 유지 → 가운데 토글이 창 정중앙, #779). */}
           <button type="button" onClick={onLogoClick} title={t("mode.history")} aria-label={t("mode.history")}
-            className="flex shrink-0 items-center justify-self-start rounded-lg p-0.5 transition hover:opacity-80">
+            className={`flex shrink-0 items-center justify-self-start rounded-lg p-0.5 transition hover:opacity-80 ${fullscreen ? "" : "ml-[62px]"}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto dark:hidden" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -164,7 +167,7 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
             {/* 영역 nav ↔ 유틸 구분선 */}
             <span className="mx-1 h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
             <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
-              className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+              className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
               <IconSettings size={18} stroke={2} aria-hidden />
             </button>
           </div>
