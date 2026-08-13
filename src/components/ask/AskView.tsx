@@ -51,12 +51,14 @@ const clampPanel = (w: number) => Math.min(PANEL_MAX, Math.max(PANEL_MIN, w));
 
 // 에이전트 질문(Ask) 모드 — 좌측 세션 히스토리 + 활성 세션 챗(이슈2).
 // 서브세션 탭/분할은 후속 이슈. 지금은 세션당 단일 챗(subs[0]).
-export default function AskView({ active = true, providerId, providerSettings, goToTarget }: {
+export default function AskView({ active = true, providerId, providerSettings, goToTarget, collapsed = false }: {
   active?: boolean;
   providerId: AgentProviderKind;
   providerSettings: ProviderSettings;
   // 외부(암기 갤러리 등)에서 특정 세션·질문으로 이동 요청. nonce 변경 시 네비.
   goToTarget?: { sessionId: string; subId?: string; quizId?: string; nonce: number };
+  // 세션 패널 접힘(#783) — 헤더 토글이 상위(page·WorkspaceModePane)서 제어. true면 aside·핸들 숨김.
+  collapsed?: boolean;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -76,6 +78,14 @@ export default function AskView({ active = true, providerId, providerSettings, g
   const panelWidthRef = useRef(PANEL_DEFAULT);
   const rootRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
+  // 접힘(#783) 시 리사이즈 핸들이 언마운트돼 pointerUp이 안 올 수 있으므로 resize 상태를
+  // 강제 리셋(select-none 고착 방지). 정상 입력으론 드래그 중 접기가 거의 불가하나 방어.
+  useEffect(() => {
+    if (collapsed && resizingRef.current) {
+      resizingRef.current = false;
+      setResizing(false);
+    }
+  }, [collapsed]);
   // 분할 타일 드래그 재배치 상태(방향 분할).
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -1064,7 +1074,8 @@ export default function AskView({ active = true, providerId, providerSettings, g
   return (
     <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={EMPTY_SOURCE_IDS} onGoToSource={handleCardGoToSource}>
     <div ref={rootRef} aria-hidden={!active} className={`flex h-full w-full overflow-hidden ${resizing ? "select-none" : ""}`}>
-      {/* 좌측 세션 히스토리 패널 */}
+      {/* 좌측 세션 히스토리 패널 — 접힘(#783)이면 aside·리사이즈 핸들 숨기고 챗이 전폭. */}
+      {!collapsed && (
       <aside style={{ width: panelWidth }} className="flex shrink-0 flex-col border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-[#13141b]">
         <div className="flex items-center justify-between px-3 py-3">
           <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
@@ -1104,8 +1115,10 @@ export default function AskView({ active = true, providerId, providerSettings, g
           </div>
         </div>
       </aside>
+      )}
 
-      {/* 패널 폭 조절 핸들 */}
+      {/* 패널 폭 조절 핸들 — 접힘이면 함께 숨김(빈 세로바 방지). */}
+      {!collapsed && (
       <div
         role="separator"
         aria-orientation="vertical"
@@ -1118,6 +1131,7 @@ export default function AskView({ active = true, providerId, providerSettings, g
           resizing ? "bg-blue-400/60" : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"
         }`}
       />
+      )}
 
       {/* 우측 활성 세션 작업공간 — layout에 따라 단일 챗 또는 분할 타일 그리드. */}
       <div className="min-h-0 flex-1 overflow-hidden">
