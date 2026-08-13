@@ -78,6 +78,14 @@ export default function AskView({ active = true, providerId, providerSettings, g
   const panelWidthRef = useRef(PANEL_DEFAULT);
   const rootRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
+  // 접힘(#783) 시 리사이즈 핸들이 언마운트돼 pointerUp이 안 올 수 있으므로 resize 상태를
+  // 강제 리셋(select-none 고착 방지). 정상 입력으론 드래그 중 접기가 거의 불가하나 방어.
+  useEffect(() => {
+    if (collapsed && resizingRef.current) {
+      resizingRef.current = false;
+      setResizing(false);
+    }
+  }, [collapsed]);
   // 분할 타일 드래그 재배치 상태(방향 분할).
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);

@@ -544,8 +544,8 @@ const ko: Dict = {
   "settings.storageNote": "설정값은 브라우저 localStorage에 저장된다.",
 
   "layout.splitHandle": "입력과 학습 패널 크기 조절",
-  "layout.collapseEditor": "입력 패널 접기",
-  "layout.expandEditor": "입력 패널 펼치기",
+  "layout.collapsePanel": "패널 접기",
+  "layout.expandPanel": "패널 펼치기",
 
   "panel.tabLearning": "학습 패널",
   "panel.tabHistory": "학습관리",
@@ -1264,8 +1264,8 @@ const ja: Dict = {
   "settings.storageNote": "設定はブラウザのlocalStorageに保存されます。",
 
   "layout.splitHandle": "入力と学習パネルのサイズ調整",
-  "layout.collapseEditor": "入力パネルを折りたたむ",
-  "layout.expandEditor": "入力パネルを展開",
+  "layout.collapsePanel": "パネルを折りたたむ",
+  "layout.expandPanel": "パネルを展開",
 
   "panel.tabLearning": "学習パネル",
   "panel.tabHistory": "学習管理",
@@ -1984,8 +1984,8 @@ const en: Dict = {
   "settings.storageNote": "Settings are saved in your browser's localStorage.",
 
   "layout.splitHandle": "Resize input / learning panel",
-  "layout.collapseEditor": "Collapse input panel",
-  "layout.expandEditor": "Expand input panel",
+  "layout.collapsePanel": "Collapse panel",
+  "layout.expandPanel": "Expand panel",
 
   "panel.tabLearning": "Learning",
   "panel.tabHistory": "History",

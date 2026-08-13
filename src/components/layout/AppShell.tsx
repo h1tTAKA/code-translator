@@ -150,8 +150,8 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
             </button>
             {showLeftPanelToggle && onToggleLeftPanel && (
               <button type="button" onClick={onToggleLeftPanel}
-                title={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-                aria-label={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+                title={t(leftPanelCollapsed ? "layout.expandPanel" : "layout.collapsePanel")}
+                aria-label={t(leftPanelCollapsed ? "layout.expandPanel" : "layout.collapsePanel")}
                 className="-ml-1 shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
                 {leftPanelCollapsed ? <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden />}
               </button>

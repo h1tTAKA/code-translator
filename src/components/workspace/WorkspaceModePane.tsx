@@ -46,8 +46,8 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
           {/* 왼쪽 패널 접기 토글 — 로고 옆 바짝. 독립 모드(AppShell)와 동일 위치·크기.
               코드/글=입력 패널(#781), 질문=세션 패널(#783). 모든 kind에서 노출. */}
           <button type="button" onClick={toggleLeftPanel}
-            title={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-            aria-label={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+            title={t(leftPanelCollapsed ? "layout.expandPanel" : "layout.collapsePanel")}
+            aria-label={t(leftPanelCollapsed ? "layout.expandPanel" : "layout.collapsePanel")}
             className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
             {leftPanelCollapsed ? <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden />}
           </button>
