@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import AppShell from "@/components/layout/AppShell";
 import AreaPrimaryToggle, { QASubToggle } from "@/components/layout/AreaModeToggle";
 import LearningPanel from "@/components/learning/LearningPanel";
@@ -20,10 +20,11 @@ import type { HistoryNav } from "@/lib/history/types";
 import { type ViewMode, VIEW_MODE_KEY } from "@/lib/viewMode";
 import { deckStats } from "@/lib/srs/due";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
-import { type HistoryEntry, getAllHistory, deleteFromHistory, clearHistory, updateHistory } from "@/lib/historyDB";
+import { type HistoryEntry, getAllHistory } from "@/lib/historyDB";
 import { loadExclusions } from "@/lib/exclusions";
 import { type Collection, loadCollections } from "@/lib/collections";
 import { useCodeAnalysis, generateAutoTitle } from "@/hooks/useCodeAnalysis";
+import { AnalysisProvider } from "@/lib/analyze/AnalysisContext";
 
 const SETTINGS_STORAGE_KEY = "nunopi:provider-settings";
 const DEFAULT_PROVIDER_ID: AgentProviderKind = "claude-agent";
@@ -76,8 +77,10 @@ export default function Home() {
   const [memorizeDue, setMemorizeDue] = useState(0);
   const [memorizeProviderId, setMemorizeProviderId] = useState<AgentProviderKind>(DEFAULT_PROVIDER_ID);
 
-  // ── 코드/글 분석 로직(훅). 공유 상태를 주입한다.
-  const ca = useCodeAnalysis({ historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue });
+  // ── 코드/글 분석 로직(훅). 공유 상태를 주입한다. shared는 워크스페이스 탭의 CodeAnalysisView가
+  // Context로 받아 같은 저장소를 보게 하는 통로이기도 하다(#773).
+  const shared = useMemo(() => ({ historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue }), [historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue]);
+  const ca = useCodeAnalysis(shared);
 
   // 히스토리 최초 로드.
   useEffect(() => { getAllHistory().then(setHistoryEntries).catch(() => {}); }, []);
@@ -161,25 +164,11 @@ export default function Home() {
     } else handleViewModeChange(nav.mode);
   }
 
-  function handleDeleteHistory(id: string) {
-    deleteFromHistory(id).then(() => getAllHistory()).then(setHistoryEntries).catch(() => {});
-    // 지금 보고 있는 분석을 지웠으면 화면도 비운다.
-    if (id === ca.currentHistoryId) ca.handleClearInput();
-  }
-
-  function handleClearHistory() {
-    // 현재 모드의 히스토리만 삭제하고 목록을 다시 읽어 다른 모드 항목은 보존.
-    clearHistory(ca.mode).then(() => getAllHistory()).then(setHistoryEntries).catch(() => {});
-  }
-
-  function handleUpdateHistory(id: string, changes: Partial<Pick<HistoryEntry, "isPinned" | "title">>) {
-    updateHistory(id, changes).then(() => getAllHistory()).then(setHistoryEntries).catch(() => {});
-  }
-
   const currentEntry = historyEntries.find((e) => e.id === ca.currentHistoryId);
   const currentHistoryTitle = currentEntry?.title ?? (ca.analysisResult ? generateAutoTitle(ca.analysisResult, ca.code) : undefined);
 
   return (
+    <AnalysisProvider value={shared}>
     <I18nProvider>
     <ConfirmProvider>
     <ToastProvider>
@@ -247,14 +236,14 @@ export default function Home() {
           explainingConcepts={ca.explainingConcepts}
           historyEntries={historyEntries}
           onRestoreHistory={ca.restoreHistory}
-          onDeleteHistory={handleDeleteHistory}
-          onClearHistory={handleClearHistory}
-          onUpdateHistory={handleUpdateHistory}
+          onDeleteHistory={ca.handleDeleteHistory}
+          onClearHistory={ca.handleClearHistory}
+          onUpdateHistory={ca.handleUpdateHistory}
           currentHistoryId={ca.currentHistoryId}
           currentHistoryTitle={currentHistoryTitle}
           currentHistoryIsPinned={currentEntry?.isPinned ?? false}
-          onSetCurrentTitle={(title) => { if (ca.currentHistoryId) handleUpdateHistory(ca.currentHistoryId, { title: title || undefined }); }}
-          onToggleCurrentPin={() => { if (ca.currentHistoryId && currentEntry) handleUpdateHistory(ca.currentHistoryId, { isPinned: !currentEntry.isPinned }); }}
+          onSetCurrentTitle={(title) => { if (ca.currentHistoryId) ca.handleUpdateHistory(ca.currentHistoryId, { title: title || undefined }); }}
+          onToggleCurrentPin={() => { if (ca.currentHistoryId && currentEntry) ca.handleUpdateHistory(ca.currentHistoryId, { isPinned: !currentEntry.isPinned }); }}
           collections={ca.visibleCollections}
           activeCollectionId={ca.activeCollectionId}
           onSelectCollection={ca.setActiveCollectionId}
@@ -350,5 +339,6 @@ export default function Home() {
     </ToastProvider>
     </ConfirmProvider>
     </I18nProvider>
+    </AnalysisProvider>
   );
 }

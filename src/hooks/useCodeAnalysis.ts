@@ -18,6 +18,8 @@ import {
   saveToHistory,
   getAllHistory,
   updateHistory,
+  deleteFromHistory,
+  clearHistory,
   entryChatSessions,
   freshChatSessions,
   newSessionId,
@@ -92,11 +94,11 @@ export interface CodeAnalysisShared {
   setMemorizeDue: Dispatch<SetStateAction<number>>;
 }
 
-export function useCodeAnalysis(shared: CodeAnalysisShared) {
+export function useCodeAnalysis(shared: CodeAnalysisShared, initialMode: AnalyzeMode = "code") {
   const { historyEntries, setHistoryEntries, collections, setCollections, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue } = shared;
 
   // 분석 모드(코드/글). 모드별로 입력을 따로 유지해 토글해도 서로 안 지워지게 한다.
-  const [mode, setMode] = useState<AnalyzeMode>("code");
+  const [mode, setMode] = useState<AnalyzeMode>(initialMode);
   const [codeInput, setCodeInput] = useState(DEFAULT_CODE);
   const [textInput, setTextInput] = useState("");
   const code = mode === "text" ? textInput : codeInput;
@@ -786,6 +788,20 @@ export function useCodeAnalysis(shared: CodeAnalysisShared) {
     setHistoryEntries((prev) => prev.map((e) => (e.id === id ? { ...e, pinnedLine: next } : e)));
   }
 
+  function handleDeleteHistory(id: string) {
+    deleteFromHistory(id).then(() => getAllHistory()).then(setHistoryEntries).catch(() => {});
+    if (id === currentHistoryId) handleClearInput(); // 지금 보고 있던 분석을 지웠으면 화면도 비운다.
+  }
+
+  function handleClearHistory() {
+    // 현재 모드의 히스토리만 삭제하고 목록을 다시 읽어 다른 모드 항목은 보존.
+    clearHistory(mode).then(() => getAllHistory()).then(setHistoryEntries).catch(() => {});
+  }
+
+  function handleUpdateHistory(id: string, changes: Partial<Pick<HistoryEntry, "isPinned" | "title">>) {
+    updateHistory(id, changes).then(() => getAllHistory()).then(setHistoryEntries).catch(() => {});
+  }
+
   return {
     // state
     mode, code, codeInput, textInput, isLoading, analysisStartedAt, lastElapsedMs, resumable, chunkProgress,
@@ -801,6 +817,6 @@ export function useCodeAnalysis(shared: CodeAnalysisShared) {
     handleDeleteToken, handleSendChat, handleClearChat, handleChatCardAction, handleNewSession, handleSwitchSession,
     handleDeleteSession, handleClearInput, handleDeleteConcept, handleConceptExplain, restoreHistory, openChatSession,
     handlePinLine, handleCreateCollection, handleDeleteCollection, handleToggleEntryCollection, handleExclude,
-    handleRemoveExclusion, closeFillModal,
+    handleRemoveExclusion, closeFillModal, handleDeleteHistory, handleClearHistory, handleUpdateHistory,
   };
 }
