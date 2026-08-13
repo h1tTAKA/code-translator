@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle } from "@tabler/icons-react";
+import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle, IconMessages, IconFileCode, IconFileText } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
 import WorkspaceModePane from "@/components/workspace/WorkspaceModePane";
@@ -34,6 +34,14 @@ function migrateTab(x: unknown): Tab | null {
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const norm = (p: string) => p.replace(/\/+$/, "");
+
+// 모드 탭 표시(#771) — 레포 탭(IconFiles·인디고)과 구분되게 모드별 아이콘·색·이름.
+const MODE_TAB: Record<ModeKind, { Icon: typeof IconFiles; labelKey: string; color: string }> = {
+  // 색은 누노피 그라데이션의 파란 톤으로 통일 — 레포 아이콘(인디고)·상태 도트(emerald/amber/rose)와 구분.
+  ask: { Icon: IconMessages, labelKey: "mode.ask", color: "text-sky-500 dark:text-sky-400" },
+  code: { Icon: IconFileCode, labelKey: "mode.code", color: "text-sky-500 dark:text-sky-400" },
+  text: { Icon: IconFileText, labelKey: "mode.text", color: "text-sky-500 dark:text-sky-400" },
+};
 
 // 탭 상태 도트(#764/#765) — 그 레포 에이전트의 종합 상태(버퍼 스크레이핑). 우선순위: 막힘>대기>작업중>완료.
 type TabState = "working" | "waiting" | "blocked" | "done";
@@ -200,13 +208,18 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         const key = tabKey(tab);
         const on = key === activeKey;
         const p = tab.type === "repo" ? tab.path : null;
+        const mode = tab.type === "repo" ? null : MODE_TAB[tab.type];
+        const Icon = mode ? mode.Icon : IconFiles;
+        // 아이콘 색 — 활성 레포=인디고, 활성 모드=모드색(레포와 구분), 비활성=회색.
+        const iconColor = !on ? "text-zinc-400" : mode ? mode.color : "text-[#3B34E2] dark:text-[#8b86f5]";
+        const label = p ? basename(p) : t(mode!.labelKey);
         return (
-          <div key={key} onClick={() => activate(key)} title={p ?? key}
+          <div key={key} onClick={() => activate(key)} title={p ?? label}
             onMouseEnter={p ? (e) => openHover(p, e.currentTarget) : undefined} onMouseLeave={p ? scheduleClose : undefined}
             className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
             {p ? tabDot(repoStatus[p] ?? null) : null}
-            <IconFiles size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
-            <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{p ? basename(p) : key}</span>
+            <Icon size={13} stroke={2} className={`shrink-0 ${iconColor}`} aria-hidden />
+            <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{label}</span>
             <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(key); }} title={t("workspace.closeTab")} aria-label={t("workspace.closeTab")}
               className={`ml-0.5 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`}>
               <IconX size={12} stroke={2.5} aria-hidden />
@@ -259,6 +272,9 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
                 ) : (
                   <WorkspaceModePane
                     kind={tab.type}
+                    active={active && on}
+                    providerId={providerId}
+                    providerSettings={providerSettings}
                     tabStrip={on ? tabStrip : undefined}
                     onExitWorkspace={onExitWorkspace}
                     onOpenMemorize={onOpenMemorize}
