@@ -152,6 +152,68 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     setActiveKey(key);
   }
 
+  // 탭 드래그 재정렬(#775) — pointer 기반(HTML5 DnD 아님). native 드래그는 브라우저가 "복사" 커서
+  // 배지를 강제로 띄워 못 없애므로, pointerdown/move/up으로 직접 구현해 커서를 완전 제어한다.
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const [overKey, setOverKey] = useState<string | null>(null);
+  const [overAfter, setOverAfter] = useState(false); // 드롭 위치가 over 탭의 뒤(오른쪽)인가 — 맨 뒤 이동 표시용
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 }); // 떠다니는 고스트 위치(마우스 추적)
+  const dragState = useRef<{ key: string; startX: number; moved: boolean } | null>(null);
+  // 배열 순서 = 화면 순서. from을 to(앞/뒤) 위치로 splice → setTabs → 기존 effect가 localStorage 영속.
+  function reorder(fromKey: string, toKey: string, after: boolean) {
+    if (fromKey === toKey) return;
+    setTabs((prev) => {
+      const from = prev.findIndex((x) => tabKey(x) === fromKey);
+      const to = prev.findIndex((x) => tabKey(x) === toKey);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      let insertAt = after ? to + 1 : to;
+      if (from < insertAt) insertAt--; // from 제거로 뒤쪽 인덱스가 하나 당겨짐
+      next.splice(insertAt, 0, moved);
+      return next;
+    });
+  }
+  function tabPointerDown(e: React.PointerEvent<HTMLDivElement>, key: string) {
+    if ((e.target as HTMLElement).closest("button")) return; // 닫기 버튼은 자체 클릭 — 드래그 시작 안 함.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragState.current = { key, startX: e.clientX, moved: false };
+  }
+  function tabPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const st = dragState.current;
+    if (!st) return;
+    if (!st.moved) {
+      if (Math.abs(e.clientX - st.startX) < 5) return; // 임계 미만 = 클릭(드래그 시작 안 함)
+      st.moved = true;
+      setDraggingKey(st.key);
+      setHover(null);
+      cancelClose();
+    }
+    setDragPos({ x: e.clientX, y: e.clientY }); // 고스트가 마우스 따라오게
+    // 마우스 아래의 탭 키(pointerCapture라 좌표로 직접 탐색). 탭 중앙 오른쪽이면 "뒤에 삽입".
+    const el = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest("[data-tab-key]") as HTMLElement | null;
+    const overK = el?.getAttribute("data-tab-key") ?? null;
+    if (overK && overK !== st.key && el) {
+      const r = el.getBoundingClientRect();
+      setOverKey(overK);
+      setOverAfter(e.clientX > r.left + r.width / 2);
+    } else {
+      setOverKey(null);
+    }
+  }
+  function tabPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const st = dragState.current;
+    dragState.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (st?.moved) {
+      if (overKey && overKey !== st.key) reorder(st.key, overKey, overAfter);
+    } else if (st) {
+      activate(st.key); // 안 움직였으면 클릭 = 탭 활성화.
+    }
+    setDraggingKey(null);
+    setOverKey(null);
+  }
+
   async function addRepoTab() {
     if (!desktop?.pickRepoFolder || picking) return;
     setPicking(true);
@@ -213,10 +275,19 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         // 아이콘 색 — 활성 레포=인디고, 활성 모드=모드색(레포와 구분), 비활성=회색.
         const iconColor = !on ? "text-zinc-400" : mode ? mode.color : "text-[#3B34E2] dark:text-[#8b86f5]";
         const label = p ? basename(p) : t(mode!.labelKey);
+        const showDrop = overKey === key && draggingKey !== null && draggingKey !== key;
+        const isDragging = draggingKey === key;
+        // 드롭 바 — 앞(왼쪽)/뒤(오른쪽). 뒤=맨 끝 이동을 명확히 보여준다.
+        const dropBar = !showDrop ? "" : overAfter
+          ? "after:absolute after:-right-0.5 after:top-1/2 after:h-4/5 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-[#3B34E2] dark:after:bg-[#8b86f5]"
+          : "before:absolute before:-left-0.5 before:top-1/2 before:h-4/5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-[#3B34E2] dark:before:bg-[#8b86f5]";
         return (
-          <div key={key} onClick={() => activate(key)} title={p ?? label}
+          <div key={key} data-tab-key={key} title={p ?? label}
+            onPointerDown={(e) => tabPointerDown(e, key)}
+            onPointerMove={tabPointerMove}
+            onPointerUp={tabPointerUp}
             onMouseEnter={p ? (e) => openHover(p, e.currentTarget) : undefined} onMouseLeave={p ? scheduleClose : undefined}
-            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"}`}>
+            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-white text-zinc-800 shadow-sm dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
             {p ? tabDot(repoStatus[p] ?? null) : null}
             <Icon size={13} stroke={2} className={`shrink-0 ${iconColor}`} aria-hidden />
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{label}</span>
@@ -289,6 +360,22 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         <RepoTabHoverCard key={hover.path} path={hover.path} left={hover.left} top={hover.top}
           onMouseEnter={cancelClose} onMouseLeave={scheduleClose} />
       )}
+      {/* 드래그 고스트(#775) — 마우스 따라오는 탭 미리보기. pointer 방식이라 native 잔영이 없어 직접 그린다. */}
+      {draggingKey && (() => {
+        const gt = tabs.find((x) => tabKey(x) === draggingKey);
+        if (!gt) return null;
+        const gp = gt.type === "repo" ? gt.path : null;
+        const gm = gt.type === "repo" ? null : MODE_TAB[gt.type];
+        const GIcon = gm ? gm.Icon : IconFiles;
+        const glabel = gp ? basename(gp) : t(gm!.labelKey);
+        return (
+          <div className="pointer-events-none fixed z-[60] flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-[12px] font-medium text-zinc-800 opacity-90 shadow-lg ring-1 ring-black/10 dark:bg-[#0b0c12] dark:text-zinc-100 dark:ring-white/10"
+            style={{ left: dragPos.x + 10, top: dragPos.y + 10 }}>
+            <GIcon size={13} stroke={2} className={`shrink-0 ${gm ? gm.color : "text-[#3B34E2] dark:text-[#8b86f5]"}`} aria-hidden />
+            <span className="max-w-[12rem] truncate">{glabel}</span>
+          </div>
+        );
+      })()}
       <WorkspaceAddMenu anchor={addMenu} onClose={closeAddMenu} onPick={onPick} />
     </div>
   );
