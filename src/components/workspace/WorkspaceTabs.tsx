@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
+import WorkspaceModePane from "@/components/workspace/WorkspaceModePane";
+import WorkspaceAddMenu, { type AddKind } from "@/components/workspace/WorkspaceAddMenu";
 import RepoTabHoverCard from "@/components/workspace/RepoTabHoverCard";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 
@@ -62,6 +64,13 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   // 한 번이라도 활성화된 탭 키 — 이 집합만 실제 마운트(keep-alive). 안 연 탭은 마운트 안 함.
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [picking, setPicking] = useState(false);
+  const [addMenu, setAddMenu] = useState<{ left: number; top: number } | null>(null); // "+" 드롭다운 픽커(#769)
+  // "+" 버튼 아래로 드롭다운 앵커링. 화면 오른쪽 넘침 방지.
+  const openAddMenu = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const W = 240, M = 8; // 메뉴 폭(w-60) · 화면 여백
+    setAddMenu({ left: Math.max(M, Math.min(r.left, window.innerWidth - W - M)), top: r.bottom + 6 });
+  };
   // 레포 탭 호버 카드(#764) — 에이전트·워크트리 실시간. 탭↔카드 사이 이동 허용 위해 지연 닫기.
   const [hover, setHover] = useState<{ path: string; left: number; top: number } | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,6 +156,20 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     } catch { /* 무시 */ } finally { setPicking(false); }
   }
 
+  // 모드 탭(질문/코드/글) 추가(#769) — 폴더 없이 유니크 id로 새 빈 탭. id는 생성 후 불변(keep-alive·영속 키).
+  function addModeTab(kind: ModeKind) {
+    const id = Date.now().toString(36);
+    const key = `${kind}:${id}`;
+    setTabs((prev) => [...prev, { type: kind, id }]);
+    activate(key);
+  }
+
+  // 메뉴 선택 → 레포는 폴더 다이얼로그, 모드는 즉시 빈 탭.
+  const onPick = (kind: AddKind) => {
+    if (kind === "repo") void addRepoTab();
+    else addModeTab(kind);
+  };
+
   function closeTab(key: string) {
     const idx = tabs.findIndex((x) => tabKey(x) === key);
     if (idx < 0) return;
@@ -188,8 +211,8 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
           </div>
         );
       })}
-      {/* 새 워크스페이스 추가 — 마지막 탭 바로 옆(#731). */}
-      <button type="button" onClick={addRepoTab} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
+      {/* 새 탭 추가 — 마지막 탭 바로 옆(#731). "+" 항상 드롭다운 먼저(#769). */}
+      <button type="button" onClick={(e) => openAddMenu(e.currentTarget)} disabled={picking || !mounted} title={t("workspace.newTab")} aria-label={t("workspace.newTab")}
         className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-200/60 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-200">
         <IconPlus size={16} stroke={2} aria-hidden />
       </button>
@@ -207,7 +230,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
                 <IconFiles size={26} stroke={1.75} aria-hidden />
               </div>
               <p className="text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400">{t("workspace.intro")}</p>
-              <button type="button" onClick={addRepoTab} disabled={picking || !mounted}
+              <button type="button" onClick={(e) => openAddMenu(e.currentTarget)} disabled={picking || !mounted}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#3B34E2] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-[#322bc9] disabled:opacity-50 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
                 <IconFolderOpen size={16} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
               </button>
@@ -217,20 +240,27 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
           tabs.filter((tab) => visited.has(tabKey(tab))).map((tab) => {
             const key = tabKey(tab);
             const on = key === activeKey;
-            // 모드 탭 렌더는 커밋3(라우팅 스텁)에서. 지금은 레포 탭만.
-            if (tab.type !== "repo") return null;
             return (
               <div key={key} className={on ? "flex min-h-0 w-full flex-1" : "hidden"}>
-                <WorkspaceView
-                  path={tab.path}
-                  active={active && on}
-                  providerId={providerId}
-                  providerSettings={providerSettings}
-                  onExitWorkspace={onExitWorkspace}
-                  onOpenMemorize={onOpenMemorize}
-                  onOpenSettings={onOpenSettings}
-                  tabStrip={on ? tabStrip : undefined}
-                />
+                {tab.type === "repo" ? (
+                  <WorkspaceView
+                    path={tab.path}
+                    active={active && on}
+                    providerId={providerId}
+                    providerSettings={providerSettings}
+                    onExitWorkspace={onExitWorkspace}
+                    onOpenMemorize={onOpenMemorize}
+                    onOpenSettings={onOpenSettings}
+                    tabStrip={on ? tabStrip : undefined}
+                  />
+                ) : (
+                  <WorkspaceModePane
+                    kind={tab.type}
+                    tabStrip={on ? tabStrip : undefined}
+                    onExitWorkspace={onExitWorkspace}
+                    onOpenMemorize={onOpenMemorize}
+                  />
+                )}
               </div>
             );
           })
@@ -240,6 +270,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         <RepoTabHoverCard key={hover.path} path={hover.path} left={hover.left} top={hover.top}
           onMouseEnter={cancelClose} onMouseLeave={scheduleClose} />
       )}
+      <WorkspaceAddMenu anchor={addMenu} onClose={() => setAddMenu(null)} onPick={onPick} />
     </div>
   );
 }
