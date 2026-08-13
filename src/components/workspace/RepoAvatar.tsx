@@ -25,15 +25,20 @@ export default function RepoAvatar({ path, size, iconClassName }: { path: string
   const [owner, setOwner] = useState<string | null | undefined>(() => cacheGet(path));
   const [failed, setFailed] = useState(false);
 
+  // path가 바뀌면(같은 인스턴스 재사용) 그 path의 캐시/조회로 다시 맞춘다.
   useEffect(() => {
-    if (owner !== undefined) return; // 캐시 히트 → 조회 안 함
+    const cached = cacheGet(path);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFailed(false);
+    if (cached !== undefined) { setOwner(cached); return; } // 캐시 히트
+    setOwner(undefined); // 로딩(폴백 표시)
     let alive = true;
     fetch("/api/repo/git-remote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) })
       .then((r) => r.json())
       .then((j) => { if (!alive) return; const o = (j?.owner as string | null) ?? null; cacheSet(path, o); setOwner(o); })
       .catch(() => { if (alive) setOwner(null); });
     return () => { alive = false; };
-  }, [path, owner]);
+  }, [path]);
 
   if (owner && !failed) {
     return (
