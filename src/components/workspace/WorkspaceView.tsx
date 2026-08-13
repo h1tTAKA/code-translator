@@ -455,8 +455,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
         {/* 좌측 도크 툴바(#758) — 왼쪽 사이드바 토글 | (커밋2: 중앙 패널 접기/펴기 토글들). */}
         <div className="flex shrink-0 items-center gap-0.5 pl-1.5">
           <button type="button" onClick={toggleLeft} title={leftOpen ? t("workspace.leftCollapse") : t("workspace.leftExpand")} aria-label={leftOpen ? t("workspace.leftCollapse") : t("workspace.leftExpand")} aria-pressed={leftOpen}
-            className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-            {leftOpen ? <IconLayoutSidebarLeftCollapse size={16} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftExpand size={16} stroke={2} aria-hidden />}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+            {leftOpen ? <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden />}
           </button>
           <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
           {/* 중앙 패널 접기/펴기(#758) — 없는 패널은 비활성(회색), 있으면 클릭해 접기/펴기(펼침=강조). */}

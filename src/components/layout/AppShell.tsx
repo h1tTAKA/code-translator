@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconSettings } from "@tabler/icons-react";
-import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
+import { IconSettings, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useFullscreen } from "@/hooks/useFullscreen";
 
@@ -20,6 +19,8 @@ interface AppShellProps {
   editorCollapsed?: boolean;
   chatOpen?: boolean;
   onToggleEditorCollapsed?: () => void;
+  // 헤더 로고 옆 입력 패널 접기 토글을 보일지(#781) — 코드/글 분석 모드에서만.
+  showEditorToggle?: boolean;
   // 암기 모드 — true면 에디터/학습패널 스플릿 대신 memorizeView를 전폭 렌더.
   memorize?: boolean;
   memorizeView?: React.ReactNode;
@@ -48,7 +49,7 @@ function clampPct(value: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, value));
 }
 
-export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
+export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, showEditorToggle = false, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
   const t = useT();
   const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 헤더 좌측 신호등 자리 패딩 토글
   const mainRef = useRef<HTMLDivElement>(null);
@@ -59,8 +60,6 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
   const topPctRef = useRef(DEFAULT_TOP_PCT);
   const [isLandscape, setIsLandscape] = useState(true);
   const [dragging, setDragging] = useState(false);
-  // 클릭 vs 드래그 판별 — pointerdown 시점 기록(좌표 + 접기 버튼 위에서 시작했는지).
-  const pressRef = useRef<{ x: number; y: number; onButton: boolean } | null>(null);
 
   useEffect(() => {
     const storedLeft = Number(localStorage.getItem(SPLIT_STORAGE_KEY));
@@ -96,10 +95,8 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
   const hideEditorPane = editorCollapsed && !chatOpen;
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    const onButton = (event.target as HTMLElement).closest("button") != null;
-    pressRef.current = { x: event.clientX, y: event.clientY, onButton };
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (!hideEditorPane) setDragging(true); // 접힘+챗닫힘은 드래그 없음(클릭 판정만)
+    if (!hideEditorPane) setDragging(true); // 접힘+챗닫힘은 드래그 없음
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
@@ -122,17 +119,6 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
 
   function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
     event.currentTarget.releasePointerCapture(event.pointerId);
-    const press = pressRef.current;
-    pressRef.current = null;
-    // 버튼에서 눌러 거의 안 움직였으면 클릭 = 접기/펼치기 토글.
-    if (press?.onButton) {
-      const dist = Math.hypot(event.clientX - press.x, event.clientY - press.y);
-      if (dist < 5) {
-        setDragging(false);
-        onToggleEditorCollapsed?.();
-        return;
-      }
-    }
     if (!dragging) return;
     setDragging(false);
     try {
@@ -150,15 +136,25 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
           투명 배경·최소 높이라 옛 헤더보다 얇고, 콘텐츠는 아래로 흘러 뷰 툴바와 안 겹침(#723). 워크스페이스는 자체 컨트롤(#721)이라 미표시. */}
       {!workspace && (
         <div className="titlebar-drag grid h-10 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-zinc-200 px-4 dark:border-zinc-800">
-          {/* 좌: 브랜드 로고 — 클릭 시 홈(전역 대시보드)(#729). 라이트=네이비, 다크=흰 워드마크.
-              신호등 자리는 로고에만 ml로(그리드는 좌우 대칭 유지 → 가운데 토글이 창 정중앙, #779). */}
-          <button type="button" onClick={onLogoClick} title={t("mode.history")} aria-label={t("mode.history")}
-            className={`flex shrink-0 items-center justify-self-start rounded-lg p-0.5 transition hover:opacity-80 ${fullscreen ? "" : "ml-[62px]"}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto dark:hidden" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto dark:block" />
-          </button>
+          {/* 좌: 브랜드 로고 + (코드/글 분석 시) 입력 패널 접기 토글(#781). 신호등 자리는 이 블록에만 ml로
+              (그리드는 좌우 대칭 유지 → 가운데 토글이 창 정중앙, #779). */}
+          <div className={`flex items-center gap-0.5 justify-self-start ${fullscreen ? "" : "ml-[62px]"}`}>
+            <button type="button" onClick={onLogoClick} title={t("mode.history")} aria-label={t("mode.history")}
+              className="flex shrink-0 items-center rounded-lg p-0.5 transition hover:opacity-80">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto -translate-y-0.5 dark:hidden" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto -translate-y-0.5 dark:block" />
+            </button>
+            {showEditorToggle && onToggleEditorCollapsed && (
+              <button type="button" onClick={onToggleEditorCollapsed}
+                title={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+                aria-label={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+                className="-ml-1 shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+                {editorCollapsed ? <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden />}
+              </button>
+            )}
+          </div>
           {/* 가운데: 질문·분석 하위 세그(질문·코드·글) — 원래 중앙 위치(#725). 암기·홈 뷰에선 숨김(하위 없음)(#729). */}
           <div className="justify-self-center">{!memorize && !history && subToggle}</div>
           {/* 우: 영역 전환 토글(워크스페이스│질문·분석│암기) │ 설정(테두리 없는 아이콘) */}
@@ -224,23 +220,8 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
                 ? `w-1.5 cursor-col-resize border-x border-zinc-200 dark:border-zinc-800 ${dragging ? "bg-blue-400/60" : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"}`
                 : `h-1.5 cursor-row-resize border-y border-zinc-200 dark:border-zinc-800 ${dragging ? "bg-blue-400/60" : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"}`
           }`}
-        >
-          {onToggleEditorCollapsed && (
-            // 공통 엣지 탭(#697 통일). onToggle 없음 — 클릭 판정은 separator handlePointerUp(closest("button"))이 담당.
-            // 접힘: 엣지에 도킹(rounded 한쪽) — 워크스페이스 스타일. 펼침: 드래그 바 중앙.
-            <PanelEdgeToggle
-              collapsed={editorCollapsed}
-              collapsedDir={isLandscape ? "right" : "down"}
-              orientation={isLandscape ? "vertical" : "horizontal"}
-              title={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-              className={`absolute bg-zinc-100 dark:bg-[#15161d] border-zinc-200 dark:border-zinc-800 ${
-                hideEditorPane
-                  ? (isLandscape ? "left-0 top-1/2 -translate-y-1/2 rounded-r-md border-y border-r" : "top-0 left-1/2 -translate-x-1/2 rounded-b-md border-x border-b")
-                  : `left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border ${isLandscape ? "cursor-col-resize" : "cursor-row-resize"}`
-              }`}
-            />
-          )}
-        </div>
+        />
+        {/* 접기/펼치기는 헤더 로고 옆 토글로 이전(#781) — 스플릿 핸들은 드래그 리사이즈만. */}
 
         {/* 학습패널 — 자체 세로 스크롤. data-panel-scroll: 안쪽 박스(forwardPanelWheel)가 wheel을 이 컨테이너로 넘긴다. */}
         <aside
