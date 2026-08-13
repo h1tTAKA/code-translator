@@ -24,6 +24,7 @@ import { type HistoryEntry, getAllHistory } from "@/lib/historyDB";
 import { loadExclusions } from "@/lib/exclusions";
 import { type Collection, loadCollections } from "@/lib/collections";
 import { useCodeAnalysis, generateAutoTitle } from "@/hooks/useCodeAnalysis";
+import { useEditorCollapsed } from "@/hooks/useEditorCollapsed";
 import { AnalysisProvider } from "@/lib/analyze/AnalysisContext";
 
 const SETTINGS_STORAGE_KEY = "nunopi:provider-settings";
@@ -81,6 +82,8 @@ export default function Home() {
   // Context로 받아 같은 저장소를 보게 하는 통로이기도 하다(#773).
   const shared = useMemo(() => ({ historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue }), [historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue]);
   const ca = useCodeAnalysis(shared);
+  // 입력 패널 접힘(#781) — 훅 밖으로 끌어올려 헤더 토글이 제어. 코드/글 분석 화면에서만 의미.
+  const [editorCollapsed, toggleEditorCollapsed] = useEditorCollapsed();
 
   // 히스토리 최초 로드.
   useEffect(() => { getAllHistory().then(setHistoryEntries).catch(() => {}); }, []);
@@ -175,9 +178,10 @@ export default function Home() {
       <AppShell
         onOpenSettings={() => setIsSettingsOpen(true)}
         onLogoClick={() => handleViewModeChange("history")}
-        editorCollapsed={ca.editorCollapsed}
+        editorCollapsed={editorCollapsed}
         chatOpen={ca.chatOpen}
-        onToggleEditorCollapsed={ca.toggleEditorCollapsed}
+        onToggleEditorCollapsed={toggleEditorCollapsed}
+        showEditorToggle={viewMode === "code" || viewMode === "text"}
         memorize={viewMode === "memorize"}
         memorizeView={<MemorizeView active={viewMode === "memorize"} providerId={memorizeProviderId} providerSettings={providerSettings} sourceIds={new Set(historyEntries.map((e) => e.id))} onGoToSource={handleGoToSource} onGoToAskSource={handleGoToAskSource} goToCard={memGoTarget} />}
         ask={viewMode === "ask"}
@@ -255,7 +259,7 @@ export default function Home() {
         editor={
           <EditorChatColumn
             chatOpen={ca.chatOpen}
-            editorCollapsed={ca.editorCollapsed}
+            editorCollapsed={editorCollapsed}
             editor={
               ca.mode === "text" ? (
                 <TextInputArea

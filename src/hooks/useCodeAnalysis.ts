@@ -142,7 +142,6 @@ export function useCodeAnalysis(shared: CodeAnalysisShared, initialMode: Analyze
   const [explainingTokens, setExplainingTokens] = useState<string[]>([]);
   const [explainingConcepts, setExplainingConcepts] = useState<string[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
-  const [editorCollapsed, setEditorCollapsed] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(freshChatSessions);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [chatStreaming, setChatStreaming] = useState<string | null>(null);
@@ -159,10 +158,6 @@ export function useCodeAnalysis(shared: CodeAnalysisShared, initialMode: Analyze
   }, [code, languageChoice]);
 
   // 접기 상태 복원.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (localStorage.getItem("nunopi:editor-collapsed") === "1") setEditorCollapsed(true);
-  }, []);
 
   useEffect(() => { codeInputRef.current = codeInput; }, [codeInput]);
   useEffect(() => { textInputRef.current = textInput; }, [textInput]);
@@ -245,13 +240,6 @@ export function useCodeAnalysis(shared: CodeAnalysisShared, initialMode: Analyze
     }
   }, [isLoading, errorMessage, analysisResult]);
 
-  function toggleEditorCollapsed() {
-    setEditorCollapsed((v) => {
-      const next = !v;
-      try { localStorage.setItem("nunopi:editor-collapsed", next ? "1" : "0"); } catch { /* ignore */ }
-      return next;
-    });
-  }
 
   function handleCodeChange(nextCode: string) {
     const current = mode === "text" ? textInputRef.current : codeInputRef.current;
@@ -807,12 +795,12 @@ export function useCodeAnalysis(shared: CodeAnalysisShared, initialMode: Analyze
     mode, code, codeInput, textInput, isLoading, analysisStartedAt, lastElapsedMs, resumable, chunkProgress,
     errorMessage, analysisResult, currentHistoryId, languageChoice, editorLanguage, progressLine, activeLineLink,
     markedLines, fillingLine, fillErrorLine, fillModalLine, explainingTokens, explainingConcepts, chatOpen,
-    editorCollapsed, chatSessions, activeSessionId, activeSessionIdResolved, activeMessages, chatStreaming,
+    chatSessions, activeSessionId, activeSessionIdResolved, activeMessages, chatStreaming,
     chatLoading, activeTermId, activeCollectionId, collectionMode, visibleCollections,
     // setters exposed for render wiring
     setChatOpen, setActiveTermId, setActiveCollectionId, setMarkedLines, setLanguageChoice, setCurrentHistoryId, setMode,
     // handlers
-    focusLineFromEditor, focusLineFromPanel, toggleEditorCollapsed, handleCodeChange, handleModeChange,
+    focusLineFromEditor, focusLineFromPanel, handleCodeChange, handleModeChange,
     handleProviderChange, handleAnalyze, handleResume, runAnalyze, handleCancel, fillLine, handleTokenExplain,
     handleDeleteToken, handleSendChat, handleClearChat, handleChatCardAction, handleNewSession, handleSwitchSession,
     handleDeleteSession, handleClearInput, handleDeleteConcept, handleConceptExplain, restoreHistory, openChatSession,

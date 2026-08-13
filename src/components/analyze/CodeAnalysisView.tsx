@@ -10,7 +10,6 @@ import CodeInputArea from "@/components/translator/CodeInputArea";
 import TextInputArea from "@/components/translator/TextInputArea";
 import EditorChatColumn from "@/components/translator/EditorChatColumn";
 import ChatRoom from "@/components/learning/ChatRoom";
-import PanelEdgeToggle from "@/components/ui/PanelEdgeToggle";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useCodeAnalysis, generateAutoTitle } from "@/hooks/useCodeAnalysis";
 import { useAnalysisContext } from "@/lib/analyze/AnalysisContext";
@@ -23,7 +22,7 @@ const MIN_PCT = 25;
 const MAX_PCT = 75;
 const clampPct = (v: number) => Math.min(MAX_PCT, Math.max(MIN_PCT, v));
 
-export default function CodeAnalysisView({ mode }: { mode: "code" | "text" }) {
+export default function CodeAnalysisView({ mode, editorCollapsed }: { mode: "code" | "text"; editorCollapsed: boolean }) {
   const t = useT();
   const shared = useAnalysisContext();
   // 탭 종류 = 모드 고정(code 탭=code, text 탭=text). 초기 모드로 고정 진입.
@@ -40,7 +39,6 @@ export default function CodeAnalysisView({ mode }: { mode: "code" | "text" }) {
   const topPctRef = useRef(DEFAULT_TOP_PCT);
   const [isLandscape, setIsLandscape] = useState(true);
   const [dragging, setDragging] = useState(false);
-  const pressRef = useRef<{ x: number; y: number; onButton: boolean } | null>(null);
 
   useEffect(() => {
     const storedLeft = Number(localStorage.getItem(SPLIT_STORAGE_KEY));
@@ -68,11 +66,9 @@ export default function CodeAnalysisView({ mode }: { mode: "code" | "text" }) {
     return () => { document.body.style.userSelect = prev; };
   }, [dragging]);
 
-  const hideEditorPane = ca.editorCollapsed && !ca.chatOpen;
+  const hideEditorPane = editorCollapsed && !ca.chatOpen;
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    const onButton = (event.target as HTMLElement).closest("button") != null;
-    pressRef.current = { x: event.clientX, y: event.clientY, onButton };
     event.currentTarget.setPointerCapture(event.pointerId);
     if (!hideEditorPane) setDragging(true);
   }
@@ -93,12 +89,6 @@ export default function CodeAnalysisView({ mode }: { mode: "code" | "text" }) {
   }
   function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
     event.currentTarget.releasePointerCapture(event.pointerId);
-    const press = pressRef.current;
-    pressRef.current = null;
-    if (press?.onButton) {
-      const dist = Math.hypot(event.clientX - press.x, event.clientY - press.y);
-      if (dist < 5) { setDragging(false); ca.toggleEditorCollapsed(); return; }
-    }
     if (!dragging) return;
     setDragging(false);
     try {
@@ -160,7 +150,7 @@ export default function CodeAnalysisView({ mode }: { mode: "code" | "text" }) {
       >
         <EditorChatColumn
           chatOpen={ca.chatOpen}
-          editorCollapsed={ca.editorCollapsed}
+          editorCollapsed={editorCollapsed}
           editor={editorNode}
           chat={
             <ChatRoom
@@ -197,19 +187,8 @@ export default function CodeAnalysisView({ mode }: { mode: "code" | "text" }) {
               ? `w-1.5 cursor-col-resize border-x border-zinc-200 dark:border-zinc-800 ${dragging ? "bg-blue-400/60" : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"}`
               : `h-1.5 cursor-row-resize border-y border-zinc-200 dark:border-zinc-800 ${dragging ? "bg-blue-400/60" : "bg-zinc-100 hover:bg-blue-400/40 dark:bg-zinc-900"}`
         }`}
-      >
-        <PanelEdgeToggle
-          collapsed={ca.editorCollapsed}
-          collapsedDir={isLandscape ? "right" : "down"}
-          orientation={isLandscape ? "vertical" : "horizontal"}
-          title={t(ca.editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-          className={`absolute bg-zinc-100 dark:bg-[#15161d] border-zinc-200 dark:border-zinc-800 ${
-            hideEditorPane
-              ? (isLandscape ? "left-0 top-1/2 -translate-y-1/2 rounded-r-md border-y border-r" : "top-0 left-1/2 -translate-x-1/2 rounded-b-md border-x border-b")
-              : `left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border ${isLandscape ? "cursor-col-resize" : "cursor-row-resize"}`
-          }`}
-        />
-      </div>
+      />
+      {/* 접기/펼치기는 헤더 로고 옆 토글로 이전(#781) — 스플릿 핸들은 드래그 리사이즈만. */}
 
       {/* 학습 결과 패널 — 자체 세로 스크롤. */}
       <aside data-panel-scroll className="nunopi-scroll min-h-0 flex-1 overflow-y-scroll bg-white dark:bg-[#111219]">
