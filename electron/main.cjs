@@ -164,6 +164,9 @@ function createWindow(url) {
   win = new BrowserWindow({
     width: 1280,
     height: 860,
+    // 타이틀바 숨기고 신호등만 — 콘텐츠(탭 바)가 최상단까지(#779, Orca·옵시디언式).
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 14, y: 13 }, // 탭 바 높이 세로 중앙에 신호등
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -177,6 +180,9 @@ function createWindow(url) {
     shell.openExternal(url);
     return { action: "deny" };
   });
+  // 전체화면(확대) 진입/이탈 통지(#779) — 렌더러가 신호등 자리 좌측 패딩을 토글.
+  win.on("enter-full-screen", () => win?.webContents.send("window:fullscreen", true));
+  win.on("leave-full-screen", () => win?.webContents.send("window:fullscreen", false));
   win.on("closed", () => { win = null; });
 }
 
@@ -198,6 +204,7 @@ async function boot() {
 }
 
 // 설정 UI(renderer) ↔ main IPC — 런타임 CLI 경로 저장/조회 + 재시작.
+ipcMain.handle("window:isFullscreen", () => win?.isFullScreen() ?? false); // 초기 전체화면 상태(#779)
 ipcMain.handle("runtime-paths:get", () => loadSavedRuntimePaths());
 ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRuntimePaths(paths) }));
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });

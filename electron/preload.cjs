@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
   relaunch: () => ipcRenderer.invoke("app:relaunch"),
   notify: (payload) => ipcRenderer.invoke("notify", payload),
   pickRepoFolder: () => ipcRenderer.invoke("repo:pickFolder"),
+  // 창 전체화면 상태(#779) — 신호등 자리 좌측 패딩 토글용. 초기 상태 조회 + 변경 구독(해제 함수 반환).
+  window: {
+    isFullscreen: () => ipcRenderer.invoke("window:isFullscreen"),
+    onFullscreen: (cb) => { const h = (_e, v) => cb(v); ipcRenderer.on("window:fullscreen", h); return () => ipcRenderer.removeListener("window:fullscreen", h); },
+  },
   // Claude·Codex 구독 사용 한도(세션/주간/Fable) 조회(#735).
   getProviderUsage: () => ipcRenderer.invoke("provider-usage:get"),
   // 레포 파일 워처(#739) — 변경 시 onChanged 콜백. 활성 레포만 watch.
