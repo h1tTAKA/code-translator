@@ -82,8 +82,9 @@ export default function Home() {
   // Context로 받아 같은 저장소를 보게 하는 통로이기도 하다(#773).
   const shared = useMemo(() => ({ historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue }), [historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue]);
   const ca = useCodeAnalysis(shared);
-  // 입력 패널 접힘(#781) — 훅 밖으로 끌어올려 헤더 토글이 제어. 코드/글 분석 화면에서만 의미.
+  // 왼쪽 패널 접힘 — 헤더 토글이 제어(훅 밖 소유). 코드/글=입력 패널(#781), 질문=세션 패널(#783).
   const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed");
+  const [sessionCollapsed, toggleSessionCollapsed] = useCollapsed("nunopi:ask-panel-collapsed");
 
   // 히스토리 최초 로드.
   useEffect(() => { getAllHistory().then(setHistoryEntries).catch(() => {}); }, []);
@@ -180,12 +181,13 @@ export default function Home() {
         onLogoClick={() => handleViewModeChange("history")}
         editorCollapsed={editorCollapsed}
         chatOpen={ca.chatOpen}
-        onToggleEditorCollapsed={toggleEditorCollapsed}
-        showEditorToggle={viewMode === "code" || viewMode === "text"}
+        leftPanelCollapsed={viewMode === "ask" ? sessionCollapsed : editorCollapsed}
+        onToggleLeftPanel={viewMode === "ask" ? toggleSessionCollapsed : toggleEditorCollapsed}
+        showLeftPanelToggle={viewMode === "code" || viewMode === "text" || viewMode === "ask"}
         memorize={viewMode === "memorize"}
         memorizeView={<MemorizeView active={viewMode === "memorize"} providerId={memorizeProviderId} providerSettings={providerSettings} sourceIds={new Set(historyEntries.map((e) => e.id))} onGoToSource={handleGoToSource} onGoToAskSource={handleGoToAskSource} goToCard={memGoTarget} />}
         ask={viewMode === "ask"}
-        askView={<AskView active={viewMode === "ask"} providerId={providerId} providerSettings={providerSettings} goToTarget={askGoTarget} />}
+        askView={<AskView active={viewMode === "ask"} providerId={providerId} providerSettings={providerSettings} goToTarget={askGoTarget} collapsed={sessionCollapsed} />}
         history={viewMode === "history"}
         historyView={<HistoryView active={viewMode === "history"} onNavigate={handleGoToHistory} providerId={providerId} providerSettings={providerSettings} />}
         workspace={viewMode === "workspace"}

@@ -15,12 +15,14 @@ interface AppShellProps {
   // 좌상단 로고 클릭 = 홈(전역 대시보드) 진입(#729). 표준 UX.
   onLogoClick?: () => void;
   // 입력 패널 접기 — 접힘+챗닫힘이면 왼쪽 영역을 통째로 숨겨 학습패널 풀와이드.
-  // 접힘+챗열림이면 영역은 유지(내용은 EditorChatColumn이 챗만 렌더).
+  // 접힘+챗열림이면 영역은 유지(내용은 EditorChatColumn이 챗만 렌더). EditorChatColumn 전용.
   editorCollapsed?: boolean;
   chatOpen?: boolean;
-  onToggleEditorCollapsed?: () => void;
-  // 헤더 로고 옆 입력 패널 접기 토글을 보일지(#781) — 코드/글 분석 모드에서만.
-  showEditorToggle?: boolean;
+  // 헤더 로고 옆 "왼쪽 패널 접기" 토글(#781 editor · #783 세션) — 무엇이 왼쪽 패널이냐는
+  // 모드마다 다르므로(코드/글=입력 패널, 질문=세션 패널) page가 모드에 맞는 값·토글을 주입.
+  leftPanelCollapsed?: boolean;
+  onToggleLeftPanel?: () => void;
+  showLeftPanelToggle?: boolean;
   // 암기 모드 — true면 에디터/학습패널 스플릿 대신 memorizeView를 전폭 렌더.
   memorize?: boolean;
   memorizeView?: React.ReactNode;
@@ -49,7 +51,7 @@ function clampPct(value: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, value));
 }
 
-export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, onToggleEditorCollapsed, showEditorToggle = false, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
+export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, leftPanelCollapsed = false, onToggleLeftPanel, showLeftPanelToggle = false, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
   const t = useT();
   const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 헤더 좌측 신호등 자리 패딩 토글
   const mainRef = useRef<HTMLDivElement>(null);
@@ -146,12 +148,12 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto -translate-y-0.5 dark:block" />
             </button>
-            {showEditorToggle && onToggleEditorCollapsed && (
-              <button type="button" onClick={onToggleEditorCollapsed}
-                title={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-                aria-label={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+            {showLeftPanelToggle && onToggleLeftPanel && (
+              <button type="button" onClick={onToggleLeftPanel}
+                title={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+                aria-label={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
                 className="-ml-1 shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-                {editorCollapsed ? <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden />}
+                {leftPanelCollapsed ? <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden />}
               </button>
             )}
           </div>

@@ -25,8 +25,13 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
 }) {
   const t = useT();
   const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 신호등 자리 좌측 패딩 토글
-  const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed"); // 입력 패널 접기(#781) — 헤더 토글
-  const isAnalyze = kind === "code" || kind === "text";
+  // 왼쪽 패널 접기 — 코드/글=입력 패널(#781), 질문=세션 패널(#783). 모든 kind가 왼쪽 패널을
+  // 가지므로 헤더 토글은 항상 노출, 값·토글만 kind에 맞게 고른다.
+  const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed");
+  const [sessionCollapsed, toggleSessionCollapsed] = useCollapsed("nunopi:ask-panel-collapsed");
+  const isAsk = kind === "ask";
+  const leftPanelCollapsed = isAsk ? sessionCollapsed : editorCollapsed;
+  const toggleLeftPanel = isAsk ? toggleSessionCollapsed : toggleEditorCollapsed;
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {/* 헤더 한 줄 — 레포 탭 헤더와 시각 일관(border-b). 좌: nunopi lockup 로고를 레포 도크 툴바와 동일한
@@ -38,15 +43,14 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
           <img src="/brand/nunopi-lockup-light.png" alt="nunopi" className="block h-7 w-auto -translate-y-0.5 dark:hidden" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/nunopi-lockup-transparent.png" alt="nunopi" className="hidden h-7 w-auto -translate-y-0.5 dark:block" />
-          {/* 코드/글 분석 탭이면 입력 패널 접기 토글(#781) — 로고 옆 바짝. 독립 모드(AppShell)와 동일 위치·크기. */}
-          {isAnalyze && (
-            <button type="button" onClick={toggleEditorCollapsed}
-              title={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-              aria-label={t(editorCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
-              className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-              {editorCollapsed ? <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden />}
-            </button>
-          )}
+          {/* 왼쪽 패널 접기 토글 — 로고 옆 바짝. 독립 모드(AppShell)와 동일 위치·크기.
+              코드/글=입력 패널(#781), 질문=세션 패널(#783). 모든 kind에서 노출. */}
+          <button type="button" onClick={toggleLeftPanel}
+            title={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+            aria-label={t(leftPanelCollapsed ? "layout.expandEditor" : "layout.collapseEditor")}
+            className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+            {leftPanelCollapsed ? <IconLayoutSidebarLeftExpand size={18} stroke={2} aria-hidden /> : <IconLayoutSidebarLeftCollapse size={18} stroke={2} aria-hidden />}
+          </button>
         </div>
         <span className="h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
         {tabStrip}
@@ -68,7 +72,7 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
           AnalysisContext(page.tsx 소유)에서 받아 독립 모드와 같은 저장소를 본다. */}
       <div className="flex min-h-0 flex-1 flex-col">
         {kind === "ask" ? (
-          <AskView active={active} providerId={providerId} providerSettings={providerSettings} />
+          <AskView active={active} providerId={providerId} providerSettings={providerSettings} collapsed={sessionCollapsed} />
         ) : (
           // key={kind} — mode는 초기값이라, 만일 kind가 바뀌면 인스턴스를 새로 만들어 훅 상태를 재초기화.
           <CodeAnalysisView key={kind} mode={kind} editorCollapsed={editorCollapsed} />
