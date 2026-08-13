@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
@@ -64,11 +64,13 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   // 한 번이라도 활성화된 탭 키 — 이 집합만 실제 마운트(keep-alive). 안 연 탭은 마운트 안 함.
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [picking, setPicking] = useState(false);
+  const modeSeq = useRef(0); // 모드 탭 id 세션 카운터(같은 ms 충돌 방지, #769)
   const [addMenu, setAddMenu] = useState<{ left: number; top: number } | null>(null); // "+" 드롭다운 픽커(#769)
+  const closeAddMenu = useCallback(() => setAddMenu(null), []); // 안정 참조 — 메뉴 effect 재부착 최소화
   // "+" 버튼 아래로 드롭다운 앵커링. 화면 오른쪽 넘침 방지.
   const openAddMenu = (el: HTMLElement) => {
     const r = el.getBoundingClientRect();
-    const W = 240, M = 8; // 메뉴 폭(w-60) · 화면 여백
+    const W = 256, M = 8; // 메뉴 폭(w-64=256px) · 화면 여백
     setAddMenu({ left: Math.max(M, Math.min(r.left, window.innerWidth - W - M)), top: r.bottom + 6 });
   };
   // 레포 탭 호버 카드(#764) — 에이전트·워크트리 실시간. 탭↔카드 사이 이동 허용 위해 지연 닫기.
@@ -157,8 +159,9 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   }
 
   // 모드 탭(질문/코드/글) 추가(#769) — 폴더 없이 유니크 id로 새 빈 탭. id는 생성 후 불변(keep-alive·영속 키).
+  // Date.now(세션 간 구분) + 세션 카운터(같은 ms 연속 생성 시 충돌 방지).
   function addModeTab(kind: ModeKind) {
-    const id = Date.now().toString(36);
+    const id = `${Date.now().toString(36)}-${modeSeq.current++}`;
     const key = `${kind}:${id}`;
     setTabs((prev) => [...prev, { type: kind, id }]);
     activate(key);
@@ -270,7 +273,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         <RepoTabHoverCard key={hover.path} path={hover.path} left={hover.left} top={hover.top}
           onMouseEnter={cancelClose} onMouseLeave={scheduleClose} />
       )}
-      <WorkspaceAddMenu anchor={addMenu} onClose={() => setAddMenu(null)} onPick={onPick} />
+      <WorkspaceAddMenu anchor={addMenu} onClose={closeAddMenu} onPick={onPick} />
     </div>
   );
 }

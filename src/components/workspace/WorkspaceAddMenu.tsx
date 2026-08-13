@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconFolderOpen, IconMessages, IconFileCode, IconFileText, IconChevronRight } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -25,7 +25,10 @@ export default function WorkspaceAddMenu({ anchor, onClose, onPick }: {
   const t = useT();
   const [activeIdx, setActiveIdx] = useState(0);
   const open = anchor !== null;
-  const choose = (i: number) => { onPick(ROWS[i].kind); onClose(); };
+  // 최신 onPick 참조 — Enter 핸들러(effect 안 onKey)가 옛 onPick을 잡지 않게(stale closure 방지).
+  const onPickRef = useRef(onPick);
+  useEffect(() => { onPickRef.current = onPick; }, [onPick]);
+  const choose = (i: number) => { onPickRef.current(ROWS[i].kind); onClose(); };
 
   useEffect(() => {
     if (!open) return;
