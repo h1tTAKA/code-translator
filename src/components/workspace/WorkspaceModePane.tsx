@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { IconMessages, IconBrain, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useFullscreen } from "@/hooks/useFullscreen";
-import { useEditorCollapsed } from "@/hooks/useEditorCollapsed";
+import { useCollapsed } from "@/hooks/useCollapsed";
 import AskView from "@/components/ask/AskView";
 import CodeAnalysisView from "@/components/analyze/CodeAnalysisView";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
@@ -25,7 +25,7 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
 }) {
   const t = useT();
   const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 신호등 자리 좌측 패딩 토글
-  const [editorCollapsed, toggleEditorCollapsed] = useEditorCollapsed(); // 입력 패널 접기(#781) — 헤더 토글
+  const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed"); // 입력 패널 접기(#781) — 헤더 토글
   const isAnalyze = kind === "code" || kind === "text";
   return (
     <div className="flex h-full min-h-0 w-full flex-col">

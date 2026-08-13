@@ -24,7 +24,7 @@ import { type HistoryEntry, getAllHistory } from "@/lib/historyDB";
 import { loadExclusions } from "@/lib/exclusions";
 import { type Collection, loadCollections } from "@/lib/collections";
 import { useCodeAnalysis, generateAutoTitle } from "@/hooks/useCodeAnalysis";
-import { useEditorCollapsed } from "@/hooks/useEditorCollapsed";
+import { useCollapsed } from "@/hooks/useCollapsed";
 import { AnalysisProvider } from "@/lib/analyze/AnalysisContext";
 
 const SETTINGS_STORAGE_KEY = "nunopi:provider-settings";
@@ -83,7 +83,7 @@ export default function Home() {
   const shared = useMemo(() => ({ historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue }), [historyEntries, setHistoryEntries, collections, setCollections, excludedTerms, setExcludedTerms, providerId, setProviderId, providerSettings, setMemorizeDue]);
   const ca = useCodeAnalysis(shared);
   // 입력 패널 접힘(#781) — 훅 밖으로 끌어올려 헤더 토글이 제어. 코드/글 분석 화면에서만 의미.
-  const [editorCollapsed, toggleEditorCollapsed] = useEditorCollapsed();
+  const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed");
 
   // 히스토리 최초 로드.
   useEffect(() => { getAllHistory().then(setHistoryEntries).catch(() => {}); }, []);
