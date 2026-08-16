@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
   relaunch: () => ipcRenderer.invoke("app:relaunch"),
   notify: (payload) => ipcRenderer.invoke("notify", payload),
   pickRepoFolder: () => ipcRenderer.invoke("repo:pickFolder"),
+  // 학습 모드를 별도 창으로 열기(#789) — 멀티모니터. {ok} 반환.
+  openModeWindow: (kind) => ipcRenderer.invoke("mode-window:open", kind),
   // 창 전체화면 상태(#779) — 신호등 자리 좌측 패딩 토글용. 초기 상태 조회 + 변경 구독(해제 함수 반환).
   window: {
     isFullscreen: () => ipcRenderer.invoke("window:isFullscreen"),

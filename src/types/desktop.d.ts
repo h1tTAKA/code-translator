@@ -8,6 +8,8 @@ interface NunopiDesktopApi {
   notify(payload: { title: string; body?: string }): Promise<{ ok: boolean; reason?: string }>;
   // 레포 폴더 선택(OS 네이티브 창). 취소 시 { canceled: true }.
   pickRepoFolder(): Promise<{ canceled: boolean; path?: string }>;
+  // 학습 모드를 별도 창으로 열기(#789) — 멀티모니터. ok:false면 열지 못함(다음 커밋서 중복 사유).
+  openModeWindow?(kind: "ask" | "code" | "text"): Promise<{ ok: boolean; reason?: string }>;
   // 창 전체화면 상태(#779) — 신호등 자리 좌측 패딩 토글용. onFullscreen은 해제 함수 반환.
   window?: {
     isFullscreen(): Promise<boolean>;

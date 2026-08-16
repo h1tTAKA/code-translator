@@ -160,6 +160,17 @@ async function waitReady(url, tries = 60) {
   throw new Error(`server not ready: ${url}`);
 }
 
+// 창 공통 배선 — 외부 링크 처리 + 전체화면 통지(#779). 메인 창·모드 전용 창(#789) 공유.
+function wireWindowCommon(w) {
+  w.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(url)) return { action: "allow" };
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+  w.on("enter-full-screen", () => w.webContents.send("window:fullscreen", true));
+  w.on("leave-full-screen", () => w.webContents.send("window:fullscreen", false));
+}
+
 function createWindow(url) {
   win = new BrowserWindow({
     width: 1280,
@@ -174,16 +185,28 @@ function createWindow(url) {
     },
   });
   win.loadURL(url);
-  // 외부 링크는 기본 브라우저로.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(url)) return { action: "allow" };
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
-  // 전체화면(확대) 진입/이탈 통지(#779) — 렌더러가 신호등 자리 좌측 패딩을 토글.
-  win.on("enter-full-screen", () => win?.webContents.send("window:fullscreen", true));
-  win.on("leave-full-screen", () => win?.webContents.send("window:fullscreen", false));
+  wireWindowCommon(win);
   win.on("closed", () => { win = null; });
+}
+
+// 모드 전용 창(#789) — 그 모드만 보이는 별도 창. appBase에 ?win=<kind> 를 붙여 로드.
+// 렌더러(page.tsx)가 win 파라미터를 읽어 windowMode로 렌더한다. 반환된 창을 호출부가 추적.
+function createModeWindow(kind) {
+  const sep = appBase.includes("?") ? "&" : "?";
+  const w = new BrowserWindow({
+    width: 1100,
+    height: 820,
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 14, y: 13 },
+    webPreferences: {
+      preload: join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  w.loadURL(`${appBase}${sep}win=${encodeURIComponent(kind)}`);
+  wireWindowCommon(w);
+  return w;
 }
 
 async function boot() {
@@ -205,6 +228,12 @@ async function boot() {
 
 // 설정 UI(renderer) ↔ main IPC — 런타임 CLI 경로 저장/조회 + 재시작.
 ipcMain.handle("window:isFullscreen", () => win?.isFullScreen() ?? false); // 초기 전체화면 상태(#779)
+// 모드 전용 창 열기(#789) — 유효 kind면 새 창 생성. 중복 방지 레지스트리는 다음 커밋.
+ipcMain.handle("mode-window:open", (_e, kind) => {
+  if (kind !== "ask" && kind !== "code" && kind !== "text") return { ok: false, reason: "invalid" };
+  createModeWindow(kind);
+  return { ok: true };
+});
 ipcMain.handle("runtime-paths:get", () => loadSavedRuntimePaths());
 ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRuntimePaths(paths) }));
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
