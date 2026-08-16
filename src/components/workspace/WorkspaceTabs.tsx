@@ -248,7 +248,8 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     }
     const id = `${Date.now().toString(36)}-${modeSeq.current++}`;
     const key = `${kind}:${id}`;
-    setTabs((prev) => [...prev, { type: kind, id }]);
+    // updater 내 재확인 — 같은 배치에서 이중 발화해도 kind당 1개 유지(레이스 백스톱).
+    setTabs((prev) => (prev.some((x) => x.type === kind) ? prev : [...prev, { type: kind, id }]));
     activate(key);
   }
 
