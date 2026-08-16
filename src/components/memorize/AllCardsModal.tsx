@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { IconX, IconSearch, IconTrash, IconCheck, IconSquareCheck, IconSparkles, IconHandFinger, IconCirclePlus, IconCircleMinus, IconCopyCheck, IconCards, IconChartBar } from "@tabler/icons-react";
+import { IconX, IconSearch, IconTrash, IconCheck, IconSquareCheck, IconSparkles, IconHandFinger, IconCirclePlus, IconCircleMinus, IconCopyCheck, IconBrain, IconChartBar } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { collectCards } from "@/lib/srs/collect";
@@ -343,7 +343,7 @@ export default function AllCardsModal({ now, active = true, autoThrowCardKey, au
                 onClick={onOpenDeckReview}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-lime-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-lime-600"
               >
-                <IconCards size={15} stroke={2} aria-hidden />
+                <IconBrain size={15} stroke={2} aria-hidden />
                 {t("mem.reviewStudy")}
               </button>
             )}

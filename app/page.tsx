@@ -71,6 +71,7 @@ export default function Home() {
   // 화면 전환 축(코드/글/암기/질문/기록/워크스페이스).
   const [viewMode, setViewMode] = useState<ViewMode>("code");
   const lastQAViewRef = useRef<ViewMode>("code"); // 질문·분석 진입 시 복귀할 직전 하위뷰(ask/code/text).
+  const memorizeOriginRef = useRef<ViewMode>("code"); // 암기 진입 직전 영역(#785) — 돌아가기 목적지.
   const [askGoTarget, setAskGoTarget] = useState<{ sessionId: string; subId?: string; quizId?: string; nonce: number } | undefined>(undefined);
   const askGoNonceRef = useRef(0);
   const [memGoTarget, setMemGoTarget] = useState<{ cardKey: string; nonce: number } | undefined>(undefined);
@@ -85,6 +86,14 @@ export default function Home() {
   // 왼쪽 패널 접힘 — 헤더 토글이 제어(훅 밖 소유). 코드/글=입력 패널(#781), 질문=세션 패널(#783).
   const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed");
   const [sessionCollapsed, toggleSessionCollapsed] = useCollapsed("nunopi:ask-panel-collapsed");
+  // 암기 진입 출처 복원(#785) — 앱 재시작 후 암기 화면이면 돌아가기가 마지막 출처로 가게.
+  // 손상/수동편집 대비 유효한 non-memorize ViewMode만 채택(VIEW_MODE 복원과 동일 방식).
+  useEffect(() => {
+    try {
+      const o = localStorage.getItem("nunopi:memorize-origin");
+      if (o === "code" || o === "text" || o === "ask" || o === "history" || o === "workspace") memorizeOriginRef.current = o;
+    } catch { /* ignore */ }
+  }, []);
 
   // 히스토리 최초 로드.
   useEffect(() => { getAllHistory().then(setHistoryEntries).catch(() => {}); }, []);
@@ -131,6 +140,11 @@ export default function Home() {
 
   function handleViewModeChange(next: ViewMode) {
     if (next === viewMode) return;
+    // 암기 진입 시 직전 영역을 기억 → 돌아가기로 그 자리 복귀(#785). 암기→암기 재진입은 무시.
+    if (next === "memorize" && viewMode !== "memorize") {
+      memorizeOriginRef.current = viewMode;
+      try { localStorage.setItem("nunopi:memorize-origin", viewMode); } catch { /* ignore */ }
+    }
     if (next === "ask" || next === "code" || next === "text") lastQAViewRef.current = next;
     setViewMode(next);
     try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
@@ -138,6 +152,7 @@ export default function Home() {
     if (next === "code" || next === "text") ca.handleModeChange(next);
   }
   const enterQAArea = () => handleViewModeChange(lastQAViewRef.current);
+  const backFromMemorize = () => handleViewModeChange(memorizeOriginRef.current);
 
   function handleSettingsSave(next: ProviderSettings) {
     setProviderSettings(next);
@@ -197,6 +212,7 @@ export default function Home() {
             viewMode={viewMode}
             onViewModeChange={handleViewModeChange}
             onEnterQA={enterQAArea}
+            onBack={backFromMemorize}
             memorizeBadge={memorizeDue}
             disabled={ca.isLoading}
           />
