@@ -231,7 +231,8 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
           toast(t("workspace.repoAlreadyOpen"), "error", { label: t("workspace.goToTab"), onClick: () => activate(key) });
           return;
         }
-        setTabs((prev) => [...prev, { type: "repo", path }]);
+        // 추가는 updater 내에서 재확인 — 폴더 피커 동시 resolve 등 레이스 시 이중 추가 방지.
+        setTabs((prev) => (prev.some((x) => tabKey(x) === key) ? prev : [...prev, { type: "repo", path }]));
         activate(key);
       }
     } catch { /* 무시 */ } finally { setPicking(false); }
