@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle, IconMessages, IconFileCode, IconFileText } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import WorkspaceView from "@/components/workspace/WorkspaceView";
 import WorkspaceModePane from "@/components/workspace/WorkspaceModePane";
@@ -68,6 +69,7 @@ function tabDot(st: TabState | null) {
 // 방문한 탭은 숨긴 채 계속 마운트(lazy keep-alive) — 전환해도 도킹/에디터/터미널 상태 보존.
 export default function WorkspaceTabs({ active = true, providerId, providerSettings, onExitWorkspace, onOpenMemorize, onOpenSettings }: { active?: boolean; providerId: AgentProviderKind; providerSettings: ProviderSettings; onExitWorkspace?: () => void; onOpenMemorize?: () => void; onOpenSettings?: () => void }) {
   const t = useT();
+  const toast = useToast();
   const confirm = useConfirm();
   const [mounted, setMounted] = useState(false);
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -225,7 +227,12 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
       if (!r.canceled && r.path) {
         const path = r.path;
         const key = `repo:${path}`;
-        setTabs((prev) => (prev.some((x) => tabKey(x) === key) ? prev : [...prev, { type: "repo", path }])); // 이미 열려 있으면 그 탭 활성만
+        if (tabs.some((x) => tabKey(x) === key)) { // 이미 열린 레포면 새 탭 없이 기존 탭 활성 + 안내(#787)
+          toast(t("workspace.repoAlreadyOpen"), "error");
+          activate(key);
+          return;
+        }
+        setTabs((prev) => [...prev, { type: "repo", path }]);
         activate(key);
       }
     } catch { /* 무시 */ } finally { setPicking(false); }
