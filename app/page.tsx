@@ -70,6 +70,13 @@ export default function Home() {
 
   // 화면 전환 축(코드/글/암기/질문/기록/워크스페이스).
   const [viewMode, setViewMode] = useState<ViewMode>("code");
+  // 모드 전용 창(#789) — ?win=<kind>로 뜬 별도 창이면 그 모드만 렌더(영역전환·복원·영속 스킵).
+  const winKind = useMemo<ViewMode | null>(() => {
+    if (typeof window === "undefined") return null;
+    const w = new URLSearchParams(window.location.search).get("win");
+    return w === "ask" || w === "code" || w === "text" ? (w as ViewMode) : null;
+  }, []);
+  const vm: ViewMode = winKind ?? viewMode; // AppShell 슬롯 판정에 쓰는 유효 뷰모드.
   const lastQAViewRef = useRef<ViewMode>("code"); // 질문·분석 진입 시 복귀할 직전 하위뷰(ask/code/text).
   const memorizeOriginRef = useRef<ViewMode>("code"); // 암기 진입 직전 영역(#785) — 돌아가기 목적지.
   const [askGoTarget, setAskGoTarget] = useState<{ sessionId: string; subId?: string; quizId?: string; nonce: number } | undefined>(undefined);
@@ -98,13 +105,17 @@ export default function Home() {
   // 히스토리 최초 로드.
   useEffect(() => { getAllHistory().then(setHistoryEntries).catch(() => {}); }, []);
 
-  // 뷰·모드·암기 provider 복원.
+  // 뷰·모드·암기 provider 복원. 모드 전용 창(#789)이면 뷰 복원은 스킵하고 창의 kind로 고정.
   useEffect(() => {
-    const storedView = localStorage.getItem(VIEW_MODE_KEY);
-    if (storedView === "text" || storedView === "memorize" || storedView === "ask" || storedView === "history" || storedView === "workspace") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setViewMode(storedView);
-      if (storedView === "text") ca.setMode("text");
+    if (winKind) {
+      if (winKind === "text") ca.setMode("text");
+    } else {
+      const storedView = localStorage.getItem(VIEW_MODE_KEY);
+      if (storedView === "text" || storedView === "memorize" || storedView === "ask" || storedView === "history" || storedView === "workspace") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setViewMode(storedView);
+        if (storedView === "text") ca.setMode("text");
+      }
     }
     const storedMemProvider = localStorage.getItem("nunopi:memorize-provider");
     if (storedMemProvider) setMemorizeProviderId(storedMemProvider as AgentProviderKind);
@@ -196,17 +207,19 @@ export default function Home() {
         onLogoClick={() => handleViewModeChange("history")}
         editorCollapsed={editorCollapsed}
         chatOpen={ca.chatOpen}
-        leftPanelCollapsed={viewMode === "ask" ? sessionCollapsed : editorCollapsed}
-        onToggleLeftPanel={viewMode === "ask" ? toggleSessionCollapsed : toggleEditorCollapsed}
-        showLeftPanelToggle={viewMode === "code" || viewMode === "text" || viewMode === "ask"}
-        memorize={viewMode === "memorize"}
-        memorizeView={<MemorizeView active={viewMode === "memorize"} providerId={memorizeProviderId} providerSettings={providerSettings} sourceIds={new Set(historyEntries.map((e) => e.id))} onGoToSource={handleGoToSource} onGoToAskSource={handleGoToAskSource} goToCard={memGoTarget} />}
-        ask={viewMode === "ask"}
-        askView={<AskView active={viewMode === "ask"} providerId={providerId} providerSettings={providerSettings} goToTarget={askGoTarget} collapsed={sessionCollapsed} />}
-        history={viewMode === "history"}
-        historyView={<HistoryView active={viewMode === "history"} onNavigate={handleGoToHistory} providerId={providerId} providerSettings={providerSettings} />}
-        workspace={viewMode === "workspace"}
-        workspaceView={<WorkspaceTabs active={viewMode === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={enterQAArea} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
+        windowMode={!!winKind}
+        windowTitle={winKind ? `mode.${winKind}` : undefined}
+        leftPanelCollapsed={vm === "ask" ? sessionCollapsed : editorCollapsed}
+        onToggleLeftPanel={vm === "ask" ? toggleSessionCollapsed : toggleEditorCollapsed}
+        showLeftPanelToggle={vm === "code" || vm === "text" || vm === "ask"}
+        memorize={vm === "memorize"}
+        memorizeView={<MemorizeView active={vm === "memorize"} providerId={memorizeProviderId} providerSettings={providerSettings} sourceIds={new Set(historyEntries.map((e) => e.id))} onGoToSource={handleGoToSource} onGoToAskSource={handleGoToAskSource} goToCard={memGoTarget} />}
+        ask={vm === "ask"}
+        askView={<AskView active={vm === "ask"} providerId={providerId} providerSettings={providerSettings} goToTarget={askGoTarget} collapsed={sessionCollapsed} />}
+        history={vm === "history"}
+        historyView={<HistoryView active={vm === "history"} onNavigate={handleGoToHistory} providerId={providerId} providerSettings={providerSettings} />}
+        workspace={vm === "workspace"}
+        workspaceView={<WorkspaceTabs active={vm === "workspace"} providerId={providerId} providerSettings={providerSettings} onExitWorkspace={enterQAArea} onOpenMemorize={() => handleViewModeChange("memorize")} onOpenSettings={() => setIsSettingsOpen(true)} />}
         modeToggle={
           <AreaPrimaryToggle
             viewMode={viewMode}
