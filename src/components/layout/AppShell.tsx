@@ -35,6 +35,10 @@ interface AppShellProps {
   // 워크스페이스 모드 — true면 workspaceView 전폭 렌더(다른 뷰와 배타).
   workspace?: boolean;
   workspaceView?: React.ReactNode;
+  // 모드 전용 창(#789) — ?win=<kind>로 뜬 별도 Electron 창. 헤더를 로고+모드명만으로 최소화하고
+  // 영역전환(modeToggle)·하위세그(subToggle)·홈 진입을 숨긴다. windowTitle=그 모드명.
+  windowMode?: boolean;
+  windowTitle?: string;
 }
 
 // 가로형 창(landscape — 정상/4분할): 좌(에디터)/우(학습패널) 스플릿 — leftPct.
@@ -51,7 +55,7 @@ function clampPct(value: number): number {
   return Math.min(MAX_PCT, Math.max(MIN_PCT, value));
 }
 
-export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, leftPanelCollapsed = false, onToggleLeftPanel, showLeftPanelToggle = false, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView }: AppShellProps) {
+export default function AppShell({ editor, learningPanel, modeToggle, subToggle, onOpenSettings, onLogoClick, editorCollapsed = false, chatOpen = false, leftPanelCollapsed = false, onToggleLeftPanel, showLeftPanelToggle = false, memorize = false, memorizeView, ask = false, askView, history = false, historyView, workspace = false, workspaceView, windowMode = false, windowTitle }: AppShellProps) {
   const t = useT();
   const fullscreen = useFullscreen(); // 타이틀바 통합(#779) — 헤더 좌측 신호등 자리 패딩 토글
   const mainRef = useRef<HTMLDivElement>(null);
@@ -141,13 +145,24 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
           {/* 좌: 브랜드 로고 + (코드/글 분석 시) 입력 패널 접기 토글(#781). 신호등 자리는 이 블록에만 ml로
               (그리드는 좌우 대칭 유지 → 가운데 토글이 창 정중앙, #779). */}
           <div className={`flex items-center gap-0.5 justify-self-start ${fullscreen ? "" : "ml-[62px]"}`}>
-            <button type="button" onClick={onLogoClick} title={t("mode.history")} aria-label={t("mode.history")}
-              className="flex shrink-0 items-center rounded-lg p-0.5 transition hover:opacity-80">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto -translate-y-0.5 dark:hidden" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto -translate-y-0.5 dark:block" />
-            </button>
+            {windowMode ? (
+              // 모드 전용 창: 로고는 네비 없이 표시 + 모드명. 홈 진입 없음.
+              <div className="flex shrink-0 items-center gap-1.5 p-0.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto -translate-y-0.5 dark:hidden" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto -translate-y-0.5 dark:block" />
+                {windowTitle && <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">· {t(windowTitle)}</span>}
+              </div>
+            ) : (
+              <button type="button" onClick={onLogoClick} title={t("mode.history")} aria-label={t("mode.history")}
+                className="flex shrink-0 items-center rounded-lg p-0.5 transition hover:opacity-80">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/nunopi-lockup-light.png" alt="Nunopi" className="block h-7 w-auto -translate-y-0.5 dark:hidden" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/brand/nunopi-lockup-transparent.png" alt="Nunopi" className="hidden h-7 w-auto -translate-y-0.5 dark:block" />
+              </button>
+            )}
             {showLeftPanelToggle && onToggleLeftPanel && (
               <button type="button" onClick={onToggleLeftPanel}
                 title={t(leftPanelCollapsed ? "layout.expandPanel" : "layout.collapsePanel")}
@@ -158,12 +173,12 @@ export default function AppShell({ editor, learningPanel, modeToggle, subToggle,
             )}
           </div>
           {/* 가운데: 질문·분석 하위 세그(질문·코드·글) — 원래 중앙 위치(#725). 암기·홈 뷰에선 숨김(하위 없음)(#729). */}
-          <div className="justify-self-center">{!memorize && !history && subToggle}</div>
-          {/* 우: 영역 전환 토글(워크스페이스│질문·분석│암기) │ 설정(테두리 없는 아이콘) */}
+          <div className="justify-self-center">{!memorize && !history && !windowMode && subToggle}</div>
+          {/* 우: 영역 전환 토글(워크스페이스│질문·분석│암기) │ 설정. 모드 전용 창은 영역전환 숨김. */}
           <div className="flex items-center gap-1.5 justify-self-end">
-            {modeToggle}
+            {!windowMode && modeToggle}
             {/* 영역 nav ↔ 유틸 구분선 */}
-            <span className="mx-1 h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
+            {!windowMode && <span className="mx-1 h-5 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
             <button type="button" onClick={onOpenSettings} title={t("header.settings")} aria-label={t("header.settings")}
               className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
               <IconSettings size={18} stroke={2} aria-hidden />
