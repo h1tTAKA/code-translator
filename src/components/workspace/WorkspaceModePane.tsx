@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { IconMessages, IconBrain, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
+import { IconMessages, IconCards, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useFullscreen } from "@/hooks/useFullscreen";
 import { useCollapsed } from "@/hooks/useCollapsed";
@@ -64,7 +64,7 @@ export default function WorkspaceModePane({ kind, tabStrip, active, providerId, 
         {onOpenMemorize && (
           <button type="button" onClick={onOpenMemorize} title={t("mode.memorize")} aria-label={t("mode.memorize")}
             className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-            <IconBrain size={16} stroke={2} aria-hidden />
+            <IconCards size={16} stroke={2} aria-hidden />
           </button>
         )}
       </header>

@@ -1,6 +1,6 @@
 "use client";
 
-import { IconCode, IconFileText, IconMessage2, IconLayoutDashboard, IconMessages, IconBrain, IconArrowBackUp } from "@tabler/icons-react";
+import { IconCode, IconFileText, IconMessage2, IconLayoutDashboard, IconMessages, IconCards, IconArrowBackUp } from "@tabler/icons-react";
 import type { ViewMode } from "@/lib/viewMode";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -57,7 +57,7 @@ export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQ
       {/* → 암기 (암기 모드는 위에서 early-return하므로 여기선 항상 표시) — due 배지 유지 */}
       <button type="button" onClick={() => onViewModeChange("memorize")} disabled={disabled}
         title={t("mode.memorize")} aria-label={t("mode.memorize")} className={ICON_BTN}>
-        <IconBrain size={16} stroke={2} aria-hidden />
+        <IconCards size={16} stroke={2} aria-hidden />
         {memorizeBadge > 0 && (
           <span aria-label={`${t("mem.modeDue")} ${memorizeBadge}`}
             className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white">
