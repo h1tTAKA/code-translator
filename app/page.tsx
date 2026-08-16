@@ -87,10 +87,11 @@ export default function Home() {
   const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed");
   const [sessionCollapsed, toggleSessionCollapsed] = useCollapsed("nunopi:ask-panel-collapsed");
   // 암기 진입 출처 복원(#785) — 앱 재시작 후 암기 화면이면 돌아가기가 마지막 출처로 가게.
+  // 손상/수동편집 대비 유효한 non-memorize ViewMode만 채택(VIEW_MODE 복원과 동일 방식).
   useEffect(() => {
     try {
       const o = localStorage.getItem("nunopi:memorize-origin");
-      if (o) memorizeOriginRef.current = o as ViewMode;
+      if (o === "code" || o === "text" || o === "ask" || o === "history" || o === "workspace") memorizeOriginRef.current = o;
     } catch { /* ignore */ }
   }, []);
 
