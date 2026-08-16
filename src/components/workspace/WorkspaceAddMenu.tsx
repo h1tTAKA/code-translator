@@ -20,9 +20,15 @@ const ROWS: Row[] = [
 export default function WorkspaceAddMenu({ anchor, onClose, onPick }: {
   anchor: { left: number; top: number } | null;
   onClose: () => void;
-  onPick: (kind: AddKind) => void;
+  onPick: (kind: AddKind, target?: "tab" | "window") => void;
 }) {
   const t = useT();
+  // 새 창으로 열기(#789)는 Electron에서만. 메뉴는 클릭 후에만(클라이언트) 렌더돼 window 읽기 안전.
+  const canWindow = typeof window !== "undefined" && !!window.nunopiDesktop?.openModeWindow;
+  // 서브메뉴 방향(#789) — 우측 공간 부족(탭 많아 +가 우측이면)하면 왼쪽으로 뒤집어 잘림 방지.
+  const MENU_W = 256; // w-64
+  const SUB_W = 176; // w-44
+  const openLeft = anchor !== null && typeof window !== "undefined" && anchor.left + MENU_W + SUB_W > window.innerWidth;
   const [activeIdx, setActiveIdx] = useState(0);
   const open = anchor !== null;
   // 최신 onPick 참조 — Enter 핸들러(effect 안 onKey)가 옛 onPick을 잡지 않게(stale closure 방지).
@@ -60,18 +66,40 @@ export default function WorkspaceAddMenu({ anchor, onClose, onPick }: {
       {ROWS.map((row, i) => {
         const on = i === activeIdx;
         const first = i === 0 || ROWS[i - 1].group !== row.group;
+        const isMode = row.kind !== "repo"; // 모드 행만 서브메뉴(탭 추가/새 창). 레포는 즉시 폴더 선택.
         return (
           <div key={row.kind}>
             {first && label(row.group)}
-            <button type="button" role="menuitem"
-              onMouseMove={() => setActiveIdx(i)} onClick={() => choose(i)}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition ${on ? "bg-zinc-100 text-zinc-900 dark:bg-white/[0.08] dark:text-zinc-50" : "text-zinc-700 dark:text-zinc-200"}`}>
-              {/* 활성 시 색 — 레포=인디고, 모드(질문/코드/글)=파랑(탭 아이콘과 일치). */}
-              <row.Icon size={16} stroke={1.75} className={`shrink-0 ${on ? (row.kind === "repo" ? "text-[#3B34E2] dark:text-[#a5a0f8]" : "text-sky-500 dark:text-sky-400") : "text-zinc-400 dark:text-zinc-500"}`} aria-hidden />
-              <span className="min-w-0 flex-1 truncate font-medium">{t(row.labelKey)}</span>
-              <IconChevronRight size={14} stroke={2} aria-hidden
-                className={`shrink-0 transition ${on ? "translate-x-0 text-zinc-400 opacity-100 dark:text-zinc-400" : "-translate-x-1 text-transparent opacity-0"}`} />
-            </button>
+            <div className="relative">
+              <button type="button" role="menuitem"
+                onMouseMove={() => setActiveIdx(i)} onClick={() => choose(i)}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition ${on ? "bg-zinc-100 text-zinc-900 dark:bg-white/[0.08] dark:text-zinc-50" : "text-zinc-700 dark:text-zinc-200"}`}>
+                {/* 활성 시 색 — 레포=인디고, 모드(질문/코드/글)=파랑(탭 아이콘과 일치). */}
+                <row.Icon size={16} stroke={1.75} className={`shrink-0 ${on ? (row.kind === "repo" ? "text-[#3B34E2] dark:text-[#a5a0f8]" : "text-sky-500 dark:text-sky-400") : "text-zinc-400 dark:text-zinc-500"}`} aria-hidden />
+                <span className="min-w-0 flex-1 truncate font-medium">{t(row.labelKey)}</span>
+                {isMode && (
+                  <IconChevronRight size={14} stroke={2} aria-hidden
+                    className={`shrink-0 transition ${on ? "translate-x-0 text-zinc-400 opacity-100 dark:text-zinc-400" : "-translate-x-1 text-transparent opacity-0"}`} />
+                )}
+              </button>
+              {/* 모드 행 hover 시 우측 서브메뉴(#789) — 탭에 추가 / 새 창으로 열기(Electron만). */}
+              {isMode && on && (
+                <div className={`absolute top-0 z-10 w-44 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-2xl ring-1 ring-black/5 dark:border-white/10 dark:bg-[#14151c] dark:ring-white/5 ${openLeft ? "right-full mr-1" : "left-full ml-1"}`}>
+                  <button type="button" role="menuitem"
+                    onClick={() => { onPickRef.current(row.kind, "tab"); onClose(); }}
+                    className="flex w-full items-center rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/[0.08]">
+                    {t("workspace.addAsTab")}
+                  </button>
+                  {canWindow && (
+                    <button type="button" role="menuitem"
+                      onClick={() => { onPickRef.current(row.kind, "window"); onClose(); }}
+                      className="flex w-full items-center rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/[0.08]">
+                      {t("workspace.openInWindow")}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         );
       })}
