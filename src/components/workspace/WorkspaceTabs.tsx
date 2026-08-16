@@ -152,6 +152,21 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   useEffect(() => { if (!mounted) return; try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)); } catch { /* ignore */ } }, [tabs, mounted]);
   useEffect(() => { if (!mounted) return; try { if (activeKey) localStorage.setItem(ACTIVE_KEY, activeKey); else localStorage.removeItem(ACTIVE_KEY); } catch { /* ignore */ } }, [activeKey, mounted]);
 
+  // 복원 시 모드 탭을 main 레지스트리에 재등록(#789) — 재시작하면 레지스트리가 비므로. 이미 다른
+  // 창이 점유해 claim 실패한 kind는 그 탭을 조용히 제거(탭·창 통합 1개 유지).
+  useEffect(() => {
+    if (!mounted || !desktop?.modeClaim) return;
+    let cancelled = false;
+    (async () => {
+      const kinds = [...new Set(tabs.filter((x): x is Extract<Tab, { type: ModeKind }> => x.type !== "repo").map((x) => x.type))];
+      const failed: ModeKind[] = [];
+      for (const k of kinds) { const r = await desktop.modeClaim!(k); if (!r.ok) failed.push(k); }
+      if (!cancelled && failed.length) setTabs((prev) => prev.filter((x) => x.type === "repo" || !failed.includes(x.type)));
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
   function activate(key: string) {
     setVisited((prev) => (prev.has(key) ? prev : new Set(prev).add(key))); // keep-alive 대상 등록
     setActiveKey(key);
@@ -240,11 +255,16 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
 
   // 모드 탭(질문/코드/글) 추가(#769) — 폴더 없이 유니크 id로 새 빈 탭. id는 생성 후 불변(keep-alive·영속 키).
   // Date.now(세션 간 구분) + 세션 카운터(같은 ms 연속 생성 시 충돌 방지).
-  function addModeTab(kind: ModeKind) {
-    const existing = tabs.find((x) => x.type === kind); // kind당 1개(#787) — 이미 있으면 안내(자동이동 X, 버튼으로 이동)
+  async function addModeTab(kind: ModeKind) {
+    const existing = tabs.find((x) => x.type === kind); // 로컬 탭에 이미 있으면 그 탭으로 안내(#787)
     if (existing) {
       toast(t("workspace.modeAlreadyOpen"), "error", { label: t("workspace.goToTab"), onClick: () => activate(tabKey(existing)) });
       return;
+    }
+    // 다른 창(#789)에 이미 열렸는지 main 레지스트리로 확인+점유. 성공해야 탭 추가(탭·창 통합 1개).
+    if (desktop?.modeClaim) {
+      const r = await desktop.modeClaim(kind);
+      if (!r.ok) { toast(t("workspace.modeOpenElsewhere"), "error"); return; }
     }
     const id = `${Date.now().toString(36)}-${modeSeq.current++}`;
     const key = `${kind}:${id}`;
@@ -253,15 +273,25 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     activate(key);
   }
 
-  // 메뉴 선택 → 레포는 폴더 다이얼로그, 모드는 즉시 빈 탭.
-  const onPick = (kind: AddKind) => {
-    if (kind === "repo") void addRepoTab();
-    else addModeTab(kind);
+  // 모드를 새 창으로 열기(#789) — main이 레지스트리로 중복 거부(exists면 토스트).
+  async function openModeInWindow(kind: ModeKind) {
+    if (!desktop?.openModeWindow) return;
+    const r = await desktop.openModeWindow(kind);
+    if (r && !r.ok) toast(t("workspace.modeOpenElsewhere"), "error");
+  }
+
+  // 메뉴 선택 → 레포는 폴더 다이얼로그, 모드는 탭 추가 또는 새 창(#789).
+  const onPick = (kind: AddKind, target: "tab" | "window" = "tab") => {
+    if (kind === "repo") { void addRepoTab(); return; }
+    if (target === "window") void openModeInWindow(kind);
+    else void addModeTab(kind);
   };
 
   function closeTab(key: string) {
     const idx = tabs.findIndex((x) => tabKey(x) === key);
     if (idx < 0) return;
+    const closing = tabs[idx];
+    if (closing.type !== "repo") desktop?.modeRelease?.(closing.type); // 모드 탭 닫으면 레지스트리 해제(#789)
     const next = tabs.filter((x) => tabKey(x) !== key);
     if (activeKey === key) {
       // 활성 탭을 닫으면 이웃으로 활성 이동.
