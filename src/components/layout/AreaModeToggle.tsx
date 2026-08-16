@@ -1,6 +1,6 @@
 "use client";
 
-import { IconCode, IconFileText, IconMessage2, IconLayoutColumns, IconMessages, IconBrain } from "@tabler/icons-react";
+import { IconCode, IconFileText, IconMessage2, IconLayoutDashboard, IconMessages, IconBrain } from "@tabler/icons-react";
 import type { ViewMode } from "@/lib/viewMode";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -9,50 +9,53 @@ const SEG_WRAP = "inline-flex rounded-xl border border-zinc-200 bg-zinc-100 p-0.
 const SEG_ON = "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50";
 const SEG_OFF = "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200";
 
-// ── 1차: 큰 세 영역(워크스페이스 | 질문·분석 | 암기). 스트립 우측에 배치(#725). ──
+// ── 1차: 영역 전환. 헤더 우측에 워크스페이스식 작은 아이콘으로(#785) — "현재 영역을 뺀
+//    나머지 영역으로 가는 아이콘"만 표시. 워크스페이스 헤더(질문·분석·암기 아이콘)와 대칭. ──
 interface AreaPrimaryToggleProps {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  // 1차 "질문·분석" 클릭 — 직전 하위뷰로 복귀(enterQAArea).
+  // "질문·분석" 진입 — 직전 하위뷰로 복귀(enterQAArea).
   onEnterQA: () => void;
-  // 암기 세그 배지 — 오늘 복습 due 수(0이면 숨김).
+  // 암기 배지 — 오늘 복습 due 수(0이면 숨김).
   memorizeBadge?: number;
   disabled?: boolean;
 }
 
+// 워크스페이스 헤더 컨트롤 아이콘 버튼과 동일 스타일(#721) — 테두리 없는 hover 버튼.
+const ICON_BTN = "relative shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200";
+
 export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQA, memorizeBadge = 0, disabled = false }: AreaPrimaryToggleProps) {
   const t = useT();
-  const isWorkspace = viewMode === "workspace";
   const isMemorize = viewMode === "memorize";
-  const isHistory = viewMode === "history"; // 홈(전역 대시보드) — 로고 진입, 영역 중립(#729)
-  const inQA = !isWorkspace && !isMemorize && !isHistory; // 질문·분석 하위뷰(질문·코드·글)일 때만
-  const base = "flex h-6 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
+  // 질문·분석 하위뷰(질문·코드·글)일 때만 true. 홈(history)은 영역 중립이라 false → 셋 다 노출.
+  const inQA = viewMode !== "workspace" && viewMode !== "memorize" && viewMode !== "history";
   return (
-    <div role="tablist" aria-label={t("nav.area")} className={SEG_WRAP}>
-      <button type="button" role="tab" aria-selected={isWorkspace} disabled={disabled}
-        onClick={() => onViewModeChange("workspace")}
-        className={`${base} ${isWorkspace ? SEG_ON : SEG_OFF}`}>
-        <IconLayoutColumns size={16} stroke={2} aria-hidden />
-        {t("mode.workspace")}
+    <div className="flex items-center gap-0.5">
+      {/* → 워크스페이스 (이 헤더는 항상 non-workspace라 상시 표시) */}
+      <button type="button" onClick={() => onViewModeChange("workspace")} disabled={disabled}
+        title={t("mode.workspace")} aria-label={t("mode.workspace")} className={ICON_BTN}>
+        <IconLayoutDashboard size={16} stroke={2} aria-hidden />
       </button>
-      <button type="button" role="tab" aria-selected={inQA} disabled={disabled}
-        onClick={onEnterQA}
-        className={`${base} ${inQA ? SEG_ON : SEG_OFF}`}>
-        <IconMessages size={16} stroke={2} aria-hidden />
-        {t("mode.qaArea")}
-      </button>
-      <button type="button" role="tab" aria-selected={isMemorize} disabled={disabled}
-        onClick={() => onViewModeChange("memorize")}
-        className={`${base} ${isMemorize ? SEG_ON : SEG_OFF}`}>
-        <IconBrain size={16} stroke={2} aria-hidden />
-        {t("mode.memorize")}
-        {memorizeBadge > 0 && (
-          <span aria-label={`${t("mem.modeDue")} ${memorizeBadge}`}
-            className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white">
-            {memorizeBadge > 99 ? "99+" : memorizeBadge}
-          </span>
-        )}
-      </button>
+      {/* → 질문·분석 (현재 QA면 숨김) */}
+      {!inQA && (
+        <button type="button" onClick={onEnterQA} disabled={disabled}
+          title={t("mode.qaArea")} aria-label={t("mode.qaArea")} className={ICON_BTN}>
+          <IconMessages size={16} stroke={2} aria-hidden />
+        </button>
+      )}
+      {/* → 암기 (현재 암기면 숨김) — due 배지 유지 */}
+      {!isMemorize && (
+        <button type="button" onClick={() => onViewModeChange("memorize")} disabled={disabled}
+          title={t("mode.memorize")} aria-label={t("mode.memorize")} className={ICON_BTN}>
+          <IconBrain size={16} stroke={2} aria-hidden />
+          {memorizeBadge > 0 && (
+            <span aria-label={`${t("mem.modeDue")} ${memorizeBadge}`}
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white">
+              {memorizeBadge > 99 ? "99+" : memorizeBadge}
+            </span>
+          )}
+        </button>
+      )}
     </div>
   );
 }
