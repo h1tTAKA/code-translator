@@ -251,9 +251,15 @@ ipcMain.handle("window:isFullscreen", () => win?.isFullScreen() ?? false); // �
 // 모드 전용 창 열기(#789) — 유효 kind + 아직 어디에도 안 떠 있을 때만. 창 닫히면 자동 해제.
 ipcMain.handle("mode-window:open", (_e, kind) => {
   if (kind !== "ask" && kind !== "code" && kind !== "text") return { ok: false, reason: "invalid" };
+  if (!appBase) return { ok: false, reason: "not-ready" }; // boot() 전엔 URL 없음(가드; 실제론 렌더러 IPC가 항상 이후)
   if (!claimMode(kind, "window")) return { ok: false, reason: "exists" };
-  const w = createModeWindow(kind);
-  w.on("closed", () => releaseMode(kind));
+  try {
+    const w = createModeWindow(kind);
+    w.on("closed", () => releaseMode(kind));
+  } catch (e) {
+    releaseMode(kind); // 창 생성 실패 시 점유 해제 — 안 하면 영구 점유로 영영 못 엶.
+    return { ok: false, reason: "error", error: String(e?.message || e) };
+  }
   return { ok: true };
 });
 // 탭 쪽 모드 점유/해제/조회(#789) — 메인 창 렌더러가 모드 탭 추가·닫기·복원 시 호출.
