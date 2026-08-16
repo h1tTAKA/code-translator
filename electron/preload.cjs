@@ -9,8 +9,14 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
   relaunch: () => ipcRenderer.invoke("app:relaunch"),
   notify: (payload) => ipcRenderer.invoke("notify", payload),
   pickRepoFolder: () => ipcRenderer.invoke("repo:pickFolder"),
-  // 학습 모드를 별도 창으로 열기(#789) — 멀티모니터. {ok} 반환.
+  // 학습 모드를 별도 창으로 열기(#789) — 멀티모니터. {ok} 반환(exists면 ok:false).
   openModeWindow: (kind) => ipcRenderer.invoke("mode-window:open", kind),
+  // 탭·창 통합 모드 중복 레지스트리(#789). claim 성공 시에만 탭 추가, 닫을 때 release.
+  modeClaim: (kind) => ipcRenderer.invoke("mode:claim", kind),
+  modeRelease: (kind) => ipcRenderer.invoke("mode:release", kind),
+  modeIsOpen: (kind) => ipcRenderer.invoke("mode:isOpen", kind),
+  listOpenModes: () => ipcRenderer.invoke("mode:list"),
+  onModesChanged: (cb) => { const h = (_e, kinds) => cb(kinds); ipcRenderer.on("modes:changed", h); return () => ipcRenderer.removeListener("modes:changed", h); },
   // 창 전체화면 상태(#779) — 신호등 자리 좌측 패딩 토글용. 초기 상태 조회 + 변경 구독(해제 함수 반환).
   window: {
     isFullscreen: () => ipcRenderer.invoke("window:isFullscreen"),

@@ -209,6 +209,26 @@ function createModeWindow(kind) {
   return w;
 }
 
+// 크로스창 모드 중복 레지스트리(#789) — 한 모드(ask/code/text)는 탭으로든 창으로든 한 번만.
+// 탭은 메인 창 렌더러 메모리, 창은 별도 프로세스라 서로 못 보므로 main이 단일 소스로 든다.
+// 창 닫힘은 아래 mode-window:open에서 release로 자동 해제(크래시에도 누수 없음).
+const openModes = new Map(); // kind -> "tab" | "window"
+function broadcastModes() {
+  const kinds = [...openModes.keys()];
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { w.webContents.send("modes:changed", kinds); } catch { /* 창 파괴 중 무시 */ }
+  }
+}
+function claimMode(kind, where) {
+  if (openModes.has(kind)) return false;
+  openModes.set(kind, where);
+  broadcastModes();
+  return true;
+}
+function releaseMode(kind) {
+  if (openModes.delete(kind)) broadcastModes();
+}
+
 async function boot() {
   if (DEV_URL) {
     // dev: next dev가 자체 임베드(간섭 방지) → main은 SNA 안 띄움.
@@ -228,12 +248,19 @@ async function boot() {
 
 // 설정 UI(renderer) ↔ main IPC — 런타임 CLI 경로 저장/조회 + 재시작.
 ipcMain.handle("window:isFullscreen", () => win?.isFullScreen() ?? false); // 초기 전체화면 상태(#779)
-// 모드 전용 창 열기(#789) — 유효 kind면 새 창 생성. 중복 방지 레지스트리는 다음 커밋.
+// 모드 전용 창 열기(#789) — 유효 kind + 아직 어디에도 안 떠 있을 때만. 창 닫히면 자동 해제.
 ipcMain.handle("mode-window:open", (_e, kind) => {
   if (kind !== "ask" && kind !== "code" && kind !== "text") return { ok: false, reason: "invalid" };
-  createModeWindow(kind);
+  if (!claimMode(kind, "window")) return { ok: false, reason: "exists" };
+  const w = createModeWindow(kind);
+  w.on("closed", () => releaseMode(kind));
   return { ok: true };
 });
+// 탭 쪽 모드 점유/해제/조회(#789) — 메인 창 렌더러가 모드 탭 추가·닫기·복원 시 호출.
+ipcMain.handle("mode:claim", (_e, kind) => ({ ok: claimMode(kind, "tab") }));
+ipcMain.handle("mode:release", (_e, kind) => { releaseMode(kind); return { ok: true }; });
+ipcMain.handle("mode:isOpen", (_e, kind) => openModes.has(kind));
+ipcMain.handle("mode:list", () => [...openModes.keys()]);
 ipcMain.handle("runtime-paths:get", () => loadSavedRuntimePaths());
 ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRuntimePaths(paths) }));
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
