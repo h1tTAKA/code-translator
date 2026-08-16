@@ -241,6 +241,12 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   // 모드 탭(질문/코드/글) 추가(#769) — 폴더 없이 유니크 id로 새 빈 탭. id는 생성 후 불변(keep-alive·영속 키).
   // Date.now(세션 간 구분) + 세션 카운터(같은 ms 연속 생성 시 충돌 방지).
   function addModeTab(kind: ModeKind) {
+    const existing = tabs.find((x) => x.type === kind); // kind당 1개(#787) — 이미 있으면 그 탭 활성 + 안내
+    if (existing) {
+      toast(t("workspace.modeAlreadyOpen"), "error");
+      activate(tabKey(existing));
+      return;
+    }
     const id = `${Date.now().toString(36)}-${modeSeq.current++}`;
     const key = `${kind}:${id}`;
     setTabs((prev) => [...prev, { type: kind, id }]);
