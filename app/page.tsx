@@ -86,6 +86,13 @@ export default function Home() {
   // 왼쪽 패널 접힘 — 헤더 토글이 제어(훅 밖 소유). 코드/글=입력 패널(#781), 질문=세션 패널(#783).
   const [editorCollapsed, toggleEditorCollapsed] = useCollapsed("nunopi:editor-collapsed");
   const [sessionCollapsed, toggleSessionCollapsed] = useCollapsed("nunopi:ask-panel-collapsed");
+  // 암기 진입 출처 복원(#785) — 앱 재시작 후 암기 화면이면 돌아가기가 마지막 출처로 가게.
+  useEffect(() => {
+    try {
+      const o = localStorage.getItem("nunopi:memorize-origin");
+      if (o) memorizeOriginRef.current = o as ViewMode;
+    } catch { /* ignore */ }
+  }, []);
 
   // 히스토리 최초 로드.
   useEffect(() => { getAllHistory().then(setHistoryEntries).catch(() => {}); }, []);
@@ -133,7 +140,10 @@ export default function Home() {
   function handleViewModeChange(next: ViewMode) {
     if (next === viewMode) return;
     // 암기 진입 시 직전 영역을 기억 → 돌아가기로 그 자리 복귀(#785). 암기→암기 재진입은 무시.
-    if (next === "memorize" && viewMode !== "memorize") memorizeOriginRef.current = viewMode;
+    if (next === "memorize" && viewMode !== "memorize") {
+      memorizeOriginRef.current = viewMode;
+      try { localStorage.setItem("nunopi:memorize-origin", viewMode); } catch { /* ignore */ }
+    }
     if (next === "ask" || next === "code" || next === "text") lastQAViewRef.current = next;
     setViewMode(next);
     try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
