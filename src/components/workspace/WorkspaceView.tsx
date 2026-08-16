@@ -493,6 +493,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           </button>
         )}
         {/* 설정은 워크스페이스에선 하단 바(토큰 사용량 옆)로 이동(#752). */}
+        {/* 영역 nav(질문·분석/암기) ↔ 패널 유틸(챗 토글) 구분선(#785) — AppShell 헤더와 동일 패턴. */}
+        {(onExitWorkspace || onOpenMemorize) && <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
         {/* 우측 챗 패널 접기/펴기(#716·#695) — 헤더 토글. 열림=collapse 아이콘, 접힘=expand 아이콘. */}
         <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
           className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
