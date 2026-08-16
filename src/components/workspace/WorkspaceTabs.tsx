@@ -227,9 +227,8 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
       if (!r.canceled && r.path) {
         const path = r.path;
         const key = `repo:${path}`;
-        if (tabs.some((x) => tabKey(x) === key)) { // 이미 열린 레포면 새 탭 없이 기존 탭 활성 + 안내(#787)
-          toast(t("workspace.repoAlreadyOpen"), "error");
-          activate(key);
+        if (tabs.some((x) => tabKey(x) === key)) { // 이미 열린 레포면 새 탭 없이 안내(자동이동 X, 버튼으로 이동, #787)
+          toast(t("workspace.repoAlreadyOpen"), "error", { label: t("workspace.goToTab"), onClick: () => activate(key) });
           return;
         }
         setTabs((prev) => [...prev, { type: "repo", path }]);
@@ -241,10 +240,9 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
   // 모드 탭(질문/코드/글) 추가(#769) — 폴더 없이 유니크 id로 새 빈 탭. id는 생성 후 불변(keep-alive·영속 키).
   // Date.now(세션 간 구분) + 세션 카운터(같은 ms 연속 생성 시 충돌 방지).
   function addModeTab(kind: ModeKind) {
-    const existing = tabs.find((x) => x.type === kind); // kind당 1개(#787) — 이미 있으면 그 탭 활성 + 안내
+    const existing = tabs.find((x) => x.type === kind); // kind당 1개(#787) — 이미 있으면 안내(자동이동 X, 버튼으로 이동)
     if (existing) {
-      toast(t("workspace.modeAlreadyOpen"), "error");
-      activate(tabKey(existing));
+      toast(t("workspace.modeAlreadyOpen"), "error", { label: t("workspace.goToTab"), onClick: () => activate(tabKey(existing)) });
       return;
     }
     const id = `${Date.now().toString(36)}-${modeSeq.current++}`;
