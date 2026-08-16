@@ -1,6 +1,6 @@
 "use client";
 
-import { IconCode, IconFileText, IconMessage2, IconLayoutDashboard, IconMessages, IconBrain } from "@tabler/icons-react";
+import { IconCode, IconFileText, IconMessage2, IconLayoutDashboard, IconMessages, IconBrain, IconArrowBackUp } from "@tabler/icons-react";
 import type { ViewMode } from "@/lib/viewMode";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -16,6 +16,8 @@ interface AreaPrimaryToggleProps {
   onViewModeChange: (mode: ViewMode) => void;
   // "질문·분석" 진입 — 직전 하위뷰로 복귀(enterQAArea).
   onEnterQA: () => void;
+  // 암기에서 "돌아가기" — 암기 진입 직전 영역(워크스페이스/독립)으로 복귀(#785).
+  onBack: () => void;
   // 암기 배지 — 오늘 복습 due 수(0이면 숨김).
   memorizeBadge?: number;
   disabled?: boolean;
@@ -24,11 +26,20 @@ interface AreaPrimaryToggleProps {
 // 워크스페이스 헤더 컨트롤 아이콘 버튼과 동일 스타일(#721) — 테두리 없는 hover 버튼.
 const ICON_BTN = "relative shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200";
 
-export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQA, memorizeBadge = 0, disabled = false }: AreaPrimaryToggleProps) {
+export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQA, onBack, memorizeBadge = 0, disabled = false }: AreaPrimaryToggleProps) {
   const t = useT();
   const isMemorize = viewMode === "memorize";
   // 질문·분석 하위뷰(질문·코드·글)일 때만 true. 홈(history)은 영역 중립이라 false → 셋 다 노출.
   const inQA = viewMode !== "workspace" && viewMode !== "memorize" && viewMode !== "history";
+  // 암기 모드: 영역 아이콘 대신 "돌아가기" 하나 — 진입한 곳(워크스페이스/독립)으로 복귀(#785).
+  if (isMemorize) {
+    return (
+      <button type="button" onClick={onBack} disabled={disabled}
+        title={t("mode.back")} aria-label={t("mode.back")} className={ICON_BTN}>
+        <IconArrowBackUp size={16} stroke={2} aria-hidden />
+      </button>
+    );
+  }
   return (
     <div className="flex items-center gap-0.5">
       {/* → 워크스페이스 (이 헤더는 항상 non-workspace라 상시 표시) */}
@@ -43,19 +54,17 @@ export default function AreaPrimaryToggle({ viewMode, onViewModeChange, onEnterQ
           <IconMessages size={16} stroke={2} aria-hidden />
         </button>
       )}
-      {/* → 암기 (현재 암기면 숨김) — due 배지 유지 */}
-      {!isMemorize && (
-        <button type="button" onClick={() => onViewModeChange("memorize")} disabled={disabled}
-          title={t("mode.memorize")} aria-label={t("mode.memorize")} className={ICON_BTN}>
-          <IconBrain size={16} stroke={2} aria-hidden />
-          {memorizeBadge > 0 && (
-            <span aria-label={`${t("mem.modeDue")} ${memorizeBadge}`}
-              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white">
-              {memorizeBadge > 99 ? "99+" : memorizeBadge}
-            </span>
-          )}
-        </button>
-      )}
+      {/* → 암기 (암기 모드는 위에서 early-return하므로 여기선 항상 표시) — due 배지 유지 */}
+      <button type="button" onClick={() => onViewModeChange("memorize")} disabled={disabled}
+        title={t("mode.memorize")} aria-label={t("mode.memorize")} className={ICON_BTN}>
+        <IconBrain size={16} stroke={2} aria-hidden />
+        {memorizeBadge > 0 && (
+          <span aria-label={`${t("mem.modeDue")} ${memorizeBadge}`}
+            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-semibold leading-none text-white">
+            {memorizeBadge > 99 ? "99+" : memorizeBadge}
+          </span>
+        )}
+      </button>
     </div>
   );
 }
