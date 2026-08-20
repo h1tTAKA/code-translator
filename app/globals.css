@@ -48,6 +48,14 @@
      않게 어두운 라임. text-lime-400(다크) / text-lime-600(라이트)로 사용. */
   --color-lime-400: #c6fb2a; /* 브랜드 스파크 라임 — 다크 북마크 */
   --color-lime-600: #4d7c0f; /* 어두운 라임 — 라이트 북마크(흰배경서 날리지 않게 진하게) */
+
+  /* Mustard 리브랜딩(#792) — 워크스페이스 셸 크롬 전용 액센트. 전역 blue-*는 nunopi·비워크스페이스가
+     계속 쓰므로 건드리지 않고, 셸 컴포넌트에서만 mustard-* 유틸(bg/text/ring/border)을 쓴다.
+     오프블랙 대비 AA(500 on near-black ≈ 7:1). 텍스트로 밝게 쓸 땐 400. */
+  --color-mustard-400: #e8b93a; /* hover·밝은 텍스트 */
+  --color-mustard-500: #d4a017; /* 브랜드 액센트(활성·포커스·주요 버튼) */
+  --color-mustard-600: #a67c11; /* active */
+  --color-mustard-700: #7a5a0c; /* 보더·비활성 */
 }
 
 @media (prefers-color-scheme: dark) {
