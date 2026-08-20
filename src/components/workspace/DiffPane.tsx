@@ -251,7 +251,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             {startH && (
               <div className="flex items-center py-1 pl-[4.75rem]">
                 <button type="button" onClick={() => void explainHunk(startH)} disabled={startNote?.status === "loading"}
-                  className="inline-flex items-center gap-1 rounded-md bg-[#3B34E2] px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-[#322bc9] disabled:opacity-60 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
+                  className="inline-flex items-center gap-1 rounded-md bg-mustard-500/12 px-2 py-0.5 text-[10px] font-semibold text-mustard-700 ring-1 ring-inset ring-mustard-500/35 transition hover:bg-mustard-500/20 disabled:opacity-60 dark:bg-mustard-400/12 dark:text-mustard-400 dark:ring-mustard-400/30 dark:hover:bg-mustard-400/20">
                   {startNote?.status === "loading"
                     ? <><IconLoader2 size={11} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.hunkExplaining")}</>
                     : startNote?.status === "done"
@@ -263,8 +263,8 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             {row}
             {/* 구간 끝: 아래에 노트(변경 코드 밑) */}
             {endNote?.status === "done" && (
-              <div style={{ width: paneW ? paneW - 20 : undefined }} className="sticky left-0 z-[5] my-1 ml-2.5 rounded-lg border border-[#3B34E2]/30 bg-[#3B34E2]/10 px-3 py-2 font-sans backdrop-blur-sm dark:border-[#8b86f5]/30 dark:bg-[#8b86f5]/15">
-                <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-[#3B34E2] dark:text-[#8b86f5]"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
+              <div style={{ width: paneW ? paneW - 20 : undefined }} className="sticky left-0 z-[5] my-1 ml-2.5 rounded-lg border border-mustard-500/30 bg-mustard-500/10 px-3 py-2 font-sans backdrop-blur-sm dark:border-mustard-400/30 dark:bg-mustard-400/12">
+                <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-mustard-700 dark:text-mustard-400"><IconSparkles size={11} stroke={2.5} aria-hidden />{t("workspace.hunkNote")}</div>
                 <div className="prose prose-sm max-w-none text-[12px] leading-relaxed text-zinc-700 dark:prose-invert dark:text-zinc-200 prose-headings:my-1 prose-headings:text-[12px] prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0"><Markdown>{endNote.text ?? ""}</Markdown></div>
               </div>
             )}

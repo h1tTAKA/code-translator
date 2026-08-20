@@ -72,7 +72,7 @@ export function folderGlyph(name: string, isOpen: boolean, size = 13) {
     case "public": case "assets": case "static": case "images": return paint(IconPhoto, "text-purple-400", size);
     case ".git": case ".github": return paint(IconBrandGit, "text-orange-500", size);
     default: return isOpen
-      ? paint(IconFolderOpen, "text-[#3B34E2] dark:text-[#8b86f5]", size)
+      ? paint(IconFolderOpen, "text-mustard-600 dark:text-mustard-400", size)
       : paint(IconFolder, "text-zinc-400", size);
   }
 }

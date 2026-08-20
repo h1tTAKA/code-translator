@@ -319,21 +319,21 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         const mode = tab.type === "repo" ? null : MODE_TAB[tab.type];
         const Icon = mode ? mode.Icon : IconFiles;
         // 아이콘 색 — 활성 레포=인디고, 활성 모드=모드색(레포와 구분), 비활성=회색.
-        const iconColor = !on ? "text-zinc-400" : mode ? mode.color : "text-[#3B34E2] dark:text-[#8b86f5]";
+        const iconColor = !on ? "text-zinc-400" : mode ? mode.color : "text-mustard-600 dark:text-mustard-400";
         const label = p ? basename(p) : t(mode!.labelKey);
         const showDrop = overKey === key && draggingKey !== null && draggingKey !== key;
         const isDragging = draggingKey === key;
         // 드롭 바 — 앞(왼쪽)/뒤(오른쪽). 뒤=맨 끝 이동을 명확히 보여준다.
         const dropBar = !showDrop ? "" : overAfter
-          ? "after:absolute after:-right-0.5 after:top-1/2 after:h-4/5 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-[#3B34E2] dark:after:bg-[#8b86f5]"
-          : "before:absolute before:-left-0.5 before:top-1/2 before:h-4/5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-[#3B34E2] dark:before:bg-[#8b86f5]";
+          ? "after:absolute after:-right-0.5 after:top-1/2 after:h-4/5 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-mustard-500 dark:after:bg-mustard-400"
+          : "before:absolute before:-left-0.5 before:top-1/2 before:h-4/5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-mustard-500 dark:before:bg-mustard-400";
         return (
           <div key={key} data-tab-key={key} title={p ?? label}
             onPointerDown={(e) => tabPointerDown(e, key)}
             onPointerMove={tabPointerMove}
             onPointerUp={tabPointerUp}
             onMouseEnter={p ? (e) => openHover(p, e.currentTarget) : undefined} onMouseLeave={p ? scheduleClose : undefined}
-            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-white text-zinc-800 shadow-sm ring-1 ring-inset ring-[#3B34E2]/55 dark:bg-[#0b0c12] dark:text-zinc-100 dark:ring-[#8b86f5]/45" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
+            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-brown-500/12 text-zinc-900 shadow-sm ring-1 ring-inset ring-brown-500/45 dark:bg-brown-400/12 dark:text-zinc-50 dark:ring-brown-400/45" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
             {p ? tabDot(repoStatus[p] ?? null) : null}
             {p ? <RepoAvatar path={p} size={13} iconClassName={`shrink-0 ${iconColor}`} /> : <Icon size={13} stroke={2} className={`shrink-0 ${iconColor}`} aria-hidden />}
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{label}</span>
@@ -359,12 +359,12 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         {tabs.length === 0 ? (
           <div className="flex h-full flex-1 items-center justify-center p-8">
             <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50 text-[#3B34E2] dark:border-zinc-800 dark:bg-zinc-900 dark:text-[#8b86f5]">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50 text-mustard-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-mustard-400">
                 <IconFiles size={26} stroke={1.75} aria-hidden />
               </div>
               <p className="text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400">{t("workspace.intro")}</p>
               <button type="button" onClick={(e) => openAddMenu(e.currentTarget)} disabled={picking || !mounted}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#3B34E2] px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-[#322bc9] disabled:opacity-50 dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]">
+                className="inline-flex items-center gap-2 rounded-xl bg-mustard-500 px-4 py-2 text-[13px] font-semibold text-brown-900 transition hover:bg-mustard-400 disabled:opacity-50">
                 <IconFolderOpen size={16} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
               </button>
             </div>
@@ -417,7 +417,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         return (
           <div className="pointer-events-none fixed z-[60] flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-[12px] font-medium text-zinc-800 opacity-90 shadow-lg ring-1 ring-black/10 dark:bg-[#0b0c12] dark:text-zinc-100 dark:ring-white/10"
             style={{ left: dragPos.x + 10, top: dragPos.y + 10 }}>
-            <GIcon size={13} stroke={2} className={`shrink-0 ${gm ? gm.color : "text-[#3B34E2] dark:text-[#8b86f5]"}`} aria-hidden />
+            <GIcon size={13} stroke={2} className={`shrink-0 ${gm ? gm.color : "text-mustard-600 dark:text-mustard-400"}`} aria-hidden />
             <span className="max-w-[12rem] truncate">{glabel}</span>
           </div>
         );
