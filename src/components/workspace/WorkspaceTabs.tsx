@@ -333,7 +333,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
             onPointerMove={tabPointerMove}
             onPointerUp={tabPointerUp}
             onMouseEnter={p ? (e) => openHover(p, e.currentTarget) : undefined} onMouseLeave={p ? scheduleClose : undefined}
-            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-mustard-500/12 text-zinc-900 shadow-sm ring-1 ring-inset ring-mustard-500/70 dark:bg-mustard-400/12 dark:text-zinc-50 dark:ring-mustard-400/55" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
+            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-brown-500/12 text-zinc-900 shadow-sm ring-1 ring-inset ring-brown-500/45 dark:bg-brown-400/12 dark:text-zinc-50 dark:ring-brown-400/45" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
             {p ? tabDot(repoStatus[p] ?? null) : null}
             {p ? <RepoAvatar path={p} size={13} iconClassName={`shrink-0 ${iconColor}`} /> : <Icon size={13} stroke={2} className={`shrink-0 ${iconColor}`} aria-hidden />}
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{label}</span>
@@ -364,7 +364,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
               </div>
               <p className="text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400">{t("workspace.intro")}</p>
               <button type="button" onClick={(e) => openAddMenu(e.currentTarget)} disabled={picking || !mounted}
-                className="inline-flex items-center gap-2 rounded-xl bg-mustard-500 px-4 py-2 text-[13px] font-semibold text-zinc-950 transition hover:bg-mustard-400 disabled:opacity-50">
+                className="inline-flex items-center gap-2 rounded-xl bg-mustard-500 px-4 py-2 text-[13px] font-semibold text-brown-900 transition hover:bg-mustard-400 disabled:opacity-50">
                 <IconFolderOpen size={16} stroke={2} aria-hidden /> {t("workspace.pickFolder")}
               </button>
             </div>
@@ -417,7 +417,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
         return (
           <div className="pointer-events-none fixed z-[60] flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-[12px] font-medium text-zinc-800 opacity-90 shadow-lg ring-1 ring-black/10 dark:bg-[#0b0c12] dark:text-zinc-100 dark:ring-white/10"
             style={{ left: dragPos.x + 10, top: dragPos.y + 10 }}>
-            <GIcon size={13} stroke={2} className={`shrink-0 ${gm ? gm.color : "text-[#3B34E2] dark:text-[#8b86f5]"}`} aria-hidden />
+            <GIcon size={13} stroke={2} className={`shrink-0 ${gm ? gm.color : "text-mustard-600 dark:text-mustard-400"}`} aria-hidden />
             <span className="max-w-[12rem] truncate">{glabel}</span>
           </div>
         );

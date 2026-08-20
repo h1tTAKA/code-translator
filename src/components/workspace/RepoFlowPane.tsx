@@ -256,14 +256,14 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#0b0c12]">
       <div className="flex shrink-0 items-center gap-1 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
-        <IconSitemap size={14} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+        <IconSitemap size={14} stroke={2} className="shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
         <span className="mr-auto truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{feature || t("flow.title")}</span>
         {feature && (
           <>
             {/* 이 아키텍처에 대해 질문 — 우측 챗에 arch 세션 열기(#746). 흐름 미생성이어도 가능(컨텍스트 폴백). */}
             {onAskArch && (
               <button type="button" onClick={() => onAskArch(feature)} title={t("flow.ask")} aria-label={t("flow.ask")}
-                className="shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-[#3B34E2] dark:hover:bg-zinc-800 dark:hover:text-[#8b86f5]">
+                className="shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-mustard-600 dark:hover:bg-zinc-800 dark:hover:text-mustard-400">
                 <IconMessageCircle size={13} stroke={2} aria-hidden />
               </button>
             )}
@@ -274,7 +274,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
             </button>
             {/* 재생성 — 전체 새로(모달 확인). */}
             <button type="button" onClick={() => setConfirm("regen")} disabled={loading} title={t("flow.regenerateTitle")} aria-label={t("flow.regenerateTitle")}
-              className="shrink-0 rounded p-1 text-[#3B34E2] transition hover:bg-zinc-100 disabled:opacity-40 dark:text-[#8b86f5] dark:hover:bg-zinc-800">
+              className="shrink-0 rounded p-1 text-mustard-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:text-mustard-400 dark:hover:bg-zinc-800">
               {running === "regen" ? <IconLoader2 size={13} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={13} stroke={2} aria-hidden />}
             </button>
           </>
@@ -299,7 +299,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
             {overview && (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-800/40">
                 <button type="button" onClick={() => setOverviewOpen((v) => !v)} className="flex w-full items-center gap-1.5 px-3 py-2 text-left">
-                  <IconBook2 size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+                  <IconBook2 size={13} stroke={2} className="shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
                   <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("flow.overview")}</span>
                   <IconChevronDown size={14} stroke={2} className={`ml-auto shrink-0 text-zinc-400 transition ${overviewOpen ? "" : "-rotate-90"}`} aria-hidden />
                 </button>
@@ -348,16 +348,16 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                     onClick={(e) => { e.stopPropagation(); toggleFocus(); quote(); }}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFocus(); quote(); } }}
                     style={{ opacity: dimmed ? 0.3 : 1 }}
-                    className={`group relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 pr-7 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-[#3B34E2] shadow-[0_0_16px_0_rgba(59,52,226,0.55)] dark:border-[#8b86f5] dark:shadow-[0_0_18px_0_rgba(139,134,245,0.55)]" : "z-10 border-zinc-200 hover:border-[#3B34E2] dark:border-zinc-700 dark:hover:border-[#8b86f5]"} bg-white dark:bg-zinc-800/60`}>
+                    className={`group relative flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 pr-7 text-left transition duration-150 ${lifted ? "z-20 scale-[1.03] border-mustard-500 shadow-[0_0_16px_0_rgba(212,160,23,0.55)] dark:border-mustard-400 dark:shadow-[0_0_18px_0_rgba(232,185,58,0.55)]" : "z-10 border-zinc-200 hover:border-mustard-500 dark:border-zinc-700 dark:hover:border-mustard-400"} bg-white dark:bg-zinc-800/60`}>
                     {n.file && (
                       <button type="button" title={t("flow.openCode")} aria-label={t("flow.openCode")}
                         onClick={(e) => { e.stopPropagation(); onOpenFile?.(n.file!, n.line); }}
-                        className="absolute right-1 top-1 rounded p-1 text-zinc-300 opacity-0 transition hover:bg-zinc-100 hover:text-[#3B34E2] group-hover:opacity-100 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-[#8b86f5]">
+                        className="absolute right-1 top-1 rounded p-1 text-zinc-300 opacity-0 transition hover:bg-zinc-100 hover:text-mustard-600 group-hover:opacity-100 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-mustard-400">
                         <IconCode size={13} stroke={2} aria-hidden />
                       </button>
                     )}
                     <span className="text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{n.name}</span>
-                    {n.file && <span className="break-all font-mono text-[9px] text-[#3B34E2] dark:text-[#8b86f5]">{n.file}{n.line ? `:${n.line}` : ""}</span>}
+                    {n.file && <span className="break-all font-mono text-[9px] text-mustard-600 dark:text-mustard-400">{n.file}{n.line ? `:${n.line}` : ""}</span>}
                     {n.role && <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{n.role}</span>}
                   </div>
                   );
@@ -381,7 +381,7 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
               <button type="button" onClick={() => setConfirm(null)}
                 className="rounded-md px-2.5 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">{t("confirm.cancel")}</button>
               <button type="button" onClick={() => { const m = confirm; setConfirm(null); void load(m); }}
-                className="rounded-md bg-[#3B34E2] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#322bc9]">{t("confirm.ok")}</button>
+                className="rounded-md bg-mustard-500/12 px-2.5 py-1 text-[11px] font-semibold text-mustard-700 ring-1 ring-inset ring-mustard-500/35 transition hover:bg-mustard-500/20 dark:bg-mustard-400/12 dark:text-mustard-400 dark:ring-mustard-400/30 dark:hover:bg-mustard-400/20">{t("confirm.ok")}</button>
             </div>
           </div>
         </div>

@@ -102,7 +102,7 @@ export default function RepoTabHoverCard({ path, left, top, onMouseEnter, onMous
     <div style={{ left, top }} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
       className="fixed z-50 w-72 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-[#0e0f16]">
       <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">
-        <RepoAvatar path={path} size={14} iconClassName="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" />
+        <RepoAvatar path={path} size={14} iconClassName="shrink-0 text-mustard-600 dark:text-mustard-400" />
         <span className="truncate">{basename(path)}</span>
       </div>
 

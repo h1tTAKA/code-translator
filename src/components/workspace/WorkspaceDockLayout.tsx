@@ -133,7 +133,7 @@ export default function WorkspaceDockLayout({ tree, panels, onTreeChange }: {
             <div className="absolute inset-0 z-30"
               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver({ panel, edge: edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY) }); }}
               onDrop={(e) => { e.preventDefault(); const edge = edgeOf(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY); onTreeChange(dockTo(treeRef.current, drag, panel, edge)); setDrag(null); setOver(null); }}>
-              {showOver && <div className={`pointer-events-none absolute bg-[#3B34E2]/30 dark:bg-[#8b86f5]/30 ${ov === "left" ? "inset-y-0 left-0 w-1/2" : ov === "right" ? "inset-y-0 right-0 w-1/2" : ov === "top" ? "inset-x-0 top-0 h-1/2" : "inset-x-0 bottom-0 h-1/2"}`} />}
+              {showOver && <div className={`pointer-events-none absolute bg-mustard-500/30 dark:bg-mustard-400/30 ${ov === "left" ? "inset-y-0 left-0 w-1/2" : ov === "right" ? "inset-y-0 right-0 w-1/2" : ov === "top" ? "inset-x-0 top-0 h-1/2" : "inset-x-0 bottom-0 h-1/2"}`} />}
             </div>
           )}
         </div>
@@ -163,7 +163,7 @@ export default function WorkspaceDockLayout({ tree, panels, onTreeChange }: {
       <div className={`flex min-h-0 min-w-0 flex-1 ${isRow ? "flex-row" : "flex-col"}`}>
         <div className="flex min-h-0 min-w-0" style={{ flexBasis: aBasis }}>{renderNode(node.a, [...path, "a"])}</div>
         <div onPointerDown={onDown}
-          className={`shrink-0 bg-zinc-200 transition hover:bg-[#3B34E2]/40 dark:bg-zinc-800 dark:hover:bg-[#8b86f5]/40 ${isRow ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize"}`} />
+          className={`shrink-0 bg-zinc-200 transition hover:bg-mustard-500/40 dark:bg-zinc-800 dark:hover:bg-mustard-400/40 ${isRow ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize"}`} />
         <div className="flex min-h-0 min-w-0" style={{ flexBasis: bBasis }}>{renderNode(node.b, [...path, "b"])}</div>
       </div>
     );

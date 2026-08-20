@@ -67,7 +67,7 @@ export default function WorkspaceQuizPanel({ messages, sourceContext, providerId
             return (
               <div key={s.id} className={`group flex items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 text-[12px] transition ${
                 on
-                  ? "border-[#3B34E2] bg-[#3B34E2]/10 text-[#3B34E2] dark:border-[#8b86f5] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]"
+                  ? "border-mustard-500 bg-mustard-500/10 text-mustard-600 dark:border-mustard-400 dark:bg-mustard-400/15 dark:text-mustard-400"
                   : "border-zinc-200 text-zinc-500 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-400"
               }`}>
                 <button type="button" onClick={() => selectQuiz(s.id)} className="cursor-pointer">{t("quiz.sessionN", { n: i + 1 })}</button>

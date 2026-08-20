@@ -640,7 +640,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
           const on = s.key === activeKey;
           return (
             <button key={s.key} type="button" onClick={() => setActiveKey(s.key)} title={s.key}
-              className={`group inline-flex min-w-0 shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition ${on ? "bg-[#3B34E2] text-white dark:bg-[#8b86f5] dark:text-zinc-900" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}>
+              className={`group inline-flex min-w-0 shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition ${on ? "bg-mustard-500 text-brown-900 dark:bg-mustard-500 dark:text-brown-900" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}>
               {kindGlyph(s.kind, 11, "shrink-0")}
               <span className="max-w-[92px] truncate">{s.label}</span>
               {s.key !== REPO_KEY && (
@@ -656,21 +656,21 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
 
       {/* 헤더 — 현재 세션 표시 */}
       <div className="flex items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
-        {kindGlyph(active.kind, 14, "shrink-0 text-[#3B34E2] dark:text-[#8b86f5]")}
+        {kindGlyph(active.kind, 14, "shrink-0 text-mustard-600 dark:text-mustard-400")}
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200" title={active.key}>{active.label}</span>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {/* 테스트(퀴즈, #760) — 대화 없어도 세션 자료로 출제 가능하므로 상시 노출. 카드/히스토리와 배타. */}
-          <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen(false); setTestOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${testOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("quiz.title")} aria-label={t("quiz.title")} aria-pressed={testOpen}>
+          <button type="button" onClick={() => { setHistoryOpen(false); setCardsOpen(false); setTestOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${testOpen ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("quiz.title")} aria-label={t("quiz.title")} aria-pressed={testOpen}>
             <IconListCheck size={13} stroke={2} aria-hidden />
           </button>
           {messages.length > 0 && (
-            <button type="button" onClick={() => { setHistoryOpen(false); setTestOpen(false); setCardsOpen((v) => !v); }} className={`relative rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
+            <button type="button" onClick={() => { setHistoryOpen(false); setTestOpen(false); setCardsOpen((v) => !v); }} className={`relative rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${cardsOpen ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("ask.sessionCards")} aria-label={t("ask.sessionCards")} aria-pressed={cardsOpen}>
               <IconCards size={13} stroke={2} aria-hidden />
-              {sessionCards.length > (seenCards[activeKey] ?? 0) && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-[#3B34E2] px-0.5 text-[8px] font-bold leading-none text-white dark:bg-[#8b86f5] dark:text-zinc-900">{sessionCards.length}</span>}
+              {sessionCards.length > (seenCards[activeKey] ?? 0) && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-mustard-500 px-0.5 text-[8px] font-bold leading-none text-brown-900 dark:bg-mustard-500 dark:text-brown-900">{sessionCards.length}</span>}
             </button>
           )}
           {history.length > 0 && (
-            <button type="button" onClick={() => { setCardsOpen(false); setTestOpen(false); setHistoryOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${historyOpen ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("workspace.chatHistory")} aria-label={t("workspace.chatHistory")} aria-pressed={historyOpen}>
+            <button type="button" onClick={() => { setCardsOpen(false); setTestOpen(false); setHistoryOpen((v) => !v); }} className={`rounded p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${historyOpen ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"}`} title={t("workspace.chatHistory")} aria-label={t("workspace.chatHistory")} aria-pressed={historyOpen}>
               <IconHistory size={13} stroke={2} aria-hidden />
             </button>
           )}
@@ -708,7 +708,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
           })}
         </div>
         <button type="button" onClick={newSub} title={t("workspace.chatNewThread")}
-          className="shrink-0 border-l border-zinc-200 px-2 py-1.5 text-zinc-400 transition hover:bg-white hover:text-[#3B34E2] dark:border-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-[#8b86f5]">
+          className="shrink-0 border-l border-zinc-200 px-2 py-1.5 text-zinc-400 transition hover:bg-white hover:text-mustard-600 dark:border-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-mustard-400">
           <IconPlus size={12} stroke={2.5} aria-hidden />
         </button>
       </div>
@@ -743,7 +743,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
                         </button>
                       ) : (
                         <button key={c.term} type="button" onClick={() => cardAction(i, { add: c })}
-                          className="inline-flex items-center gap-1 rounded-full bg-[#3B34E2] px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-[#322bc9]">
+                          className="inline-flex items-center gap-1 rounded-full bg-mustard-500/12 px-2.5 py-1 text-[11px] font-medium text-mustard-700 ring-1 ring-inset ring-mustard-500/35 transition hover:bg-mustard-500/20 dark:bg-mustard-400/12 dark:text-mustard-400 dark:ring-mustard-400/30 dark:hover:bg-mustard-400/20">
                           <IconPlus size={12} stroke={2.5} aria-hidden />{c.term} {t("chat.saveAsCard")}
                         </button>
                       ))}
@@ -772,7 +772,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
       {historyOpen && (
         <div className="absolute inset-0 z-10 flex flex-col bg-white dark:bg-[#0b0c12]">
           <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
-            <IconHistory size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+            <IconHistory size={13} stroke={2} className="shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
             <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("workspace.chatHistory")}</span>
             <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{history.length}</span>
             <button type="button" onClick={() => setHistoryOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>
@@ -806,7 +806,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
       {cardsOpen && (
         <div className="absolute inset-0 z-10 flex flex-col bg-white dark:bg-[#0b0c12]">
           <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
-            <IconCards size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+            <IconCards size={13} stroke={2} className="shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
             <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("ask.sessionCards")}</span>
             <span className="rounded bg-zinc-200 px-1 text-[9px] font-bold text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">{sessionCards.length}</span>
             <button type="button" onClick={() => setCardsOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>
@@ -819,7 +819,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
             ) : sessionCards.map((c) => (
               <button key={c.key} type="button"
                 onClick={(e) => throwCard(c, e.currentTarget.getBoundingClientRect())}
-                className="mb-1 flex w-full flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-[#3B34E2] dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[#8b86f5]">
+                className="mb-1 flex w-full flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-mustard-500 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-mustard-400">
                 <span className="w-full truncate text-[12px] font-medium text-zinc-800 dark:text-zinc-100">{c.front}</span>
                 {c.back && <span className="line-clamp-2 text-[11px] text-zinc-500 dark:text-zinc-400">{c.back}</span>}
                 {c.bookmarkedAt && <span className="mt-0.5 text-[9px] text-zinc-400 dark:text-zinc-500">{new Date(c.bookmarkedAt).toLocaleString(locale === "ja" ? "ja-JP" : locale === "en" ? "en-US" : "ko-KR", { dateStyle: "medium", timeStyle: "short" })}</span>}
@@ -832,7 +832,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
       {testOpen && (
         <div className="absolute inset-0 z-10 flex flex-col bg-white dark:bg-[#0b0c12]">
           <div className="flex shrink-0 items-center gap-1.5 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
-            <IconListCheck size={13} stroke={2} className="shrink-0 text-[#3B34E2] dark:text-[#8b86f5]" aria-hidden />
+            <IconListCheck size={13} stroke={2} className="shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
             <span className="text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">{t("quiz.title")}</span>
             <button type="button" onClick={() => setTestOpen(false)} className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800" aria-label={t("mem.close")}>
               <IconX size={13} stroke={2} aria-hidden />
@@ -860,7 +860,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
 
       {/* 입력 */}
       <div className="border-t border-zinc-200 p-2 dark:border-zinc-800">
-        <div className="flex items-end gap-1.5 rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 focus-within:border-[#3B34E2] dark:border-zinc-700 dark:bg-[#0e0f16] dark:focus-within:border-[#8b86f5]">
+        <div className="flex items-end gap-1.5 rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 focus-within:border-mustard-500 dark:border-zinc-700 dark:bg-[#0e0f16] dark:focus-within:border-mustard-400">
           <textarea
             ref={taRef}
             value={input}
@@ -871,7 +871,7 @@ export default function WorkspaceChat({ root, files, focus, prefill, changedFile
             className="nunopi-scroll max-h-28 min-h-0 flex-1 resize-none bg-transparent text-[12px] leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
           />
           <button type="button" onClick={() => void send()} disabled={!input.trim() || loading}
-            className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#3B34E2] text-white transition hover:bg-[#322bc9] disabled:opacity-40 dark:bg-[#8b86f5] dark:text-zinc-900">
+            className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-mustard-500 text-brown-900 transition hover:bg-mustard-400 disabled:opacity-40 dark:bg-mustard-500 dark:text-brown-900">
             {loading ? <IconLoader2 size={13} stroke={2.5} className="animate-spin" aria-hidden /> : <IconArrowUp size={14} stroke={2.5} aria-hidden />}
           </button>
         </div>

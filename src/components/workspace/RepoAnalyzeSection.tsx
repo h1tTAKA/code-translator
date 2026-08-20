@@ -143,14 +143,14 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
             </button>
             {/* 재분석 — 전체 새로(모달 확인). */}
             <button type="button" onClick={() => setConfirm("reanalyze")} disabled={loading}
-              className="inline-flex shrink-0 items-center gap-1 rounded bg-[#3B34E2] px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-[#322bc9] disabled:opacity-50">
+              className="inline-flex shrink-0 items-center gap-1 rounded bg-mustard-500/12 px-1.5 py-0.5 text-[10px] font-semibold text-mustard-700 ring-1 ring-inset ring-mustard-500/35 transition hover:bg-mustard-500/20 disabled:opacity-50 dark:bg-mustard-400/12 dark:text-mustard-400 dark:ring-mustard-400/30 dark:hover:bg-mustard-400/20">
               {running === "reanalyze" ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={11} stroke={2} aria-hidden />} {t("confirm.reanalyzeTitle")}
             </button>
           </>
         ) : (
           // 최초 분석 — 덮을 게 없어 바로 실행.
           <button type="button" onClick={() => void analyze(false)} disabled={loading}
-            className="inline-flex shrink-0 items-center gap-1 rounded bg-[#3B34E2] px-1.5 py-0.5 text-[10px] font-semibold text-white transition hover:bg-[#322bc9] disabled:opacity-50">
+            className="inline-flex shrink-0 items-center gap-1 rounded bg-mustard-500/12 px-1.5 py-0.5 text-[10px] font-semibold text-mustard-700 ring-1 ring-inset ring-mustard-500/35 transition hover:bg-mustard-500/20 disabled:opacity-50 dark:bg-mustard-400/12 dark:text-mustard-400 dark:ring-mustard-400/30 dark:hover:bg-mustard-400/20">
             {loading ? <IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> : <IconSparkles size={11} stroke={2} aria-hidden />} {t("repo.analyzeRun")}
           </button>
         )}
@@ -168,7 +168,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
             {cats.map((c) => (
               <button key={c.id} type="button" onClick={() => onOpenFlow?.(c.title)}
                 className="group flex items-start gap-1.5 rounded-md px-2 py-1.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                <IconChevronRight size={12} stroke={2} className="mt-0.5 shrink-0 text-zinc-400 group-hover:text-[#3B34E2] dark:group-hover:text-[#8b86f5]" aria-hidden />
+                <IconChevronRight size={12} stroke={2} className="mt-0.5 shrink-0 text-zinc-400 group-hover:text-mustard-600 dark:group-hover:text-mustard-400" aria-hidden />
                 <span className="min-w-0">
                   <span className="block truncate text-[12px] font-medium text-zinc-700 dark:text-zinc-200">{c.title}</span>
                   {c.blurb && <span className="block truncate text-[10px] text-zinc-400 dark:text-zinc-500">{c.blurb}</span>}
@@ -190,7 +190,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
               <button type="button" onClick={() => setConfirm(null)}
                 className="rounded-md px-2.5 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">{t("confirm.cancel")}</button>
               <button type="button" onClick={() => { const merge = confirm === "update"; setConfirm(null); void analyze(merge); }}
-                className="rounded-md bg-[#3B34E2] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#322bc9]">{t("confirm.ok")}</button>
+                className="rounded-md bg-mustard-500/12 px-2.5 py-1 text-[11px] font-semibold text-mustard-700 ring-1 ring-inset ring-mustard-500/35 transition hover:bg-mustard-500/20 dark:bg-mustard-400/12 dark:text-mustard-400 dark:ring-mustard-400/30 dark:hover:bg-mustard-400/20">{t("confirm.ok")}</button>
             </div>
           </div>
         </div>

@@ -251,7 +251,7 @@ export default function DiffPane({ root, hash, file, worktree, providerId, provi
             {startH && (
               <div className="flex items-center py-1 pl-[4.75rem]">
                 <button type="button" onClick={() => void explainHunk(startH)} disabled={startNote?.status === "loading"}
-                  className="inline-flex items-center gap-1 rounded-md bg-mustard-500 px-2 py-0.5 text-[10px] font-semibold text-zinc-950 shadow-sm transition hover:bg-mustard-400 disabled:opacity-60">
+                  className="inline-flex items-center gap-1 rounded-md bg-mustard-500/12 px-2 py-0.5 text-[10px] font-semibold text-mustard-700 ring-1 ring-inset ring-mustard-500/35 transition hover:bg-mustard-500/20 disabled:opacity-60 dark:bg-mustard-400/12 dark:text-mustard-400 dark:ring-mustard-400/30 dark:hover:bg-mustard-400/20">
                   {startNote?.status === "loading"
                     ? <><IconLoader2 size={11} stroke={2.5} className="animate-spin" aria-hidden />{t("workspace.hunkExplaining")}</>
                     : startNote?.status === "done"
