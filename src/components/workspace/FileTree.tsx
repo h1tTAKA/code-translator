@@ -58,7 +58,7 @@ function Node({ node, depth, open, toggle, selected, onSelect, status, folderSta
   const dot = status[node.path];
   return (
     <button type="button" onClick={() => onSelect(node.path)} style={pad}
-      className={`flex w-full items-center gap-1 py-0.5 pr-1.5 text-left text-[12px] transition ${on ? "bg-[#3B34E2]/10 text-[#3B34E2] dark:bg-[#8b86f5]/15 dark:text-[#8b86f5]" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>
+      className={`flex w-full items-center gap-1 py-0.5 pr-1.5 text-left text-[12px] transition ${on ? "bg-mustard-500/15 text-mustard-700 dark:bg-mustard-400/15 dark:text-mustard-400" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>
       <span className="ml-[13px] flex shrink-0">{fileGlyph(node.name)}</span>
       <span className="truncate">{node.name}</span>
       {dot && <StatusDot kind={dot} />}

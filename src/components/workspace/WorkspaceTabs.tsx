@@ -333,7 +333,7 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
             onPointerMove={tabPointerMove}
             onPointerUp={tabPointerUp}
             onMouseEnter={p ? (e) => openHover(p, e.currentTarget) : undefined} onMouseLeave={p ? scheduleClose : undefined}
-            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-white text-zinc-800 shadow-sm ring-1 ring-inset ring-mustard-500/60 dark:bg-[#0b0c12] dark:text-zinc-100 dark:ring-mustard-400/50" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
+            className={`group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] transition ${draggingKey ? "cursor-grabbing" : "cursor-grab"} ${isDragging ? "opacity-50" : ""} ${on ? "bg-mustard-500/12 text-zinc-900 shadow-sm ring-1 ring-inset ring-mustard-500/70 dark:bg-mustard-400/12 dark:text-zinc-50 dark:ring-mustard-400/55" : "text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60"} ${dropBar}`}>
             {p ? tabDot(repoStatus[p] ?? null) : null}
             {p ? <RepoAvatar path={p} size={13} iconClassName={`shrink-0 ${iconColor}`} /> : <Icon size={13} stroke={2} className={`shrink-0 ${iconColor}`} aria-hidden />}
             <span className="max-w-[12rem] truncate whitespace-nowrap font-medium">{label}</span>

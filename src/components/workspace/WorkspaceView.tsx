@@ -411,10 +411,10 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             return (
               <div key={key} onClick={() => activateCode(key)}
                 className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}>
-                {on && <span className="absolute inset-x-0 top-0 h-0.5" style={{ backgroundImage: "linear-gradient(90deg, #22d3ee 0%, #3b82f6 55%, #8b5cf6 100%)" }} aria-hidden />}
+                {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-mustard-500" aria-hidden />}
                 {tb.kind === "diff"
-                  ? <IconGitCommit size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />
-                  : <IconFileCode size={13} stroke={2} className={`shrink-0 ${on ? "text-[#3B34E2] dark:text-[#8b86f5]" : "text-zinc-400"}`} aria-hidden />}
+                  ? <IconGitCommit size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />
+                  : <IconFileCode size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />}
                 <span className="whitespace-nowrap">{name}{tb.kind === "diff" && <span className="ml-1 font-mono text-[10px] text-zinc-400 dark:text-zinc-500">{tb.hash ? `@${tb.hash.slice(0, 7)}` : `· ${tb.worktree}`}</span>}</span>
                 <button type="button" onClick={(e) => { e.stopPropagation(); closeCodeTab(key); }}
                   className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`} aria-label={t("mem.close")}>
@@ -519,7 +519,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           {/* 레포 분석하기 섹션(#743) — [분석하기]→카테고리→기능 플로우. 순서: 폴더 다음. 세로 리사이즈·전체영역. */}
           {analyzeOpen && (
             <>
-              {leftFill !== "analyze" && <div onMouseDown={startDrag("analyzeH", analyzeH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+              {leftFill !== "analyze" && <div onMouseDown={startDrag("analyzeH", analyzeH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />}
               <div style={leftFill === "analyze" ? undefined : { height: analyzeH }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "analyze" ? "min-h-0 flex-1" : "shrink-0"}`}>
                 <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => setFlowFeature(f)} />
               </div>
@@ -527,14 +527,14 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           )}
           {gitOpen && (
             <>
-              {leftFill !== "git" && <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+              {leftFill !== "git" && <div onMouseDown={startDrag("gitH", gitH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />}
               <div style={leftFill === "git" ? undefined : { height: gitH }} className={`overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "git" ? "min-h-0 flex-1" : "shrink-0"}`}><GitGraph root={path} onOpenDiff={(hash, file) => openCodeTab({ kind: "diff", hash, file })} onFocusBranch={(b) => focusChat(`branch:${b}`, "branch", b)} onOpenChange={(file, worktree) => openCodeTab({ kind: "diff", file, worktree })} onRefreshed={handleGitRefreshed} refreshNonce={gitNonce} /></div>
             </>
           )}
           {/* 문서 폴더 브라우저(#693) — .md/.txt 클릭 시 뷰어에 표시(뷰어는 커밋2). */}
           {docsOpen && (
             <>
-            {leftFill !== "docs" && <div onMouseDown={startDrag("docsH", docsH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+            {leftFill !== "docs" && <div onMouseDown={startDrag("docsH", docsH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />}
             <div style={leftFill === "docs" ? undefined : { height: docsH }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "docs" ? "min-h-0 flex-1" : "shrink-0"}`}>
               {docsRoot ? (
                 <>
@@ -588,7 +588,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           </div>
         </aside>
         )}
-        {leftOpen && <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />}
+        {leftOpen && <div onMouseDown={startDrag("tree", treeW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />}
         {/* 가운데: 커스텀 도킹 분할 트리(터미널·코드·문서 자유 배치, #716). 기존 패널 그대로 렌더만 재배치. */}
         <section className="flex min-w-0 flex-1">
           {dockTree && <WorkspaceDockLayout tree={dockTree} panels={dockPanels} onTreeChange={setDockTree} />}
@@ -596,7 +596,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
         {/* 우: 챗룸(접기/펴기 #695) — 접힘 시 aside·divider 미렌더(폭 0). 토글은 아래 플로팅 엣지 탭. */}
         {chatOpen && (
           <>
-            <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-[#3B34E2]/40 dark:hover:bg-[#8b86f5]/40" />
+            <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />
             <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
               {/* FlyCardProvider(#750) — 세션 카드 목록에서 카드 클릭 시 확대·상세(throwCard). 워크스페이스 카드는 출처이동 없음(빈 sourceIds). */}
               <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={flyNoSources} onGoToSource={() => {}}>
