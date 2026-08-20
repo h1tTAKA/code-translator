@@ -8,10 +8,10 @@ import { parseGitLog, assignLanes, githubLogin, type GitGraphModel } from "@/lib
 
 // ref 배지 종류별 스타일 — 로컬 브랜치 / 원격(origin/*) / 태그 / 현재 HEAD 브랜치 구분(색 같으면 못 알아봄).
 function refBadge(ref: string, curBranch: string) {
-  if (ref === curBranch) return { cls: "bg-brown-700 text-white dark:bg-brown-500 dark:text-white", tag: false }; // 현재 브랜치 = 브라운 채움(LV)
+  if (ref === curBranch) return { cls: "bg-brown-900 text-brown-300 ring-1 ring-inset ring-brown-300/50", tag: false }; // 그래프 배지 = 모노크롬 브라운(배경 딥브라운 + 테두리·글자 탄, 동일 계열) (#794)
   if (/^v?\d/.test(ref)) return { cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400", tag: true }; // 태그
   if (ref.includes("/")) return { cls: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400", tag: false };       // 원격(origin/…)
-  return { cls: "bg-brown-500/10 text-brown-700 dark:bg-brown-400/15 dark:text-brown-400", tag: false };                  // 로컬 브랜치 = 브라운 틴트
+  return { cls: "bg-zinc-200/70 text-zinc-600 dark:bg-zinc-700/60 dark:text-zinc-300", tag: false };                     // 로컬 브랜치 = 쿨 뉴트럴(현재=골드와 웜 경쟁 방지)
 }
 
 const ROW_H = 24, FILE_H = 20, LANE_W = 16;
@@ -192,9 +192,9 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1.5 border-b border-zinc-200 px-2.5 py-1 dark:border-zinc-800">
-        <IconGitBranch size={13} stroke={2} className="shrink-0 text-brown-500 dark:text-brown-400" aria-hidden />
+        <IconGitBranch size={13} stroke={2} className="shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
         {isGit && branch ? (
-          <span className="inline-flex min-w-0 items-center gap-1 rounded bg-brown-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-brown-700 dark:bg-brown-400/15 dark:text-brown-400" title={t("workspace.gitOnBranch", { branch })}>
+          <span className="inline-flex min-w-0 items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] font-semibold text-mustard-700 ring-1 ring-inset ring-mustard-500/60 dark:bg-zinc-900 dark:text-mustard-400 dark:ring-mustard-400/50" title={t("workspace.gitOnBranch", { branch })}>
             <span className="truncate">{branch}</span>
           </span>
         ) : (
