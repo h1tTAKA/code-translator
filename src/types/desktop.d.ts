@@ -9,13 +9,13 @@ interface NunopiDesktopApi {
   // 레포 폴더 선택(OS 네이티브 창). 취소 시 { canceled: true }.
   pickRepoFolder(): Promise<{ canceled: boolean; path?: string }>;
   // 학습 모드를 별도 창으로 열기(#789) — 멀티모니터. ok:false(reason:"exists")면 이미 떠 있음.
-  openModeWindow?(kind: "ask" | "code" | "text"): Promise<{ ok: boolean; reason?: string }>;
+  openModeWindow?(kind: "ask" | "code" | "text" | "memorize"): Promise<{ ok: boolean; reason?: string }>;
   // 탭·창 통합 모드 중복 레지스트리(#789). 탭 점유/해제/조회 + 변경 구독(해제 함수 반환).
-  modeClaim?(kind: "ask" | "code" | "text"): Promise<{ ok: boolean }>;
-  modeRelease?(kind: "ask" | "code" | "text"): Promise<{ ok: boolean }>;
-  modeIsOpen?(kind: "ask" | "code" | "text"): Promise<boolean>;
-  listOpenModes?(): Promise<Array<"ask" | "code" | "text">>;
-  onModesChanged?(cb: (kinds: Array<"ask" | "code" | "text">) => void): () => void;
+  modeClaim?(kind: "ask" | "code" | "text" | "memorize"): Promise<{ ok: boolean }>;
+  modeRelease?(kind: "ask" | "code" | "text" | "memorize"): Promise<{ ok: boolean }>;
+  modeIsOpen?(kind: "ask" | "code" | "text" | "memorize"): Promise<boolean>;
+  listOpenModes?(): Promise<Array<"ask" | "code" | "text" | "memorize">>;
+  onModesChanged?(cb: (kinds: Array<"ask" | "code" | "text" | "memorize">) => void): () => void;
   // 창 전체화면 상태(#779) — 신호등 자리 좌측 패딩 토글용. onFullscreen은 해제 함수 반환.
   window?: {
     isFullscreen(): Promise<boolean>;

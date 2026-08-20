@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle, IconMessages, IconFileCode, IconFileText } from "@tabler/icons-react";
+import { IconFiles, IconFolderOpen, IconPlus, IconX, IconCircleCheck, IconLoader2, IconQuestionMark, IconAlertTriangle, IconMessages, IconFileCode, IconFileText, IconCards } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -17,13 +17,13 @@ const ACTIVE_KEY = "nunopi:ws-active";   // 활성 탭 키(tabKey)
 const OLD_PATH_KEY = "nunopi:workspace-path"; // 구 단일 워크스페이스 경로 — 최초 1회 마이그레이션
 
 // 탭 모델(#769) — 레포 탭은 폴더 경로가 정체성, 모드 탭(질문/코드/글)은 폴더 없이 유니크 id가 정체성.
-type ModeKind = "ask" | "code" | "text";
+type ModeKind = "ask" | "code" | "text" | "memorize";
 export type Tab =
   | { type: "repo"; path: string }
   | { type: ModeKind; id: string };
 // keep-alive·활성 판별 공통 키 — 레포=경로, 모드=id. localStorage active 키로도 씀.
 const tabKey = (t: Tab): string => (t.type === "repo" ? `repo:${t.path}` : `${t.type}:${t.id}`);
-const isMode = (k: unknown): k is ModeKind => k === "ask" || k === "code" || k === "text";
+const isMode = (k: unknown): k is ModeKind => k === "ask" || k === "code" || k === "text" || k === "memorize";
 // 저장된 원소 하나를 Tab으로 — 구 문자열(순수 경로)이면 레포 탭으로 이관, 신규 객체는 검증 후 통과, 그 외 버림.
 function migrateTab(x: unknown): Tab | null {
   if (typeof x === "string") return { type: "repo", path: x };
@@ -44,6 +44,7 @@ const MODE_TAB: Record<ModeKind, { Icon: typeof IconFiles; labelKey: string; col
   ask: { Icon: IconMessages, labelKey: "mode.ask", color: "text-sky-500 dark:text-sky-400" },
   code: { Icon: IconFileCode, labelKey: "mode.code", color: "text-sky-500 dark:text-sky-400" },
   text: { Icon: IconFileText, labelKey: "mode.text", color: "text-sky-500 dark:text-sky-400" },
+  memorize: { Icon: IconCards, labelKey: "mode.memorize", color: "text-sky-500 dark:text-sky-400" },
 };
 
 // 탭 상태 도트(#764/#765) — 그 레포 에이전트의 종합 상태(버퍼 스크레이핑). 우선순위: 막힘>대기>작업중>완료.
