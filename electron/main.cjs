@@ -250,7 +250,7 @@ async function boot() {
 ipcMain.handle("window:isFullscreen", () => win?.isFullScreen() ?? false); // 초기 전체화면 상태(#779)
 // 모드 전용 창 열기(#789) — 유효 kind + 아직 어디에도 안 떠 있을 때만. 창 닫히면 자동 해제.
 ipcMain.handle("mode-window:open", (_e, kind) => {
-  if (kind !== "ask" && kind !== "code" && kind !== "text") return { ok: false, reason: "invalid" };
+  if (kind !== "ask" && kind !== "code" && kind !== "text" && kind !== "memorize") return { ok: false, reason: "invalid" };
   if (!appBase) return { ok: false, reason: "not-ready" }; // boot() 전엔 URL 없음(가드; 실제론 렌더러 IPC가 항상 이후)
   if (!claimMode(kind, "window")) return { ok: false, reason: "exists" };
   try {

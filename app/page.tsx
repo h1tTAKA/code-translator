@@ -74,7 +74,7 @@ export default function Home() {
   const winKind = useMemo<ViewMode | null>(() => {
     if (typeof window === "undefined") return null;
     const w = new URLSearchParams(window.location.search).get("win");
-    return w === "ask" || w === "code" || w === "text" ? (w as ViewMode) : null;
+    return w === "ask" || w === "code" || w === "text" || w === "memorize" ? (w as ViewMode) : null;
   }, []);
   const vm: ViewMode = winKind ?? viewMode; // AppShell 슬롯 판정에 쓰는 유효 뷰모드.
   const lastQAViewRef = useRef<ViewMode>("code"); // 질문·분석 진입 시 복귀할 직전 하위뷰(ask/code/text).

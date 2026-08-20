@@ -274,11 +274,12 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
     activate(key);
   }
 
-  // 모드를 새 창으로 열기(#789) — main이 레지스트리로 중복 거부(exists면 토스트).
+  // 모드를 새 창으로 열기(#789) — main 레지스트리가 이미 떠 있으면 exists로 거부.
+  // exists일 때만 "이미 열림" 안내. 그 외 실패(invalid=구 main/미지원, not-ready)는 오표시 방지 위해 조용히.
   async function openModeInWindow(kind: ModeKind) {
     if (!desktop?.openModeWindow) return;
     const r = await desktop.openModeWindow(kind);
-    if (r && !r.ok) toast(t("workspace.modeOpenElsewhere"), "error");
+    if (r?.reason === "exists") toast(t("workspace.modeOpenElsewhere"), "error");
   }
 
   // 메뉴 선택 → 레포는 폴더 다이얼로그, 모드는 탭 추가 또는 새 창(#789).

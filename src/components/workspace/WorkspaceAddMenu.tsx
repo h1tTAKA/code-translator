@@ -15,7 +15,7 @@ const ROWS: Row[] = [
   { kind: "ask", Icon: IconMessages, labelKey: "mode.ask", group: "modes" },
   { kind: "code", Icon: IconFileCode, labelKey: "mode.code", group: "modes" },
   { kind: "text", Icon: IconFileText, labelKey: "mode.text", group: "modes" },
-  { kind: "memorize", Icon: IconCards, labelKey: "mode.memorize", group: "modes" },
+  { kind: "memorize", Icon: IconCards, labelKey: "workspace.addMemorize", group: "modes" },
 ];
 
 export default function WorkspaceAddMenu({ anchor, onClose, onPick }: {
