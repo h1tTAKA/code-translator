@@ -30,7 +30,8 @@ export default function IssueDetail({ root, number, reloadKey, onBack }: { root:
   const confirm = useConfirm();
   const runAct = async (fn: () => Promise<{ ok: boolean; detail?: string } | undefined>) => {
     setActBusy(true); setActErr(null);
-    const r = await fn();
+    let r: { ok: boolean; detail?: string } | undefined;
+    try { r = await fn(); } catch (e) { r = { ok: false, detail: String((e as Error)?.message || e) }; }
     if (!mountedRef.current) return;
     setActBusy(false);
     if (r?.ok) { setEditingBody(false); setCmtNonce((n) => n + 1); } else setActErr(r?.detail || t("github.error"));
