@@ -1,3 +1,11 @@
+// GitHub gh CLI 브릿지 결과·엔티티(#813~). ghJson 반환 형태.
+type GhResult<T> = { ok: true; data: T } | { ok: false; kind: string; detail?: string };
+interface GhLabel { name: string; color: string }
+interface GhActor { login: string; name?: string }
+interface GhIssue { number: number; title: string; state: string; labels: GhLabel[]; author: GhActor; updatedAt: string }
+interface GhComment { author: GhActor; body: string; createdAt: string }
+interface GhIssueDetail extends GhIssue { body: string; comments: GhComment[]; url: string }
+
 // 일렉트론 preload가 노출하는 데스크톱 API(웹에선 undefined).
 interface NunopiDesktopApi {
   isDesktop: true;
@@ -31,9 +39,12 @@ interface NunopiDesktopApi {
     unwatch(opts: { id: string }): Promise<void>;
     onChanged(cb: (p: { id: string }) => void): () => void;
   };
-  // GitHub 패널(#809/#810) — gh CLI 브릿지. auth=인증 상태 진단(cwd=레포). 서브3~5서 checks/이슈/PR 메서드 추가 예정.
+  // GitHub 패널(#809/#810) — gh CLI 브릿지. auth=인증 상태 진단(cwd=레포). 서브3~5서 checks/이슈/PR 메서드 추가.
   github?: {
     auth(cwd: string): Promise<{ state: "ok" | "not-installed" | "not-authed" | "rate-limited" | "error"; detail?: string }>;
+    // 이슈 목록·상세(#813). 성공 { ok:true, data } | 실패 { ok:false, kind, detail }.
+    issueList(cwd: string, state?: "open" | "closed" | "all"): Promise<GhResult<GhIssue[]>>;
+    issueView(cwd: string, number: number): Promise<GhResult<GhIssueDetail>>;
   };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {

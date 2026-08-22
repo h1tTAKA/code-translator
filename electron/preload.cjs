@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
   // GitHub 패널(#809/#810) — gh CLI 브릿지. auth=인증 상태 진단(서브3~5서 데이터 메서드 추가).
   github: {
     auth: (cwd) => ipcRenderer.invoke("github:auth", { cwd }),
+    issueList: (cwd, state) => ipcRenderer.invoke("github:issue-list", { cwd, state }),  // #813
+    issueView: (cwd, number) => ipcRenderer.invoke("github:issue-view", { cwd, number }),
   },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {

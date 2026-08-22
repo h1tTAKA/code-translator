@@ -283,6 +283,16 @@ ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRunti
 // GitHub 패널(#810) — gh 경로는 설정값 우선, 없으면 PATH의 gh. IPC로 인증 상태 진단(서브3~5가 데이터 IPC 추가).
 const ghExe = () => loadSavedRuntimePaths().gh || "gh";
 ipcMain.handle("github:auth", (_e, { cwd }) => githubBridge.authDiagnose({ gh: ghExe(), cwd }));
+// 이슈 목록·상세(#813) — gh issue list/view --json. state=open|closed|all(기본 open).
+ipcMain.handle("github:issue-list", (_e, { cwd, state }) => {
+  const st = state === "closed" ? "closed" : state === "all" ? "all" : "open";
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "list", "--json", "number,title,state,labels,author,updatedAt", "--state", st, "--limit", "50"] });
+});
+ipcMain.handle("github:issue-view", (_e, { cwd, number }) => {
+  const n = Number(number);
+  if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid issue number" }; // 숫자만(플래그 오인 방지)
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "view", String(n), "--json", "number,title,state,labels,author,body,comments,url"] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());
