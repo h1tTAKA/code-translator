@@ -113,7 +113,7 @@ export default function IssueDetail({ root, number, reloadKey, onBack }: { root:
               d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>
             )}
             {/* 본문 리액션(#822) */}
-            <ReactionBar groups={d.reactionGroups} onReact={(c) => void window.nunopiDesktop?.github?.bodyReact?.(root, number, c).then((r) => { if (r?.ok) setCmtNonce((n) => n + 1); })} />
+            <ReactionBar groups={d.reactionGroups} onReact={(c) => void window.nunopiDesktop?.github?.bodyReact?.(root, number, c).then((r) => { if (r?.ok) setCmtNonce((n) => n + 1); }).catch(() => {})} />
             {/* 상태 액션(#822) — 닫기/다시 열기 */}
             <div className="flex flex-wrap items-center gap-1.5">
               {d.state.toUpperCase() === "OPEN"
