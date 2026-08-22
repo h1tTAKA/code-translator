@@ -21,6 +21,21 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
   const [owner, setOwner] = useState<string | null>(null);
   const [open, setOpen] = useState<OpenItem | null>(null); // 상세 열림. null=반반 목록(#824).
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
+  const [topRatio, setTopRatio] = useState(0.5); // 이슈:PR 세로 비율(#824) — 가운데 선 드래그로 조절.
+  const splitRef = useRef<HTMLDivElement>(null);
+  // 가운데 선 드래그 — 컨테이너 높이 대비 마우스 Y로 비율 계산(0.15~0.85 클램프).
+  const onDragDivider = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const onMove = (ev: MouseEvent) => {
+      const el = splitRef.current; if (!el) return;
+      const r = el.getBoundingClientRect();
+      setTopRatio(Math.min(0.85, Math.max(0.15, (ev.clientY - r.top) / r.height)));
+    };
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); document.body.style.userSelect = ""; };
+    document.body.style.userSelect = "none"; // 드래그 중 텍스트 선택 방지
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
   const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null; // ciDot는 WorkspaceView서 prop(중복 폴링 방지 #812)
 
   const mountedRef = useRef(true);
@@ -77,15 +92,20 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
         </div>
       ) : probe.state === "ok" ? (
         open == null ? (
-          /* 상하 반반(#824) — 위=이슈 목록, 아래=PR 목록 동시. 각자 필터·스크롤 독립. */
-          <div className="flex min-h-0 flex-1 flex-col">
-            <section className="flex min-h-0 flex-1 flex-col border-b-4 border-zinc-200 dark:border-zinc-800">
+          /* 상하 분할(#824) — 위=이슈 목록, 아래=PR 목록 동시. 가운데 선 드래그로 비율 조절. */
+          <div ref={splitRef} className="flex min-h-0 flex-1 flex-col">
+            <section className="flex min-h-0 flex-col" style={{ flex: topRatio }}>
               <div className="flex shrink-0 items-center gap-1.5 bg-zinc-50 px-3 py-1 text-[11px] font-semibold text-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-400">
                 {t("github.issues")}
               </div>
               <div className="min-h-0 flex-1"><IssueList root={root} reloadKey={reload} onOpen={(n) => setOpen({ kind: "issue", number: n })} /></div>
             </section>
-            <section className="flex min-h-0 flex-1 flex-col">
+            {/* 드래그 핸들 — 가운데 선. 잡고 위아래로 끌면 비율 변경. */}
+            <div role="separator" aria-orientation="horizontal" onMouseDown={onDragDivider}
+              className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y border-zinc-200 bg-zinc-100 transition hover:bg-mustard-500/20 dark:border-zinc-800 dark:bg-zinc-800/60 dark:hover:bg-mustard-500/20">
+              <span className="h-0.5 w-8 rounded-full bg-zinc-300 transition group-hover:bg-mustard-500/60 dark:bg-zinc-600" aria-hidden />
+            </div>
+            <section className="flex min-h-0 flex-col" style={{ flex: 1 - topRatio }}>
               <div className="flex shrink-0 items-center gap-1.5 bg-zinc-50 px-3 py-1 text-[11px] font-semibold text-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-400">
                 {t("github.prs")}
                 {ciDot && <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
