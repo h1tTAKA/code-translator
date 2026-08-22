@@ -9,21 +9,20 @@ import IssueList from "@/components/workspace/github/IssueList";
 import IssueDetail from "@/components/workspace/github/IssueDetail";
 import PrList from "@/components/workspace/github/PrList";
 import PrDetail from "@/components/workspace/github/PrDetail";
-import { useBranchCi } from "@/components/workspace/github/useBranchCi";
+import type { CiDot } from "@/components/workspace/github/useBranchCi";
 
 type AuthState = "ok" | "not-installed" | "not-authed" | "rate-limited" | "error";
 type Probe = { loading: boolean; state?: AuthState; detail?: string };
 type Tab = "issues" | "prs"; // CI는 별도 탭 대신 PR 상세에 통합(#812) + 헤더 도트
 
-export default function GithubPanel({ root }: { root: string }) {
+export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiDot }) {
   const t = useT();
   const [probe, setProbe] = useState<Probe>({ loading: true });
   const [owner, setOwner] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("issues"); // 내부 탭(#814) — 이슈/PR
   const [openItem, setOpenItem] = useState<number | null>(null); // 상세 열림(현재 탭 기준). null=목록.
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
-  const ciDot = useBranchCi(root); // 현재 브랜치 CI 상태(#812) — PR 탭 배지
-  const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null;
+  const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null; // ciDot는 WorkspaceView서 prop(중복 폴링 방지 #812)
 
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);

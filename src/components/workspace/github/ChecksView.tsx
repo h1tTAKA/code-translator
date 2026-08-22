@@ -1,7 +1,7 @@
 "use client";
 // CI 체크 뷰(#812, 서브3 재사용) — statusCheckRollup 정규화 결과를 통과/실패/진행 아이콘 목록으로.
 // 항목 클릭 시 orca식 상세(상태·시작/완료 시각·체크#·작업흐름#·주석) 펼침. 주석은 펼칠 때 lazy 조회.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { IconCircleCheck, IconCircleX, IconLoader2, IconCircle, IconExternalLink, IconChevronRight } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { normalizeChecks, summarize, type Check, type CheckState } from "@/components/workspace/github/checks";
@@ -40,17 +40,16 @@ function CheckDetail({ root, check }: { root: string; check: Check }) {
   const t = useT();
   const [ann, setAnn] = useState<{ loading: boolean; rows?: GhAnnotation[] }>({ loading: !!check.checkRunId });
   const [steps, setSteps] = useState<{ loading: boolean; rows?: GhJobStep[] }>({ loading: !!check.checkRunId });
-  const aliveRef = useRef(true);
   useEffect(() => {
-    aliveRef.current = true;
     const id = check.checkRunId;
     const gh = window.nunopiDesktop?.github;
     if (!id || !gh) return;
+    let cancelled = false; // 각 effect 실행마다 독립 플래그(checkRunId 변경 시 옛 async 드롭)
     void (async () => {
-      if (gh.checkAnnotations) { const r = await gh.checkAnnotations(root, id); if (aliveRef.current) setAnn({ loading: false, rows: r.ok ? r.data : [] }); }
-      if (gh.jobSteps) { const r = await gh.jobSteps(root, id); if (aliveRef.current) setSteps({ loading: false, rows: r.ok ? (r.data.steps ?? []) : [] }); } // 작업 스텝(#812)
+      if (gh.checkAnnotations) { const r = await gh.checkAnnotations(root, id); if (!cancelled) setAnn({ loading: false, rows: r.ok ? r.data : [] }); }
+      if (gh.jobSteps) { const r = await gh.jobSteps(root, id); if (!cancelled) setSteps({ loading: false, rows: r.ok ? (r.data.steps ?? []) : [] }); } // 작업 스텝(#812)
     })();
-    return () => { aliveRef.current = false; };
+    return () => { cancelled = true; };
   }, [root, check.checkRunId]);
   const stateText = check.state === "success" ? "Successful" : check.state === "failure" ? "Failed" : check.state === "pending" ? "In progress" : "—";
   return (

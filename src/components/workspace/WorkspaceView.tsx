@@ -634,7 +634,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
               {/* 우측 패널 모드(#811) — 질문(Chat) ↔ GitHub 배타 렌더. 토글은 상단 헤더에 있음. */}
               {rightMode === "github" ? (
-                <GithubPanel root={path} />
+                <GithubPanel root={path} ciDot={ciDot} />
               ) : (
                 /* FlyCardProvider(#750) — 세션 카드 목록에서 카드 클릭 시 확대·상세(throwCard). 워크스페이스 카드는 출처이동 없음(빈 sourceIds). */
                 <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={flyNoSources} onGoToSource={() => {}}>
