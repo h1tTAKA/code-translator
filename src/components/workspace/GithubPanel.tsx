@@ -9,11 +9,10 @@ import IssueList from "@/components/workspace/github/IssueList";
 import IssueDetail from "@/components/workspace/github/IssueDetail";
 import PrList from "@/components/workspace/github/PrList";
 import PrDetail from "@/components/workspace/github/PrDetail";
-import ChecksTab from "@/components/workspace/github/ChecksTab";
 
 type AuthState = "ok" | "not-installed" | "not-authed" | "rate-limited" | "error";
 type Probe = { loading: boolean; state?: AuthState; detail?: string };
-type Tab = "issues" | "prs" | "ci";
+type Tab = "issues" | "prs"; // CI는 별도 탭 대신 PR 상세에 통합(#812) + 헤더 도트
 
 export default function GithubPanel({ root }: { root: string }) {
   const t = useT();
@@ -80,10 +79,10 @@ export default function GithubPanel({ root }: { root: string }) {
           {/* 내부 탭(#814) — 이슈/PR. 상세 열려 있으면 탭 숨김(뒤로가기로 목록 복귀). */}
           {openItem == null && (
             <div className="flex shrink-0 items-center gap-1 border-b border-zinc-100 px-2 py-1 dark:border-zinc-800/60">
-              {(["issues", "prs", "ci"] as Tab[]).map((tb) => (
+              {(["issues", "prs"] as Tab[]).map((tb) => (
                 <button key={tb} type="button" onClick={() => setTab(tb)} aria-pressed={tab === tb}
                   className={`rounded px-2 py-0.5 text-[11px] font-semibold transition ${tab === tb ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
-                  {t(tb === "issues" ? "github.issues" : tb === "prs" ? "github.prs" : "github.ci")}
+                  {t(tb === "issues" ? "github.issues" : "github.prs")}
                 </button>
               ))}
             </div>
@@ -91,9 +90,7 @@ export default function GithubPanel({ root }: { root: string }) {
           <div className="min-h-0 flex-1">
             {tab === "issues"
               ? (openItem == null ? <IssueList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <IssueDetail root={root} number={openItem} onBack={() => setOpenItem(null)} />)
-              : tab === "prs"
-              ? (openItem == null ? <PrList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <PrDetail root={root} number={openItem} onBack={() => setOpenItem(null)} />)
-              : <ChecksTab root={root} reloadKey={reload} />}
+              : (openItem == null ? <PrList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <PrDetail root={root} number={openItem} onBack={() => setOpenItem(null)} />)}
           </div>
         </div>
       ) : (
