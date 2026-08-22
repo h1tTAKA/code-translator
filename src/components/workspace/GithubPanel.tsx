@@ -189,7 +189,7 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400">{t("github.tokenStoredInvalid")}</span>
                     <button type="button" onClick={() => void clearToken()} disabled={tokenBusy}
                       className="rounded px-1.5 py-0.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 disabled:opacity-40 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
-                      {t("github.tokenDisconnect")}
+                      {t("github.tokenRemove")}
                     </button>
                   </div>
                 )}
