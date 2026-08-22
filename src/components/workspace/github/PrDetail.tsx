@@ -1,7 +1,7 @@
 "use client";
 // GitHub 패널 PR 상세(#814) — gh pr view → 제목·상태·머지상태·담당자 + 체크(ChecksView)·본문·코멘트.
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
@@ -28,6 +28,17 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const reqIdRef = useRef(0);
   const [cmtNonce, setCmtNonce] = useState(0); // 코멘트 작성 후 상세 재조회(#820)
+  const [editingBody, setEditingBody] = useState(false); // 본문 편집(#822)
+  const [bodyDraft, setBodyDraft] = useState("");
+  const [actBusy, setActBusy] = useState(false);
+  const [actErr, setActErr] = useState<string | null>(null);
+  const runAct = async (fn: () => Promise<{ ok: boolean; detail?: string } | undefined>) => {
+    setActBusy(true); setActErr(null);
+    const r = await fn();
+    if (!mountedRef.current) return;
+    setActBusy(false);
+    if (r?.ok) { setEditingBody(false); setCmtNonce((n) => n + 1); } else setActErr(r?.detail || t("github.error"));
+  };
 
   useEffect(() => {
     const gh = window.nunopiDesktop?.github;
@@ -85,9 +96,37 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
                 <ChecksView root={root} rollup={d.statusCheckRollup} />
               </div>
             )}
-            {d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>}
+            {/* 본문 — 편집(#822) */}
+            {editingBody ? (
+              <div className="flex flex-col gap-1">
+                <textarea value={bodyDraft} onChange={(e) => setBodyDraft(e.target.value)} disabled={actBusy} rows={6}
+                  className="w-full resize-y rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-mustard-500/60 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
+                <div className="flex justify-end gap-1">
+                  <button type="button" onClick={() => setEditingBody(false)} className="rounded px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">{t("github.cancel")}</button>
+                  <button type="button" onClick={() => void runAct(() => window.nunopiDesktop!.github!.editBody(root, "pr", number, bodyDraft.trim()))} disabled={actBusy || !bodyDraft.trim()} className="inline-flex items-center gap-1 rounded-md bg-zinc-800 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-white">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.save")}</button>
+                </div>
+              </div>
+            ) : (
+              <div className="group/body relative">
+                {d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>}
+                <button type="button" onClick={() => { setBodyDraft(d.body || ""); setEditingBody(true); }} title={t("github.editBody")} aria-label={t("github.editBody")}
+                  className="absolute right-0 top-0 rounded p-1 text-zinc-300 opacity-0 transition hover:bg-zinc-100 hover:text-zinc-600 group-hover/body:opacity-100 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"><IconPencil size={13} stroke={2} aria-hidden /></button>
+              </div>
+            )}
             {/* 본문 리액션(#822) */}
             <ReactionBar groups={d.reactionGroups} onReact={(c) => void window.nunopiDesktop?.github?.bodyReact?.(root, number, c).then((r) => { if (r?.ok) setCmtNonce((n) => n + 1); })} />
+            {/* 상태 액션(#822) — 닫기/열기 + draft↔ready */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {d.state.toUpperCase() === "OPEN"
+                ? <button type="button" onClick={() => void runAct(() => window.nunopiDesktop!.github!.setState(root, "pr", number, "close"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.close")}</button>
+                : d.state.toUpperCase() === "CLOSED"
+                ? <button type="button" onClick={() => void runAct(() => window.nunopiDesktop!.github!.setState(root, "pr", number, "reopen"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.reopen")}</button>
+                : null}
+              {d.state.toUpperCase() === "OPEN" && (d.isDraft
+                ? <button type="button" onClick={() => void runAct(() => window.nunopiDesktop!.github!.setState(root, "pr", number, "ready"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.markReady")}</button>
+                : <button type="button" onClick={() => void runAct(() => window.nunopiDesktop!.github!.setState(root, "pr", number, "draft"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.markDraft")}</button>)}
+              {actErr && <span className="break-words text-[10px] text-rose-500">{actErr}</span>}
+            </div>
             {d.comments?.length > 0 && (
               <div className="mt-1 flex flex-col gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{t("github.comments")} · {d.comments.length}</p>
