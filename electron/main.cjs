@@ -1,8 +1,8 @@
 // 일렉트론 셸 — nunopi(Next 앱)를 데스크톱 창으로 감싼다.
 // dev: ELECTRON_START_URL(예: http://localhost:3000) 로드(next dev 병행, HMR).
 // prod: .next/standalone/server.js를 동적 포트로 spawn 후 그 localhost 로드.
-const { app, BrowserWindow, shell, ipcMain, Notification, dialog, clipboard } = require("electron");
-const { readFileSync, writeFileSync, mkdirSync, existsSync } = require("node:fs");
+const { app, BrowserWindow, shell, ipcMain, Notification, dialog, clipboard, safeStorage } = require("electron");
+const { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } = require("node:fs");
 const {
   startSnaServer,
   resolveClaudeCli,
@@ -282,32 +282,62 @@ ipcMain.handle("runtime-paths:get", () => loadSavedRuntimePaths());
 ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRuntimePaths(paths) }));
 // GitHub 패널(#810) — gh 경로는 설정값 우선, 없으면 PATH의 gh. IPC로 인증 상태 진단(서브3~5가 데이터 IPC 추가).
 const ghExe = () => loadSavedRuntimePaths().gh || "gh";
-ipcMain.handle("github:auth", (_e, { cwd }) => githubBridge.authDiagnose({ gh: ghExe(), cwd }));
+
+// 토큰(PAT) 폴백(#826, 서브6) — gh auth login 없이 PAT를 GH_TOKEN으로 주입.
+// safeStorage(OS 키체인)로 암호화 저장. 값은 렌더러 비노출(존재 여부만).
+function ghTokenFile() { return join(app.getPath("userData"), "gh-token.json"); }
+function loadGhToken() {
+  try {
+    const { enc } = JSON.parse(readFileSync(ghTokenFile(), "utf8"));
+    if (!enc || !safeStorage.isEncryptionAvailable()) return null;
+    return safeStorage.decryptString(Buffer.from(enc, "base64")) || null;
+  } catch { return null; } // 파일 없음/복호화 실패 → 토큰 없음
+}
+function saveGhToken(token) {
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, detail: "이 환경은 안전한 토큰 저장을 지원하지 않음(safeStorage 불가)" };
+  mkdirSync(app.getPath("userData"), { recursive: true });
+  const enc = safeStorage.encryptString(String(token)).toString("base64");
+  writeFileSync(ghTokenFile(), JSON.stringify({ enc }));
+  return { ok: true };
+}
+function clearGhToken() { try { rmSync(ghTokenFile()); } catch { /* 없으면 무시 */ } }
+// gh 실행 env — 저장된 토큰 있으면 GH_TOKEN 주입, 없으면 기본 env(undefined → 브릿지가 process.env).
+function ghEnv() { const tok = loadGhToken(); return tok ? { ...process.env, GH_TOKEN: tok } : undefined; }
+
+// 토큰 IPC(#826) — set(저장)/status(존재 여부만)/clear(삭제).
+ipcMain.handle("github:set-token", (_e, { token }) => {
+  if (typeof token !== "string" || !token.trim()) return { ok: false, detail: "빈 토큰" };
+  return saveGhToken(token.trim());
+});
+ipcMain.handle("github:token-status", () => ({ hasToken: loadGhToken() != null }));
+ipcMain.handle("github:clear-token", () => { clearGhToken(); return { ok: true }; });
+
+ipcMain.handle("github:auth", (_e, { cwd }) => githubBridge.authDiagnose({ gh: ghExe(), cwd, env: ghEnv() }));
 // 이슈 목록·상세(#813) — gh issue list/view --json. state=open|closed|all(기본 open).
 ipcMain.handle("github:issue-list", (_e, { cwd, state, limit }) => {
   const st = state === "closed" ? "closed" : state === "all" ? "all" : "open";
   const lim = Math.min(Math.max(Number(limit) || 50, 1), 1000); // 1..1000 클램프(더 보기 페이지네이션)
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "list", "--json", "number,title,state,labels,author,createdAt,updatedAt", "--state", st, "--limit", String(lim)] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["issue", "list", "--json", "number,title,state,labels,author,createdAt,updatedAt", "--state", st, "--limit", String(lim)] });
 });
 ipcMain.handle("github:issue-view", (_e, { cwd, number }) => {
   const n = Number(number);
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid issue number" }; // 숫자만(플래그 오인 방지)
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "view", String(n), "--json", "number,title,state,labels,author,assignees,milestone,body,comments,createdAt,url,reactionGroups"] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["issue", "view", String(n), "--json", "number,title,state,labels,author,assignees,milestone,body,comments,createdAt,url,reactionGroups"] });
 });
 // PR 목록·상세(#814) — gh pr list/view --json. statusCheckRollup=CI 체크(서브3 재사용).
 ipcMain.handle("github:pr-list", (_e, { cwd, state, limit }) => {
   const st = state === "closed" ? "closed" : state === "all" ? "all" : "open";
   const lim = Math.min(Math.max(Number(limit) || 50, 1), 1000);
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["pr", "list", "--json", "number,title,state,isDraft,author,createdAt,updatedAt,statusCheckRollup", "--state", st, "--limit", String(lim)] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["pr", "list", "--json", "number,title,state,isDraft,author,createdAt,updatedAt,statusCheckRollup", "--state", st, "--limit", String(lim)] });
 });
 ipcMain.handle("github:pr-view", (_e, { cwd, number }) => {
   const n = Number(number);
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid pr number" };
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["pr", "view", String(n), "--json", "number,title,state,isDraft,author,createdAt,assignees,body,comments,statusCheckRollup,mergeStateStatus,url,reactionGroups"] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["pr", "view", String(n), "--json", "number,title,state,isDraft,author,createdAt,assignees,body,comments,statusCheckRollup,mergeStateStatus,url,reactionGroups"] });
 });
 // 현재 브랜치 CI(#812) — gh pr view(번호 없이 = 현재 브랜치 PR)로 statusCheckRollup. PR 없으면 {noPr:true}.
 ipcMain.handle("github:checks", async (_e, { cwd }) => {
-  const r = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["pr", "view", "--json", "number,title,state,statusCheckRollup,url,headRefName"] });
+  const r = await githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["pr", "view", "--json", "number,title,state,statusCheckRollup,url,headRefName"] });
   if (!r.ok && /no pull requests found|no default remote|not found/i.test(r.detail || "")) return { ok: true, data: { noPr: true } };
   return r;
 });
@@ -315,13 +345,13 @@ ipcMain.handle("github:checks", async (_e, { cwd }) => {
 ipcMain.handle("github:check-annotations", (_e, { cwd, checkRunId }) => {
   const id = Number(checkRunId);
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid check id" };
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/check-runs/${id}/annotations`] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", `repos/{owner}/{repo}/check-runs/${id}/annotations`] });
 });
 // 작업(job) 스텝 흐름(#812) — Actions job의 steps(Set up job…Complete job). job id=detailsUrl의 job id.
 ipcMain.handle("github:job-steps", (_e, { cwd, jobId }) => {
   const id = Number(jobId);
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid job id" };
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/actions/jobs/${id}`, "--jq", "{steps: .steps}"] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", `repos/{owner}/{repo}/actions/jobs/${id}`, "--jq", "{steps: .steps}"] });
 });
 // 이슈·PR 코멘트 작성(#820, 첫 write) — gh issue/pr comment. number 정수·body 비어있지 않음 검증.
 ipcMain.handle("github:add-comment", (_e, { cwd, kind, number, body }) => {
@@ -329,25 +359,25 @@ ipcMain.handle("github:add-comment", (_e, { cwd, kind, number, body }) => {
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
   if (typeof body !== "string" || !body.trim()) return { ok: false, kind: "error", detail: "empty body" };
   const sub = kind === "pr" ? "pr" : "issue";
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: [sub, "comment", String(n), "--body", body] }); // no-shell, body는 인자(개행·특수문자 안전)
+  return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: [sub, "comment", String(n), "--body", body] }); // no-shell, body는 인자(개행·특수문자 안전)
 });
 // 코멘트 수정/삭제(#820) — issue·PR 대화 코멘트는 공통 issues/comments 엔드포인트. commentId=url의 issuecomment id.
 ipcMain.handle("github:edit-comment", (_e, { cwd, commentId, body }) => {
   const id = Number(commentId);
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
   if (typeof body !== "string" || !body.trim()) return { ok: false, kind: "error", detail: "empty body" };
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "PATCH", `repos/{owner}/{repo}/issues/comments/${id}`, "-f", `body=${body}`] });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", "-X", "PATCH", `repos/{owner}/{repo}/issues/comments/${id}`, "-f", `body=${body}`] });
 });
 ipcMain.handle("github:delete-comment", (_e, { cwd, commentId }) => {
   const id = Number(commentId);
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}`] });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}`] });
 });
 // 코멘트 리액션 토글(#820) — 이미 내가 단 리액션이면 삭제, 아니면 추가. content=REST명(+1,-1,laugh…).
 const REACTION_CONTENT = new Set(["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"]);
 // 캐시 안 함 — gh 계정 전환 시 옛 로그인으로 남의 리액션을 지우는 사고 방지(리뷰 🔴). 토글마다 조회(클릭 액션, 지연 무해).
 async function viewerLogin(cwd) {
-  const r = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", "user", "--jq", "{login: .login}"] });
+  const r = await githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", "user", "--jq", "{login: .login}"] });
   return r.ok ? (r.data?.login || null) : null;
 }
 ipcMain.handle("github:react", async (_e, { cwd, commentId, content }) => {
@@ -355,10 +385,10 @@ ipcMain.handle("github:react", async (_e, { cwd, commentId, content }) => {
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
   if (!REACTION_CONTENT.has(content)) return { ok: false, kind: "error", detail: "invalid reaction" };
   const login = await viewerLogin(cwd);
-  const list = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/issues/comments/${id}/reactions`] });
+  const list = await githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", `repos/{owner}/{repo}/issues/comments/${id}/reactions`] });
   const mine = list.ok && Array.isArray(list.data) ? list.data.find((r) => r.content === content && r.user?.login === login) : null;
-  if (mine) return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}/reactions/${mine.id}`] });
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "POST", `repos/{owner}/{repo}/issues/comments/${id}/reactions`, "-f", `content=${content}`] });
+  if (mine) return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}/reactions/${mine.id}`] });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", "-X", "POST", `repos/{owner}/{repo}/issues/comments/${id}/reactions`, "-f", `content=${content}`] });
 });
 // 이슈·PR 본문 리액션 토글(#822) — issues/{n}/reactions(PR도 공통). 코멘트 토글과 동일 로직.
 ipcMain.handle("github:body-react", async (_e, { cwd, number, content }) => {
@@ -366,10 +396,10 @@ ipcMain.handle("github:body-react", async (_e, { cwd, number, content }) => {
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
   if (!REACTION_CONTENT.has(content)) return { ok: false, kind: "error", detail: "invalid reaction" };
   const login = await viewerLogin(cwd);
-  const list = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/issues/${n}/reactions`] });
+  const list = await githubBridge.ghJson({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", `repos/{owner}/{repo}/issues/${n}/reactions`] });
   const mine = list.ok && Array.isArray(list.data) ? list.data.find((r) => r.content === content && r.user?.login === login) : null;
-  if (mine) return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/${n}/reactions/${mine.id}`] });
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "POST", `repos/{owner}/{repo}/issues/${n}/reactions`, "-f", `content=${content}`] });
+  if (mine) return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/${n}/reactions/${mine.id}`] });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["api", "-X", "POST", `repos/{owner}/{repo}/issues/${n}/reactions`, "-f", `content=${content}`] });
 });
 // 이슈·PR 제목·본문 편집(#822) — gh issue/pr edit <n> --title/--body. 준 것만 반영.
 ipcMain.handle("github:edit-item", (_e, { cwd, kind, number, title, body }) => {
@@ -387,10 +417,10 @@ ipcMain.handle("github:set-state", (_e, { cwd, kind, number, action }) => {
   const n = Number(number);
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
   const sub = kind === "pr" ? "pr" : "issue";
-  if (action === "close") return githubBridge.ghRun({ gh: ghExe(), cwd, args: [sub, "close", String(n)] });
-  if (action === "reopen") return githubBridge.ghRun({ gh: ghExe(), cwd, args: [sub, "reopen", String(n)] });
-  if (sub === "pr" && action === "ready") return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["pr", "ready", String(n)] });
-  if (sub === "pr" && action === "draft") return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["pr", "ready", String(n), "--undo"] });
+  if (action === "close") return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: [sub, "close", String(n)] });
+  if (action === "reopen") return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: [sub, "reopen", String(n)] });
+  if (sub === "pr" && action === "ready") return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["pr", "ready", String(n)] });
+  if (sub === "pr" && action === "draft") return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["pr", "ready", String(n), "--undo"] });
   return Promise.resolve({ ok: false, kind: "error", detail: "invalid action" });
 });
 // PR 머지(#822 추가) — method별 플래그 + 병합 후 브랜치 삭제. 되돌릴 수 없음(렌더러서 확인).
@@ -398,7 +428,7 @@ ipcMain.handle("github:merge", (_e, { cwd, number, method }) => {
   const n = Number(number);
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
   const flag = { merge: "--merge", squash: "--squash", rebase: "--rebase" }[method] || "--merge";
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["pr", "merge", String(n), flag, "--delete-branch"] });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, env: ghEnv(), args: ["pr", "merge", String(n), flag, "--delete-branch"] });
 });
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
