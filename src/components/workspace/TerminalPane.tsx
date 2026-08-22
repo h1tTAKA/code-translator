@@ -89,7 +89,8 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
     const tick = async () => {
       try {
         const ls = await api.list();
-        if (alive) setAgentById(Object.fromEntries(ls.filter((s) => s.agent).map((s) => [s.id, s.agent as AgentId])));
+        // s.agent는 string|null(.cjs 경계라 타입 강제 불가) — AGENT_META 키로 검증한 값만 수용(미지 문자열→라벨/로고 조회 크래시 방지).
+        if (alive) setAgentById(Object.fromEntries(ls.filter((s) => s.agent && s.agent in AGENT_META).map((s) => [s.id, s.agent as AgentId])));
       } catch { /* ignore */ }
     };
     void tick();
