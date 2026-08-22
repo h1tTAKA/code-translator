@@ -1,7 +1,7 @@
 "use client";
 // GitHub 패널 PR 상세(#814) — gh pr view → 제목·상태·머지상태·담당자 + 체크(ChecksView)·본문·코멘트.
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil, IconGitPullRequest, IconGitPullRequestDraft, IconGitPullRequestClosed, IconGitMerge } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil, IconGitPullRequest, IconGitPullRequestDraft, IconGitPullRequestClosed, IconGitMerge, IconChevronDown, IconCheck } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import Markdown from "@/components/learning/Markdown";
@@ -51,10 +51,14 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
       void runAct(() => window.nunopiDesktop!.github!.setState(root, "pr", number, action));
     }
   };
+  // 머지 방식(GitHub식) — 기본 merge commit. 메뉴로 squash/rebase 선택.
+  const [mergeMethod, setMergeMethod] = useState<"merge" | "squash" | "rebase">("merge");
+  const [mergeMenu, setMergeMenu] = useState(false);
+  const mergeLabel: Record<typeof mergeMethod, string> = { merge: t("github.mergeCommit"), squash: t("github.squashMerge"), rebase: t("github.rebaseMerge") };
   // 머지는 되돌릴 수 없음(브랜치 삭제 포함) → danger 확인(#822).
-  const confirmMerge = async () => {
-    if (await confirm({ title: t("github.merge"), message: t("github.confirmMerge"), danger: true, confirmText: t("github.merge"), confirmIcon: <IconGitMerge size={15} stroke={2} aria-hidden /> })) {
-      void runAct(() => window.nunopiDesktop!.github!.merge(root, number));
+  const confirmMerge = async (method: "merge" | "squash" | "rebase") => {
+    if (await confirm({ title: mergeLabel[method], message: t("github.confirmMerge"), danger: true, confirmText: t("github.merge"), confirmIcon: <IconGitMerge size={15} stroke={2} aria-hidden /> })) {
+      void runAct(() => window.nunopiDesktop!.github!.merge(root, number, method));
     }
   };
 
@@ -137,18 +141,36 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
             <ReactionBar groups={d.reactionGroups} onReact={(c) => void window.nunopiDesktop?.github?.bodyReact?.(root, number, c).then((r) => { if (r?.ok) setCmtNonce((n) => n + 1); }).catch(() => {})} />
             {/* 상태 액션(#822) — 닫기/열기 + draft↔ready */}
             <div className="flex flex-wrap items-center gap-1.5">
+              {/* 머지 스플릿 버튼(#822) — 본체=선택 방식 실행, ▾=방식 선택 메뉴(GitHub식). */}
               {d.state.toUpperCase() === "OPEN" && !d.isDraft && (
-                <button type="button" onClick={() => void confirmMerge()} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitMerge size={13} stroke={2} aria-hidden />}{t("github.merge")}</button>
+                <div className="relative inline-flex">
+                  <button type="button" onClick={() => void confirmMerge(mergeMethod)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-l-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitMerge size={13} stroke={2} aria-hidden />}{mergeLabel[mergeMethod]}</button>
+                  <button type="button" onClick={() => setMergeMenu((v) => !v)} disabled={actBusy} aria-label={t("github.merge")} className="inline-flex items-center rounded-r-md border-l border-emerald-700/60 bg-emerald-600 px-1 py-1 text-white transition hover:bg-emerald-700 disabled:opacity-40"><IconChevronDown size={13} stroke={2} aria-hidden /></button>
+                  {mergeMenu && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setMergeMenu(false)} />
+                      <div className="absolute left-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                        {(["merge", "squash", "rebase"] as const).map((m) => (
+                          <button key={m} type="button" onClick={() => { setMergeMethod(m); setMergeMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                            <IconCheck size={14} stroke={2.5} className={`shrink-0 ${mergeMethod === m ? "text-emerald-500" : "invisible"}`} aria-hidden />
+                            {mergeLabel[m]}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
-              {d.state.toUpperCase() === "OPEN"
-                ? <button type="button" onClick={() => void confirmState("close", t("github.close"), <IconGitPullRequestClosed size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequestClosed size={13} stroke={2} className="text-rose-500" aria-hidden />}{t("github.close")}</button>
-                : d.state.toUpperCase() === "CLOSED"
-                ? <button type="button" onClick={() => void confirmState("reopen", t("github.reopen"), <IconGitPullRequest size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequest size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.reopen")}</button>
-                : null}
               {d.state.toUpperCase() === "OPEN" && (d.isDraft
                 ? <button type="button" onClick={() => void confirmState("ready", t("github.markReady"), <IconGitPullRequest size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequest size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.markReady")}</button>
                 : <button type="button" onClick={() => void confirmState("draft", t("github.markDraft"), <IconGitPullRequestDraft size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequestDraft size={13} stroke={2} className="text-zinc-400" aria-hidden />}{t("github.markDraft")}</button>)}
-              {actErr && <span className="break-words text-[10px] text-rose-500">{actErr}</span>}
+              {/* Close / Reopen — 항상 오른쪽 끝(ml-auto). */}
+              {d.state.toUpperCase() === "OPEN"
+                ? <button type="button" onClick={() => void confirmState("close", t("github.close"), <IconGitPullRequestClosed size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="ml-auto inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequestClosed size={13} stroke={2} className="text-rose-500" aria-hidden />}{t("github.close")}</button>
+                : d.state.toUpperCase() === "CLOSED"
+                ? <button type="button" onClick={() => void confirmState("reopen", t("github.reopen"), <IconGitPullRequest size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="ml-auto inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequest size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.reopen")}</button>
+                : null}
+              {actErr && <span className="w-full break-words text-[10px] text-rose-500">{actErr}</span>}
             </div>
             {d.comments?.length > 0 && (
               <div className="mt-1 flex flex-col gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">

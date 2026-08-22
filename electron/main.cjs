@@ -393,11 +393,12 @@ ipcMain.handle("github:set-state", (_e, { cwd, kind, number, action }) => {
   if (sub === "pr" && action === "draft") return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["pr", "ready", String(n), "--undo"] });
   return Promise.resolve({ ok: false, kind: "error", detail: "invalid action" });
 });
-// PR 머지(#822 추가) — --merge(커밋 보존, 잔디) + 병합 후 브랜치 삭제. 되돌릴 수 없음(렌더러서 확인).
-ipcMain.handle("github:merge", (_e, { cwd, number }) => {
+// PR 머지(#822 추가) — method별 플래그 + 병합 후 브랜치 삭제. 되돌릴 수 없음(렌더러서 확인).
+ipcMain.handle("github:merge", (_e, { cwd, number, method }) => {
   const n = Number(number);
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["pr", "merge", String(n), "--merge", "--delete-branch"] });
+  const flag = { merge: "--merge", squash: "--squash", rebase: "--rebase" }[method] || "--merge";
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["pr", "merge", String(n), flag, "--delete-branch"] });
 });
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
