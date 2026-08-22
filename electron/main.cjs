@@ -323,6 +323,43 @@ ipcMain.handle("github:job-steps", (_e, { cwd, jobId }) => {
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid job id" };
   return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/actions/jobs/${id}`, "--jq", "{steps: .steps}"] });
 });
+// 이슈·PR 코멘트 작성(#820, 첫 write) — gh issue/pr comment. number 정수·body 비어있지 않음 검증.
+ipcMain.handle("github:add-comment", (_e, { cwd, kind, number, body }) => {
+  const n = Number(number);
+  if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
+  if (typeof body !== "string" || !body.trim()) return { ok: false, kind: "error", detail: "empty body" };
+  const sub = kind === "pr" ? "pr" : "issue";
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: [sub, "comment", String(n), "--body", body] }); // no-shell, body는 인자(개행·특수문자 안전)
+});
+// 코멘트 수정/삭제(#820) — issue·PR 대화 코멘트는 공통 issues/comments 엔드포인트. commentId=url의 issuecomment id.
+ipcMain.handle("github:edit-comment", (_e, { cwd, commentId, body }) => {
+  const id = Number(commentId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
+  if (typeof body !== "string" || !body.trim()) return { ok: false, kind: "error", detail: "empty body" };
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "PATCH", `repos/{owner}/{repo}/issues/comments/${id}`, "-f", `body=${body}`] });
+});
+ipcMain.handle("github:delete-comment", (_e, { cwd, commentId }) => {
+  const id = Number(commentId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}`] });
+});
+// 코멘트 리액션 토글(#820) — 이미 내가 단 리액션이면 삭제, 아니면 추가. content=REST명(+1,-1,laugh…).
+const REACTION_CONTENT = new Set(["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"]);
+// 캐시 안 함 — gh 계정 전환 시 옛 로그인으로 남의 리액션을 지우는 사고 방지(리뷰 🔴). 토글마다 조회(클릭 액션, 지연 무해).
+async function viewerLogin(cwd) {
+  const r = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", "user", "--jq", "{login: .login}"] });
+  return r.ok ? (r.data?.login || null) : null;
+}
+ipcMain.handle("github:react", async (_e, { cwd, commentId, content }) => {
+  const id = Number(commentId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
+  if (!REACTION_CONTENT.has(content)) return { ok: false, kind: "error", detail: "invalid reaction" };
+  const login = await viewerLogin(cwd);
+  const list = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/issues/comments/${id}/reactions`] });
+  const mine = list.ok && Array.isArray(list.data) ? list.data.find((r) => r.content === content && r.user?.login === login) : null;
+  if (mine) return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}/reactions/${mine.id}`] });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "POST", `repos/{owner}/{repo}/issues/comments/${id}/reactions`, "-f", `content=${content}`] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());

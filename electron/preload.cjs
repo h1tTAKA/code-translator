@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     checks: (cwd) => ipcRenderer.invoke("github:checks", { cwd }),  // #812 현재 브랜치 CI
     checkAnnotations: (cwd, checkRunId) => ipcRenderer.invoke("github:check-annotations", { cwd, checkRunId }),  // #812
     jobSteps: (cwd, jobId) => ipcRenderer.invoke("github:job-steps", { cwd, jobId }),  // #812
+    addComment: (cwd, kind, number, body) => ipcRenderer.invoke("github:add-comment", { cwd, kind, number, body }),  // #820
+    editComment: (cwd, commentId, body) => ipcRenderer.invoke("github:edit-comment", { cwd, commentId, body }),  // #820
+    deleteComment: (cwd, commentId) => ipcRenderer.invoke("github:delete-comment", { cwd, commentId }),
+    react: (cwd, commentId, content) => ipcRenderer.invoke("github:react", { cwd, commentId, content }),  // #820 리액션 토글
   },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {

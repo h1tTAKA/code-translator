@@ -63,6 +63,7 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">
           {owner ? `${owner}/${repo ?? ""}` : (repo ?? "GitHub")}
         </span>
+        {/* 유일한 새로고침(#820) — 목록·상세·상태 다 갱신(reload를 자식에 전달). */}
         <button type="button" onClick={() => { setReload((n) => n + 1); void run(); }} disabled={probe.loading}
           className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 disabled:opacity-40 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
           title={t("github.refresh")} aria-label={t("github.refresh")}>
@@ -91,8 +92,8 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
           )}
           <div className="min-h-0 flex-1">
             {tab === "issues"
-              ? (openItem == null ? <IssueList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <IssueDetail root={root} number={openItem} onBack={() => setOpenItem(null)} />)
-              : (openItem == null ? <PrList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <PrDetail root={root} number={openItem} onBack={() => setOpenItem(null)} />)}
+              ? (openItem == null ? <IssueList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <IssueDetail key={openItem} root={root} number={openItem} reloadKey={reload} onBack={() => setOpenItem(null)} />)
+              : (openItem == null ? <PrList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <PrDetail key={openItem} root={root} number={openItem} reloadKey={reload} onBack={() => setOpenItem(null)} />)}
           </div>
         </div>
       ) : (

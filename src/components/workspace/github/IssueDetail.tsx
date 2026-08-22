@@ -1,33 +1,37 @@
 "use client";
 // GitHub 패널 이슈 상세(#813) — gh issue view(브릿지 #810) → 본문·코멘트(Markdown 재사용).
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconAlertTriangle, IconArrowLeft } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
+import CommentComposer from "@/components/workspace/github/CommentComposer";
+import CommentItem from "@/components/workspace/github/CommentItem";
+import GhAvatar from "@/components/workspace/github/GhAvatar";
 
 type Load = { loading: boolean; data?: GhIssueDetail; error?: string };
 
-export default function IssueDetail({ root, number, onBack }: { root: string; number: number; onBack: () => void }) {
+export default function IssueDetail({ root, number, reloadKey, onBack }: { root: string; number: number; reloadKey: number; onBack: () => void }) {
   const t = useT();
   const [load, setLoad] = useState<Load>({ loading: true });
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const reqIdRef = useRef(0); // 요청 세대 — 다른 이슈 빠르게 열 때 옛 fetch가 최신 덮어쓰지 않게(리뷰 🟡)
+  const [cmtNonce, setCmtNonce] = useState(0); // 코멘트 작성 후 상세 재조회(#820)
 
   useEffect(() => {
     const gh = window.nunopiDesktop?.github;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 미지원(web)/로딩 표시(number 변경마다 재조회)
     if (!gh?.issueView) { setLoad({ loading: false, error: t("github.desktopOnly") }); return; }
     const myId = ++reqIdRef.current;
-    setLoad({ loading: true });
+    setLoad((p) => ({ loading: true, data: p.data })); // 데이터 유지(새로고침·코멘트 후 화면 안 비게)
     (async () => {
       const r = await gh.issueView(root, number);
       if (!mountedRef.current || myId !== reqIdRef.current) return; // 언마운트/stale 결과 드롭
       if (r.ok) setLoad({ loading: false, data: r.data });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
     })();
-  }, [root, number, t]);
+  }, [root, number, t, cmtNonce, reloadKey]);
 
   const d = load.data;
   return (
@@ -39,16 +43,20 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
         <span className="ml-1 shrink-0 font-mono text-[10px] text-zinc-400 dark:text-zinc-500">#{number}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {load.loading ? (
+        {load.loading && !d ? (
           <div className="flex items-center gap-2 text-[12px] text-zinc-400 dark:text-zinc-500"><IconLoader2 size={14} className="animate-spin" aria-hidden /> …</div>
-        ) : load.error || !d ? (
+        ) : (load.error && !d) || !d ? (
           <div className="flex items-start gap-2 text-[12px] text-zinc-500 dark:text-zinc-400"><IconAlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" aria-hidden /><span className="break-words">{load.error || t("github.error")}</span></div>
         ) : (
           <div className="flex flex-col gap-3">
             <div>
-              <h2 className="text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{d.title}</h2>
+              <div className="flex items-start gap-2">
+                <h2 className="min-w-0 flex-1 text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{d.title}</h2>
+                {d.url && <a href={d.url} target="_blank" rel="noreferrer" title={t("github.openInBrowser")} aria-label={t("github.openInBrowser")} className="mt-0.5 shrink-0 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><IconExternalLink size={14} stroke={2} aria-hidden /></a>}
+              </div>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500">
                 <span className={`rounded-full px-1.5 py-px text-[10px] font-medium ${d.state.toUpperCase() === "OPEN" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-purple-500/15 text-purple-500 dark:text-purple-400"}`}>{d.state}</span>
+                <GhAvatar login={d.author?.login} size={14} />
                 <span>{d.author?.login}</span>
                 {d.createdAt && <span>· {relTime(d.createdAt)}</span>}
                 {d.milestone?.title && <span>· {d.milestone.title}</span>}
@@ -66,13 +74,12 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
               <div className="mt-1 flex flex-col gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{t("github.comments")} · {d.comments.length}</p>
                 {d.comments.map((c, i) => (
-                  <div key={i} className="rounded-md bg-zinc-50 p-2 dark:bg-zinc-800/40">
-                    <p className="mb-1 text-[10px] text-zinc-400 dark:text-zinc-500">{c.author?.login}</p>
-                    <Markdown className="text-[12px]">{c.body}</Markdown>
-                  </div>
+                  <CommentItem key={c.url || i} root={root} comment={c} onChanged={() => setCmtNonce((n) => n + 1)} />
                 ))}
               </div>
             )}
+            {/* 코멘트 작성(#820) — 성공 시 상세 재조회 */}
+            <CommentComposer root={root} kind="issue" number={number} onPosted={() => setCmtNonce((n) => n + 1)} />
           </div>
         )}
       </div>
