@@ -13,18 +13,24 @@ export function useBranchCi(root: string | undefined): CiDot {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- root/미지원 변경 시 도트 리셋
     if (!gh?.checks || !root) { setDot(null); return; }
     let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    // 진행 중이면 빨리(6s), 안정(통과/실패/없음)이면 느리게(30s) 폴링 — 반응 지연 최소화.
     const tick = async () => {
+      let next: CiDot = null;
       try {
         const r = await gh.checks(root);
         if (!alive) return;
-        if (!r.ok || !r.data || r.data.noPr || (r.data.state && r.data.state.toUpperCase() !== "OPEN")) { setDot(null); return; } // PR 없음/끝남 → 숨김
-        const s = summarize(normalizeChecks(r.data.statusCheckRollup));
-        setDot(!s.total ? null : s.pending > 0 ? "running" : s.fail > 0 ? "failure" : "success");
-      } catch { if (alive) setDot(null); }
+        if (r.ok && r.data && !r.data.noPr && !(r.data.state && r.data.state.toUpperCase() !== "OPEN")) {
+          const s = summarize(normalizeChecks(r.data.statusCheckRollup));
+          next = !s.total ? null : s.pending > 0 ? "running" : s.fail > 0 ? "failure" : "success";
+        }
+      } catch { /* 네트워크 등 실패 → 도트 숨김 */ }
+      if (!alive) return;
+      setDot(next);
+      timer = setTimeout(tick, next === "running" ? 6000 : 30000);
     };
     void tick();
-    const iv = setInterval(tick, 30000);
-    return () => { alive = false; clearInterval(iv); };
+    return () => { alive = false; clearTimeout(timer); };
   }, [root]);
   return dot;
 }

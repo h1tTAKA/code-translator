@@ -1,14 +1,17 @@
 "use client";
 // GitHub 패널 PR 상세(#814) — gh pr view → 제목·상태·머지상태·담당자 + 체크(ChecksView)·본문·코멘트.
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil, IconGitPullRequest, IconGitPullRequestDraft, IconGitPullRequestClosed, IconGitMerge, IconChevronDown, IconCheck } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
 import ChecksView from "@/components/workspace/github/ChecksView";
+import MarkdownToolbar from "@/components/workspace/github/MarkdownToolbar";
 import CommentComposer from "@/components/workspace/github/CommentComposer";
 import CommentItem from "@/components/workspace/github/CommentItem";
 import GhAvatar from "@/components/workspace/github/GhAvatar";
+import ReactionBar from "@/components/workspace/github/ReactionBar";
 
 type Load = { loading: boolean; data?: GhPrDetail; error?: string };
 
@@ -27,6 +30,37 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const reqIdRef = useRef(0);
   const [cmtNonce, setCmtNonce] = useState(0); // 코멘트 작성 후 상세 재조회(#820)
+  const [editingBody, setEditingBody] = useState(false); // 제목·본문 편집(#822)
+  const [titleDraft, setTitleDraft] = useState("");
+  const [bodyDraft, setBodyDraft] = useState("");
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [actBusy, setActBusy] = useState(false);
+  const [actErr, setActErr] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const runAct = async (fn: () => Promise<{ ok: boolean; detail?: string } | undefined>) => {
+    setActBusy(true); setActErr(null);
+    let r: { ok: boolean; detail?: string } | undefined;
+    try { r = await fn(); } catch (e) { r = { ok: false, detail: String((e as Error)?.message || e) }; }
+    if (!mountedRef.current) return;
+    setActBusy(false);
+    if (r?.ok) { setEditingBody(false); setCmtNonce((n) => n + 1); } else setActErr(r?.detail || t("github.error"));
+  };
+  // 상태 전환은 실제 GitHub에 반영 → 확인 팝업 후(#822).
+  const confirmState = async (action: "close" | "reopen" | "ready" | "draft", label: string, icon: React.ReactNode) => {
+    if (await confirm({ title: label, message: t("github.confirmState"), tone: "warn", confirmText: label, confirmIcon: icon })) {
+      void runAct(() => window.nunopiDesktop!.github!.setState(root, "pr", number, action));
+    }
+  };
+  // 머지 방식(GitHub식) — 기본 merge commit. 메뉴로 squash/rebase 선택.
+  const [mergeMethod, setMergeMethod] = useState<"merge" | "squash" | "rebase">("merge");
+  const [mergeMenu, setMergeMenu] = useState(false);
+  const mergeLabel: Record<typeof mergeMethod, string> = { merge: t("github.mergeCommit"), squash: t("github.squashMerge"), rebase: t("github.rebaseMerge") };
+  // 머지는 되돌릴 수 없음(브랜치 삭제 포함) → danger 확인(#822).
+  const confirmMerge = async (method: "merge" | "squash" | "rebase") => {
+    if (await confirm({ title: mergeLabel[method], message: t("github.confirmMerge"), danger: true, confirmText: t("github.merge"), confirmIcon: <IconGitMerge size={15} stroke={2} aria-hidden /> })) {
+      void runAct(() => window.nunopiDesktop!.github!.merge(root, number, method));
+    }
+  };
 
   useEffect(() => {
     const gh = window.nunopiDesktop?.github;
@@ -61,7 +95,10 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
           <div className="flex flex-col gap-3">
             <div>
               <div className="flex items-start gap-2">
-                <h2 className="min-w-0 flex-1 text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{d.title}</h2>
+                {editingBody
+                  ? <input value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} disabled={actBusy} autoFocus className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[14px] font-semibold text-zinc-800 outline-none focus:border-mustard-500/60 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" />
+                  : <h2 className="min-w-0 flex-1 text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{d.title}</h2>}
+                {!editingBody && <button type="button" onClick={() => { setTitleDraft(d.title || ""); setBodyDraft(d.body || ""); setEditingBody(true); }} title={t("github.editBody")} aria-label={t("github.editBody")} className="mt-0.5 shrink-0 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><IconPencil size={14} stroke={2} aria-hidden /></button>}
                 {d.url && <a href={d.url} target="_blank" rel="noreferrer" title={t("github.openInBrowser")} aria-label={t("github.openInBrowser")} className="mt-0.5 shrink-0 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><IconExternalLink size={14} stroke={2} aria-hidden /></a>}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500">
@@ -84,7 +121,57 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
                 <ChecksView root={root} rollup={d.statusCheckRollup} />
               </div>
             )}
-            {d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>}
+            {/* 본문 — 편집(#822) */}
+            {editingBody ? (
+              <div className="flex flex-col gap-1">
+                <div className="rounded-md border border-zinc-200 bg-white transition focus-within:border-mustard-500/60 dark:border-zinc-700 dark:bg-zinc-900">
+                  <textarea ref={bodyRef} value={bodyDraft} onChange={(e) => setBodyDraft(e.target.value)} disabled={actBusy} rows={16}
+                    className="w-full resize-y bg-transparent px-2 py-1.5 text-[12px] text-zinc-700 outline-none disabled:opacity-60 dark:text-zinc-200" />
+                  <div className="border-t border-zinc-100 px-1.5 py-1 dark:border-zinc-800/60"><MarkdownToolbar taRef={bodyRef} setValue={setBodyDraft} /></div>
+                </div>
+                <div className="flex justify-end gap-1">
+                  <button type="button" onClick={() => setEditingBody(false)} className="rounded px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">{t("github.cancel")}</button>
+                  <button type="button" onClick={() => void runAct(() => window.nunopiDesktop!.github!.editItem(root, "pr", number, titleDraft.trim(), bodyDraft.trim()))} disabled={actBusy || !titleDraft.trim()} className="inline-flex items-center gap-1 rounded-md bg-zinc-800 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-white">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.save")}</button>
+                </div>
+              </div>
+            ) : (
+              d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>
+            )}
+            {/* 본문 리액션(#822) */}
+            <ReactionBar groups={d.reactionGroups} onReact={(c) => void window.nunopiDesktop?.github?.bodyReact?.(root, number, c).then((r) => { if (r?.ok) setCmtNonce((n) => n + 1); }).catch(() => {})} />
+            {/* 상태 액션(#822) — 닫기/열기 + draft↔ready */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* 머지 스플릿 버튼(#822) — 본체=선택 방식 실행, ▾=방식 선택 메뉴(GitHub식). */}
+              {d.state.toUpperCase() === "OPEN" && !d.isDraft && (
+                <div className="relative inline-flex">
+                  <button type="button" onClick={() => void confirmMerge(mergeMethod)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-l-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitMerge size={13} stroke={2} aria-hidden />}{mergeLabel[mergeMethod]}</button>
+                  <button type="button" onClick={() => setMergeMenu((v) => !v)} disabled={actBusy} aria-label={t("github.merge")} className="inline-flex items-center rounded-r-md border-l border-emerald-700/60 bg-emerald-600 px-1 py-1 text-white transition hover:bg-emerald-700 disabled:opacity-40"><IconChevronDown size={13} stroke={2} aria-hidden /></button>
+                  {mergeMenu && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setMergeMenu(false)} />
+                      <div className="absolute left-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                        {(["merge", "squash", "rebase"] as const).map((m) => (
+                          <button key={m} type="button" onClick={() => { setMergeMethod(m); setMergeMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                            <IconCheck size={14} stroke={2.5} className={`shrink-0 ${mergeMethod === m ? "text-emerald-500" : "invisible"}`} aria-hidden />
+                            {mergeLabel[m]}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {d.state.toUpperCase() === "OPEN" && (d.isDraft
+                ? <button type="button" onClick={() => void confirmState("ready", t("github.markReady"), <IconGitPullRequest size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequest size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.markReady")}</button>
+                : <button type="button" onClick={() => void confirmState("draft", t("github.markDraft"), <IconGitPullRequestDraft size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequestDraft size={13} stroke={2} className="text-zinc-400" aria-hidden />}{t("github.markDraft")}</button>)}
+              {/* Close / Reopen — 항상 오른쪽 끝(ml-auto). */}
+              {d.state.toUpperCase() === "OPEN"
+                ? <button type="button" onClick={() => void confirmState("close", t("github.close"), <IconGitPullRequestClosed size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequestClosed size={13} stroke={2} className="text-rose-500" aria-hidden />}{t("github.close")}</button>
+                : d.state.toUpperCase() === "CLOSED"
+                ? <button type="button" onClick={() => void confirmState("reopen", t("github.reopen"), <IconGitPullRequest size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequest size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.reopen")}</button>
+                : null}
+              {actErr && <span className="w-full break-words text-[10px] text-rose-500">{actErr}</span>}
+            </div>
             {d.comments?.length > 0 && (
               <div className="mt-1 flex flex-col gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{t("github.comments")} · {d.comments.length}</p>

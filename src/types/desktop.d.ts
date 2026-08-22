@@ -6,11 +6,11 @@ interface GhIssue { number: number; title: string; state: string; labels: GhLabe
 interface GhReactionGroup { content: string; users: { totalCount: number } } // content=ENUM(THUMBS_UP…)
 interface GhComment { author: GhActor; body: string; createdAt: string; url?: string; viewerDidAuthor?: boolean; reactionGroups?: GhReactionGroup[] }
 interface GhMilestone { title: string }
-interface GhIssueDetail extends GhIssue { assignees: GhActor[]; milestone: GhMilestone | null; body: string; comments: GhComment[]; url: string }
+interface GhIssueDetail extends GhIssue { assignees: GhActor[]; milestone: GhMilestone | null; body: string; comments: GhComment[]; url: string; reactionGroups?: GhReactionGroup[] }
 // PR(#814). statusCheckRollup 항목은 CheckRun|StatusContext 혼재 — 필드 옵셔널로 흡수(정규화는 렌더러 checks.ts).
 interface GhCheckRaw { __typename?: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string; workflowName?: string; startedAt?: string; completedAt?: string; description?: string }
 interface GhPr { number: number; title: string; state: string; isDraft: boolean; author: GhActor; createdAt: string; updatedAt: string; statusCheckRollup: GhCheckRaw[] }
-interface GhPrDetail extends GhPr { assignees: GhActor[]; body: string; comments: GhComment[]; mergeStateStatus: string; url: string }
+interface GhPrDetail extends GhPr { assignees: GhActor[]; body: string; comments: GhComment[]; mergeStateStatus: string; url: string; reactionGroups?: GhReactionGroup[] }
 // 현재 브랜치 CI(#812) — PR 있으면 checks, 없으면 { noPr:true }.
 interface GhChecks { number?: number; title?: string; state?: string; statusCheckRollup?: GhCheckRaw[]; url?: string; headRefName?: string; noPr?: boolean }
 interface GhAnnotation { path?: string; start_line?: number; annotation_level?: string; message?: string; title?: string }
@@ -64,6 +64,10 @@ interface NunopiDesktopApi {
     editComment(cwd: string, commentId: string, body: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;
     deleteComment(cwd: string, commentId: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;
     react(cwd: string, commentId: string, content: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;  // content=+1|-1|laugh|hooray|confused|heart|rocket|eyes
+    bodyReact(cwd: string, number: number, content: string): Promise<{ ok: boolean; kind?: string; detail?: string }>;  // #822 이슈/PR 본문 리액션
+    editItem(cwd: string, kind: "issue" | "pr", number: number, title: string, body: string): Promise<{ ok: boolean; kind?: string; detail?: string }>;  // #822 제목·본문(빈 값은 미반영)
+    setState(cwd: string, kind: "issue" | "pr", number: number, action: "close" | "reopen" | "ready" | "draft"): Promise<{ ok: boolean; kind?: string; detail?: string }>;
+    merge(cwd: string, number: number, method: "merge" | "squash" | "rebase"): Promise<{ ok: boolean; kind?: string; detail?: string }>;  // #822 PR 머지(--delete-branch)
   };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {
