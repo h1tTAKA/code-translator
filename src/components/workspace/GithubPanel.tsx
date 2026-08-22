@@ -13,14 +13,13 @@ import type { CiDot } from "@/components/workspace/github/useBranchCi";
 
 type AuthState = "ok" | "not-installed" | "not-authed" | "rate-limited" | "error";
 type Probe = { loading: boolean; state?: AuthState; detail?: string };
-type Tab = "issues" | "prs"; // CI는 별도 탭 대신 PR 상세에 통합(#812) + 헤더 도트
+type OpenItem = { kind: "issue" | "pr"; number: number }; // 상세 열림 — 반반 분할(#824)이라 kind로 이슈/PR 구분
 
 export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiDot }) {
   const t = useT();
   const [probe, setProbe] = useState<Probe>({ loading: true });
   const [owner, setOwner] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("issues"); // 내부 탭(#814) — 이슈/PR
-  const [openItem, setOpenItem] = useState<number | null>(null); // 상세 열림(현재 탭 기준). null=목록.
+  const [open, setOpen] = useState<OpenItem | null>(null); // 상세 열림. null=반반 목록(#824).
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
   const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null; // ciDot는 WorkspaceView서 prop(중복 폴링 방지 #812)
 
@@ -77,25 +76,31 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
           <IconLoader2 size={14} className="animate-spin" aria-hidden /> {t("github.checking")}
         </div>
       ) : probe.state === "ok" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {/* 내부 탭(#814) — 이슈/PR. 상세 열려 있으면 탭 숨김(뒤로가기로 목록 복귀). */}
-          {openItem == null && (
-            <div className="flex shrink-0 items-center gap-1 border-b border-zinc-100 px-2 py-1 dark:border-zinc-800/60">
-              {(["issues", "prs"] as Tab[]).map((tb) => (
-                <button key={tb} type="button" onClick={() => setTab(tb)} aria-pressed={tab === tb}
-                  className={`relative rounded px-2 py-0.5 text-[11px] font-semibold transition ${tab === tb ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
-                  {t(tb === "issues" ? "github.issues" : "github.prs")}
-                  {tb === "prs" && ciDot && <span aria-hidden className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="min-h-0 flex-1">
-            {tab === "issues"
-              ? (openItem == null ? <IssueList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <IssueDetail key={openItem} root={root} number={openItem} reloadKey={reload} onBack={() => setOpenItem(null)} />)
-              : (openItem == null ? <PrList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <PrDetail key={openItem} root={root} number={openItem} reloadKey={reload} onBack={() => setOpenItem(null)} />)}
+        open == null ? (
+          /* 상하 반반(#824) — 위=이슈 목록, 아래=PR 목록 동시. 각자 필터·스크롤 독립. */
+          <div className="flex min-h-0 flex-1 flex-col">
+            <section className="flex min-h-0 flex-1 flex-col border-b-4 border-zinc-200 dark:border-zinc-800">
+              <div className="flex shrink-0 items-center gap-1.5 bg-zinc-50 px-3 py-1 text-[11px] font-semibold text-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-400">
+                {t("github.issues")}
+              </div>
+              <div className="min-h-0 flex-1"><IssueList root={root} reloadKey={reload} onOpen={(n) => setOpen({ kind: "issue", number: n })} /></div>
+            </section>
+            <section className="flex min-h-0 flex-1 flex-col">
+              <div className="flex shrink-0 items-center gap-1.5 bg-zinc-50 px-3 py-1 text-[11px] font-semibold text-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-400">
+                {t("github.prs")}
+                {ciDot && <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
+              </div>
+              <div className="min-h-0 flex-1"><PrList root={root} reloadKey={reload} onOpen={(n) => setOpen({ kind: "pr", number: n })} /></div>
+            </section>
           </div>
-        </div>
+        ) : (
+          /* 상세 — 전체 차지(#824). 뒤로가기로 반반 목록 복귀. */
+          <div className="min-h-0 flex-1">
+            {open.kind === "issue"
+              ? <IssueDetail key={`issue-${open.number}`} root={root} number={open.number} reloadKey={reload} onBack={() => setOpen(null)} />
+              : <PrDetail key={`pr-${open.number}`} root={root} number={open.number} reloadKey={reload} onBack={() => setOpen(null)} />}
+          </div>
+        )
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <div className="flex flex-col gap-3">
