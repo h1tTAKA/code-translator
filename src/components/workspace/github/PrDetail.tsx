@@ -6,6 +6,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
 import ChecksView from "@/components/workspace/github/ChecksView";
+import CommentComposer from "@/components/workspace/github/CommentComposer";
 
 type Load = { loading: boolean; data?: GhPrDetail; error?: string };
 
@@ -23,6 +24,7 @@ export default function PrDetail({ root, number, onBack }: { root: string; numbe
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const reqIdRef = useRef(0);
+  const [cmtNonce, setCmtNonce] = useState(0); // 코멘트 작성 후 상세 재조회(#820)
 
   useEffect(() => {
     const gh = window.nunopiDesktop?.github;
@@ -36,7 +38,7 @@ export default function PrDetail({ root, number, onBack }: { root: string; numbe
       if (r.ok) setLoad({ loading: false, data: r.data });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
     })();
-  }, [root, number, t]);
+  }, [root, number, t, cmtNonce]);
 
   const d = load.data;
   const sl = d ? stateLabel(d, t) : null;
@@ -88,6 +90,8 @@ export default function PrDetail({ root, number, onBack }: { root: string; numbe
                 ))}
               </div>
             )}
+            {/* 코멘트 작성(#820) */}
+            <CommentComposer root={root} kind="pr" number={number} onPosted={() => setCmtNonce((n) => n + 1)} />
           </div>
         )}
       </div>

@@ -5,6 +5,7 @@ import { IconLoader2, IconAlertTriangle, IconArrowLeft } from "@tabler/icons-rea
 import { useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
+import CommentComposer from "@/components/workspace/github/CommentComposer";
 
 type Load = { loading: boolean; data?: GhIssueDetail; error?: string };
 
@@ -14,6 +15,7 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const reqIdRef = useRef(0); // 요청 세대 — 다른 이슈 빠르게 열 때 옛 fetch가 최신 덮어쓰지 않게(리뷰 🟡)
+  const [cmtNonce, setCmtNonce] = useState(0); // 코멘트 작성 후 상세 재조회(#820)
 
   useEffect(() => {
     const gh = window.nunopiDesktop?.github;
@@ -27,7 +29,7 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
       if (r.ok) setLoad({ loading: false, data: r.data });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
     })();
-  }, [root, number, t]);
+  }, [root, number, t, cmtNonce]);
 
   const d = load.data;
   return (
@@ -73,6 +75,8 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
                 ))}
               </div>
             )}
+            {/* 코멘트 작성(#820) — 성공 시 상세 재조회 */}
+            <CommentComposer root={root} kind="issue" number={number} onPosted={() => setCmtNonce((n) => n + 1)} />
           </div>
         )}
       </div>
