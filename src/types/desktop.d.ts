@@ -3,7 +3,8 @@ type GhResult<T> = { ok: true; data: T } | { ok: false; kind: string; detail?: s
 interface GhLabel { name: string; color: string }
 interface GhActor { login: string; name?: string }
 interface GhIssue { number: number; title: string; state: string; labels: GhLabel[]; author: GhActor; createdAt: string; updatedAt: string }
-interface GhComment { author: GhActor; body: string; createdAt: string; url?: string; viewerDidAuthor?: boolean }
+interface GhReactionGroup { content: string; users: { totalCount: number } } // content=ENUM(THUMBS_UP…)
+interface GhComment { author: GhActor; body: string; createdAt: string; url?: string; viewerDidAuthor?: boolean; reactionGroups?: GhReactionGroup[] }
 interface GhMilestone { title: string }
 interface GhIssueDetail extends GhIssue { assignees: GhActor[]; milestone: GhMilestone | null; body: string; comments: GhComment[]; url: string }
 // PR(#814). statusCheckRollup 항목은 CheckRun|StatusContext 혼재 — 필드 옵셔널로 흡수(정규화는 렌더러 checks.ts).
@@ -62,6 +63,7 @@ interface NunopiDesktopApi {
     addComment(cwd: string, kind: "issue" | "pr", number: number, body: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;  // #820
     editComment(cwd: string, commentId: string, body: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;
     deleteComment(cwd: string, commentId: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;
+    react(cwd: string, commentId: string, content: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;  // content=+1|-1|laugh|hooray|confused|heart|rocket|eyes
   };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {

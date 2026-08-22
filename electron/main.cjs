@@ -343,6 +343,25 @@ ipcMain.handle("github:delete-comment", (_e, { cwd, commentId }) => {
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
   return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}`] });
 });
+// 코멘트 리액션 토글(#820) — 이미 내가 단 리액션이면 삭제, 아니면 추가. content=REST명(+1,-1,laugh…).
+const REACTION_CONTENT = new Set(["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"]);
+let viewerLoginCache = null;
+async function viewerLogin(cwd) {
+  if (viewerLoginCache) return viewerLoginCache;
+  const r = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", "user", "--jq", "{login: .login}"] });
+  viewerLoginCache = r.ok ? (r.data?.login || null) : null;
+  return viewerLoginCache;
+}
+ipcMain.handle("github:react", async (_e, { cwd, commentId, content }) => {
+  const id = Number(commentId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
+  if (!REACTION_CONTENT.has(content)) return { ok: false, kind: "error", detail: "invalid reaction" };
+  const login = await viewerLogin(cwd);
+  const list = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/issues/comments/${id}/reactions`] });
+  const mine = list.ok && Array.isArray(list.data) ? list.data.find((r) => r.content === content && r.user?.login === login) : null;
+  if (mine) return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}/reactions/${mine.id}`] });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "POST", `repos/{owner}/{repo}/issues/comments/${id}/reactions`, "-f", `content=${content}`] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());
