@@ -73,7 +73,7 @@ export default function PrDetail({ root, number, onBack }: { root: string; numbe
             {d.statusCheckRollup?.length > 0 && (
               <div className="rounded-md border border-zinc-100 p-2 dark:border-zinc-800/60">
                 <p className="mb-1.5 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{t("github.checks")}</p>
-                <ChecksView rollup={d.statusCheckRollup} />
+                <ChecksView root={root} rollup={d.statusCheckRollup} />
               </div>
             )}
             {d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>}
