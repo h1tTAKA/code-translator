@@ -345,12 +345,10 @@ ipcMain.handle("github:delete-comment", (_e, { cwd, commentId }) => {
 });
 // 코멘트 리액션 토글(#820) — 이미 내가 단 리액션이면 삭제, 아니면 추가. content=REST명(+1,-1,laugh…).
 const REACTION_CONTENT = new Set(["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"]);
-let viewerLoginCache = null;
+// 캐시 안 함 — gh 계정 전환 시 옛 로그인으로 남의 리액션을 지우는 사고 방지(리뷰 🔴). 토글마다 조회(클릭 액션, 지연 무해).
 async function viewerLogin(cwd) {
-  if (viewerLoginCache) return viewerLoginCache;
   const r = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", "user", "--jq", "{login: .login}"] });
-  viewerLoginCache = r.ok ? (r.data?.login || null) : null;
-  return viewerLoginCache;
+  return r.ok ? (r.data?.login || null) : null;
 }
 ipcMain.handle("github:react", async (_e, { cwd, commentId, content }) => {
   const id = Number(commentId);
