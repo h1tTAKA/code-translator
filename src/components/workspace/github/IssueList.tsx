@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { relTime } from "@/lib/relTime";
 
 type Filter = "open" | "closed" | "all";
 type Load = { loading: boolean; rows?: GhIssue[]; error?: string };
@@ -56,13 +57,17 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
           <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {load.rows.map((it) => (
               <li key={it.number}>
-                <button type="button" onClick={() => onOpen(it.number)}
+                <button type="button" onClick={() => onOpen(it.number)} title={it.title}
                   className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                   <StateDot state={it.state} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-1.5">
                       <span className="shrink-0 font-mono text-[10px] text-zinc-400 dark:text-zinc-500">#{it.number}</span>
                       <span className="min-w-0 truncate text-[12px] text-zinc-700 dark:text-zinc-200">{it.title}</span>
+                    </span>
+                    {/* 작성자 · 올라온 시각(#813) — 목록 불친절 완화 */}
+                    <span className="mt-0.5 block truncate text-[10px] text-zinc-400 dark:text-zinc-500">
+                      {it.author?.login}{it.createdAt ? ` · ${relTime(it.createdAt)}` : ""}
                     </span>
                     {it.labels.length > 0 && (
                       <span className="mt-1 flex flex-wrap gap-1">

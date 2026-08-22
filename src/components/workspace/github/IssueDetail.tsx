@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconLoader2, IconAlertTriangle, IconArrowLeft } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
+import { relTime } from "@/lib/relTime";
 
 type Load = { loading: boolean; data?: GhIssueDetail; error?: string };
 
@@ -44,9 +45,18 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
           <div className="flex flex-col gap-3">
             <div>
               <h2 className="text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{d.title}</h2>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500">
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500">
                 <span className={`rounded-full px-1.5 py-px text-[10px] font-medium ${d.state.toUpperCase() === "OPEN" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-purple-500/15 text-purple-500 dark:text-purple-400"}`}>{d.state}</span>
                 <span>{d.author?.login}</span>
+                {d.createdAt && <span>· {relTime(d.createdAt)}</span>}
+                {d.milestone?.title && <span>· {d.milestone.title}</span>}
+              </div>
+              {/* 담당자(#813) */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px]">
+                <span className="text-zinc-400 dark:text-zinc-500">{t("github.assignees")}:</span>
+                {d.assignees?.length
+                  ? d.assignees.map((a) => <span key={a.login} className="rounded-full bg-zinc-100 px-1.5 py-px text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{a.login}</span>)
+                  : <span className="text-zinc-400 dark:text-zinc-500">{t("github.noAssignee")}</span>}
               </div>
             </div>
             {d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>}
