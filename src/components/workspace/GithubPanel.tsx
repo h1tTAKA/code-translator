@@ -23,6 +23,7 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
   const [topRatio, setTopRatio] = useState(0.5); // 이슈:PR 세로 비율(#824) — 가운데 선 드래그로 조절.
   const splitRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null); // 진행 중 드래그 정리 함수(언마운트 시 호출)
   // 가운데 선 드래그 — 컨테이너 높이 대비 마우스 Y로 비율 계산(0.15~0.85 클램프).
   const onDragDivider = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -31,11 +32,19 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
       const r = el.getBoundingClientRect();
       setTopRatio(Math.min(0.85, Math.max(0.15, (ev.clientY - r.top) / r.height)));
     };
-    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); document.body.style.userSelect = ""; };
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", cleanup);
+      document.body.style.userSelect = "";
+      dragCleanupRef.current = null;
+    };
+    dragCleanupRef.current = cleanup; // 드래그 중 언마운트되면 useEffect가 이걸 호출
     document.body.style.userSelect = "none"; // 드래그 중 텍스트 선택 방지
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mouseup", cleanup);
   }, []);
+  // 드래그 중 언마운트 대비 — 남은 리스너·userSelect 정리(리뷰 🟡).
+  useEffect(() => () => dragCleanupRef.current?.(), []);
   const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null; // ciDot는 WorkspaceView서 prop(중복 폴링 방지 #812)
 
   const mountedRef = useRef(true);
