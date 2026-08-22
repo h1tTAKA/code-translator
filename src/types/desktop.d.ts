@@ -10,6 +10,8 @@ interface GhIssueDetail extends GhIssue { assignees: GhActor[]; milestone: GhMil
 interface GhCheckRaw { __typename?: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string; workflowName?: string }
 interface GhPr { number: number; title: string; state: string; isDraft: boolean; author: GhActor; createdAt: string; updatedAt: string; statusCheckRollup: GhCheckRaw[] }
 interface GhPrDetail extends GhPr { assignees: GhActor[]; body: string; comments: GhComment[]; mergeStateStatus: string; url: string }
+// 현재 브랜치 CI(#812) — PR 있으면 checks, 없으면 { noPr:true }.
+interface GhChecks { number?: number; title?: string; state?: string; statusCheckRollup?: GhCheckRaw[]; url?: string; headRefName?: string; noPr?: boolean }
 
 // 일렉트론 preload가 노출하는 데스크톱 API(웹에선 undefined).
 interface NunopiDesktopApi {
@@ -52,6 +54,7 @@ interface NunopiDesktopApi {
     issueView(cwd: string, number: number): Promise<GhResult<GhIssueDetail>>;
     prList(cwd: string, state?: "open" | "closed" | "all", limit?: number): Promise<GhResult<GhPr[]>>;  // #814
     prView(cwd: string, number: number): Promise<GhResult<GhPrDetail>>;
+    checks(cwd: string): Promise<GhResult<GhChecks>>;  // #812
   };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {

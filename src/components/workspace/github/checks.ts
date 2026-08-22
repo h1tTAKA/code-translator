@@ -22,7 +22,18 @@ function oneState(c: GhCheckRaw): CheckState {
 }
 
 export function normalizeChecks(rollup: GhCheckRaw[] | undefined): Check[] {
-  return (rollup || []).map((c) => ({ name: c.name || c.context || "check", state: oneState(c), url: c.detailsUrl || c.targetUrl }));
+  // 이름 dedup(orca 참고) — 혼합 CI(Actions + 레거시 StatusContext)가 같은 이름을 중복 노출할 때
+  // CheckRun을 우선 유지(더 정확한 status/conclusion). 이름 없으면 dedup 대상서 제외.
+  const byName = new Map<string, Check>();
+  const out: Check[] = [];
+  for (const c of rollup || []) {
+    const name = c.name || c.context || "check";
+    const item: Check = { name, state: oneState(c), url: c.detailsUrl || c.targetUrl };
+    const prev = byName.get(name);
+    if (!prev) { byName.set(name, item); out.push(item); continue; }
+    if (c.__typename === "CheckRun") { const i = out.indexOf(prev); if (i >= 0) out[i] = item; byName.set(name, item); } // CheckRun이 StatusContext 이김
+  }
+  return out;
 }
 
 export function summarize(checks: Check[]): CheckSummary {

@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     issueView: (cwd, number) => ipcRenderer.invoke("github:issue-view", { cwd, number }),
     prList: (cwd, state, limit) => ipcRenderer.invoke("github:pr-list", { cwd, state, limit }),  // #814
     prView: (cwd, number) => ipcRenderer.invoke("github:pr-view", { cwd, number }),
+    checks: (cwd) => ipcRenderer.invoke("github:checks", { cwd }),  // #812 현재 브랜치 CI
   },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {
