@@ -1,7 +1,7 @@
 "use client";
 // GitHub 패널 PR 상세(#814) — gh pr view → 제목·상태·머지상태·담당자 + 체크(ChecksView)·본문·코멘트.
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil, IconGitPullRequest, IconGitPullRequestDraft, IconGitPullRequestClosed } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil, IconGitPullRequest, IconGitPullRequestDraft, IconGitPullRequestClosed, IconGitMerge } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import Markdown from "@/components/learning/Markdown";
@@ -49,6 +49,12 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
   const confirmState = async (action: "close" | "reopen" | "ready" | "draft", label: string, icon: React.ReactNode) => {
     if (await confirm({ title: label, message: t("github.confirmState"), tone: "warn", confirmText: label, confirmIcon: icon })) {
       void runAct(() => window.nunopiDesktop!.github!.setState(root, "pr", number, action));
+    }
+  };
+  // 머지는 되돌릴 수 없음(브랜치 삭제 포함) → danger 확인(#822).
+  const confirmMerge = async () => {
+    if (await confirm({ title: t("github.merge"), message: t("github.confirmMerge"), danger: true, confirmText: t("github.merge"), confirmIcon: <IconGitMerge size={15} stroke={2} aria-hidden /> })) {
+      void runAct(() => window.nunopiDesktop!.github!.merge(root, number));
     }
   };
 
@@ -131,6 +137,9 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
             <ReactionBar groups={d.reactionGroups} onReact={(c) => void window.nunopiDesktop?.github?.bodyReact?.(root, number, c).then((r) => { if (r?.ok) setCmtNonce((n) => n + 1); }).catch(() => {})} />
             {/* 상태 액션(#822) — 닫기/열기 + draft↔ready */}
             <div className="flex flex-wrap items-center gap-1.5">
+              {d.state.toUpperCase() === "OPEN" && !d.isDraft && (
+                <button type="button" onClick={() => void confirmMerge()} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitMerge size={13} stroke={2} aria-hidden />}{t("github.merge")}</button>
+              )}
               {d.state.toUpperCase() === "OPEN"
                 ? <button type="button" onClick={() => void confirmState("close", t("github.close"), <IconGitPullRequestClosed size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconGitPullRequestClosed size={13} stroke={2} className="text-rose-500" aria-hidden />}{t("github.close")}</button>
                 : d.state.toUpperCase() === "CLOSED"
