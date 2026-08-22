@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import { relTime } from "@/lib/relTime";
 
 type Filter = "open" | "closed" | "all";
-type Load = { loading: boolean; rows?: GhIssue[]; error?: string };
+type Load = { loading: boolean; rows?: GhIssue[]; error?: string; hasMore?: boolean };
 const HOVER_DELAY_MS = 450; // 훑을 땐 안 뜨고 잠깐 머물면 뜸(커밋 그래프式, native title보다 빠르게)
 
 function StateDot({ state }: { state: string }) {
@@ -41,11 +41,12 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
     const gh = window.nunopiDesktop?.github;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 미지원(web)/로딩 표시(root/filter/reload 변경마다 재조회)
     if (!gh?.issueList) { setLoad({ loading: false, error: t("github.desktopOnly") }); return; }
-    setLoad((p) => ({ loading: true, rows: p.rows })); // 기존 rows 유지(무한 스크롤 append 시 리스트 안 사라지게)
+    setLoad((p) => ({ loading: true, rows: p.rows, hasMore: p.hasMore })); // 기존 rows·hasMore 유지(append 중 리스트·스피너 안 사라지게)
     (async () => {
       const r = await gh.issueList(root, filter, limit);
       if (!mountedRef.current) return;
-      if (r.ok) setLoad({ loading: false, rows: r.data });
+      // hasMore: 요청한 limit만큼 꽉 채워 왔으면 더 있을 수 있음(rows.length는 로딩 중 옛값이라 조건에 못 씀).
+      if (r.ok) setLoad({ loading: false, rows: r.data, hasMore: r.data.length >= limit && limit < 1000 });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
     })();
   }, [root, filter, limit, reloadKey, t]);
@@ -55,7 +56,7 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
   const scrollRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const moreRef = useRef({ loading: true, hasMore: false });
-  useEffect(() => { moreRef.current = { loading: load.loading, hasMore: !!load.rows && load.rows.length >= limit && limit < 1000 }; }, [load, limit]);
+  useEffect(() => { moreRef.current = { loading: load.loading, hasMore: !!load.hasMore }; }, [load]);
   const sentinelCb = useCallback((el: HTMLDivElement | null) => {
     observerRef.current?.disconnect();
     if (!el) return;
@@ -116,8 +117,8 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
             ))}
           </ul>
         )}
-        {/* 무한 스크롤 sentinel(#813) — 보이면 다음 페이지 로드. 더 있고 로딩 중이면 스피너. */}
-        {!!load.rows?.length && load.rows.length >= limit && limit < 1000 && (
+        {/* 무한 스크롤 sentinel(#813) — 보이면 다음 페이지 로드. 로딩 중엔 rows<limit이라 hasMore로 판정(안 사라지게). */}
+        {!!load.rows?.length && load.hasMore && (
           <div ref={sentinelCb} className="flex items-center justify-center gap-1.5 py-3 text-[11px] text-zinc-400 dark:text-zinc-500">
             <IconLoader2 size={13} className="animate-spin" aria-hidden /> {t("github.loadingMore")}
           </div>
