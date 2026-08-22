@@ -2,12 +2,13 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMessages, IconCards, IconSettings, IconSitemap, IconTerminal2 } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMessages, IconCards, IconSettings, IconSitemap, IconTerminal2, IconBrandGithub, IconMessageCircle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useFullscreen } from "@/hooks/useFullscreen";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceChat";
+import GithubPanel from "@/components/workspace/GithubPanel";
 import TerminalPane from "@/components/workspace/TerminalPane";
 import UsageMonitor from "@/components/workspace/UsageMonitor";
 import GitGraph from "@/components/workspace/GitGraph";
@@ -70,6 +71,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
   const [chatOpen, setChatOpen] = useState(true);  // 우측 챗 패널 열림(#695)
+  const [rightMode, setRightMode] = useState<"chat" | "github">("chat"); // 우측 패널 모드(#811) — 질문(Chat) ↔ GitHub
   const [leftOpen, setLeftOpen] = useState(true);  // 좌측 사이드바(폴더/아키텍처/깃/문서트리) 펼침(#758)
   const [collapsed, setCollapsed] = useState<Set<PanelId>>(new Set()); // 접힌 중앙 패널(내용 유지·숨김만, #758)
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
@@ -104,6 +106,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       setTreeOpen(localStorage.getItem("nunopi:ws-tree-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#733)
       setAnalyzeOpen(localStorage.getItem("nunopi:ws-analyze-open") === "1"); // 기본 닫힘(#743)
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
+      setRightMode(localStorage.getItem("nunopi:ws-right-mode") === "github" ? "github" : "chat"); // 우측 모드 복원(#811)
       setLeftOpen(localStorage.getItem("nunopi:ws-left-open") !== "0"); // 기본 열림(#758)
       try { const c = JSON.parse(localStorage.getItem("nunopi:ws-collapsed") || "[]"); if (Array.isArray(c)) setCollapsed(new Set(c.filter((x): x is PanelId => x === "terminal" || x === "code" || x === "doc" || x === "flow"))); } catch { /* ignore */ } // 접힘 복원(#758)
     } catch { /* ignore */ }
@@ -249,6 +252,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
   const toggleAnalyze = () => { if (analyzeOpen && leftOpenCount === 1) return; setAnalyzeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-analyze-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  const pickRightMode = (m: "chat" | "github") => setRightMode(() => { try { localStorage.setItem("nunopi:ws-right-mode", m); } catch { /* ignore */ } return m; }); // 우측 모드 전환(#811)
   const toggleLeft = () => setLeftOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-left-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); // 좌측 사이드바 접기/펴기(#758)
   // 중앙 패널 접기/펴기(#758) — 콘텐츠는 유지하고 dock 표시만. 존재하는 패널만 대상.
   const panelExists = (p: PanelId) => p === "terminal" || (p === "code" && hasCode) || (p === "doc" && hasDoc) || (p === "flow" && flowFeature !== null);
@@ -507,6 +511,20 @@ export default function WorkspaceView({ path, active = true, providerId, provide
         {/* 설정은 워크스페이스에선 하단 바(토큰 사용량 옆)로 이동(#752). */}
         {/* 영역 nav(질문·분석/암기) ↔ 패널 유틸(챗 토글) 구분선(#785) — AppShell 헤더와 동일 패턴. */}
         {(onExitWorkspace || onOpenMemorize) && <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />}
+        {/* 우측 패널 모드 토글(#811) — 질문(Chat) ↔ GitHub. 우측 패널 열려 있을 때만(전환 대상 존재). */}
+        {chatOpen && (
+          <>
+            <button type="button" onClick={() => pickRightMode("chat")} aria-pressed={rightMode === "chat"} title={t("chat.title")} aria-label={t("chat.title")}
+              className={`shrink-0 rounded-lg p-1.5 transition ${rightMode === "chat" ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
+              <IconMessageCircle size={16} stroke={2} aria-hidden />
+            </button>
+            <button type="button" onClick={() => pickRightMode("github")} aria-pressed={rightMode === "github"} title="GitHub" aria-label="GitHub"
+              className={`shrink-0 rounded-lg p-1.5 transition ${rightMode === "github" ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
+              <IconBrandGithub size={16} stroke={2} aria-hidden />
+            </button>
+            <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
+          </>
+        )}
         {/* 우측 챗 패널 접기/펴기(#716·#695) — 헤더 토글. 열림=collapse 아이콘, 접힘=expand 아이콘. */}
         <button type="button" onClick={toggleChat} title={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")} aria-label={chatOpen ? t("workspace.chatCollapse") : t("workspace.chatExpand")}
           className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
@@ -610,10 +628,15 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           <>
             <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />
             <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-              {/* FlyCardProvider(#750) — 세션 카드 목록에서 카드 클릭 시 확대·상세(throwCard). 워크스페이스 카드는 출처이동 없음(빈 sourceIds). */}
-              <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={flyNoSources} onGoToSource={() => {}}>
-                <WorkspaceChat root={path} files={files} focus={chatFocus} prefill={chatPrefill} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
-              </FlyCardProvider>
+              {/* 우측 패널 모드(#811) — 질문(Chat) ↔ GitHub 배타 렌더. 토글은 상단 헤더에 있음. */}
+              {rightMode === "github" ? (
+                <GithubPanel root={path} />
+              ) : (
+                /* FlyCardProvider(#750) — 세션 카드 목록에서 카드 클릭 시 확대·상세(throwCard). 워크스페이스 카드는 출처이동 없음(빈 sourceIds). */
+                <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={flyNoSources} onGoToSource={() => {}}>
+                  <WorkspaceChat root={path} files={files} focus={chatFocus} prefill={chatPrefill} changedFiles={changedFileSet} providerId={providerId} providerSettings={providerSettings} />
+                </FlyCardProvider>
+              )}
             </aside>
           </>
         )}
