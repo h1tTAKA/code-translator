@@ -1,13 +1,14 @@
 "use client";
 // GitHub 패널 이슈 목록(#813) — gh issue list(브릿지 #810) → 필터(open/closed/all) + 행 목록.
 // 행 클릭 시 onOpen(number)로 상세(IssueDetail)로. reloadKey 변하면 재조회(패널 새로고침 연동).
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconLoader2, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { relTime } from "@/lib/relTime";
 
 type Filter = "open" | "closed" | "all";
 type Load = { loading: boolean; rows?: GhIssue[]; error?: string };
+const HOVER_DELAY_MS = 450; // 훑을 땐 안 뜨고 잠깐 머물면 뜸(커밋 그래프式, native title보다 빠르게)
 
 function StateDot({ state }: { state: string }) {
   const open = state.toUpperCase() === "OPEN";
@@ -20,6 +21,20 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
   const [load, setLoad] = useState<Load>({ loading: true });
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  // 제목 호버 툴팁(#813) — dwell 지연 후 전체 제목 표시(fixed 위치, 리스트 overflow 잘림 회피). GitGraph 방식.
+  const [hover, setHover] = useState<{ text: string; left: number; top: number; above: boolean } | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearHover = useCallback(() => { if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; } setHover(null); }, []);
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
+  const onRowEnter = useCallback((e: React.MouseEvent<HTMLElement>, text: string) => {
+    const r = e.currentTarget.getBoundingClientRect(); // 좌표 지금 캡처(지연 콜백서 currentTarget null)
+    const POP_W = 320;
+    const above = r.top > window.innerHeight / 2;
+    const payload = { text, left: Math.max(8, Math.min(r.left, window.innerWidth - POP_W - 8)), top: above ? r.top - 4 : r.bottom + 4, above };
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHover(payload), HOVER_DELAY_MS);
+  }, []);
 
   useEffect(() => {
     const gh = window.nunopiDesktop?.github;
@@ -57,7 +72,8 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
           <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {load.rows.map((it) => (
               <li key={it.number}>
-                <button type="button" onClick={() => onOpen(it.number)} title={it.title}
+                <button type="button" onClick={() => onOpen(it.number)}
+                  onMouseEnter={(e) => onRowEnter(e, `#${it.number} ${it.title}`)} onMouseLeave={clearHover}
                   className="flex w-full items-start gap-2 px-3 py-2 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                   <StateDot state={it.state} />
                   <span className="min-w-0 flex-1">
@@ -85,6 +101,13 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
           </ul>
         )}
       </div>
+      {hover && (
+        <div role="tooltip" aria-hidden
+          style={{ position: "fixed", left: hover.left, top: hover.top, transform: hover.above ? "translateY(-100%)" : undefined, maxWidth: 320, zIndex: 50 }}
+          className="pointer-events-none rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[11px] leading-relaxed text-zinc-700 shadow-xl dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+          {hover.text}
+        </div>
+      )}
     </div>
   );
 }
