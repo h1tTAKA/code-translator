@@ -7,7 +7,7 @@ interface GhComment { author: GhActor; body: string; createdAt: string }
 interface GhMilestone { title: string }
 interface GhIssueDetail extends GhIssue { assignees: GhActor[]; milestone: GhMilestone | null; body: string; comments: GhComment[]; url: string }
 // PR(#814). statusCheckRollup 항목은 CheckRun|StatusContext 혼재 — 필드 옵셔널로 흡수(정규화는 렌더러 checks.ts).
-interface GhCheckRaw { __typename?: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string; workflowName?: string }
+interface GhCheckRaw { __typename?: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string; workflowName?: string; startedAt?: string; completedAt?: string; description?: string }
 interface GhPr { number: number; title: string; state: string; isDraft: boolean; author: GhActor; createdAt: string; updatedAt: string; statusCheckRollup: GhCheckRaw[] }
 interface GhPrDetail extends GhPr { assignees: GhActor[]; body: string; comments: GhComment[]; mergeStateStatus: string; url: string }
 // 현재 브랜치 CI(#812) — PR 있으면 checks, 없으면 { noPr:true }.
