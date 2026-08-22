@@ -5,6 +5,17 @@ import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { useT } from "@/lib/i18n/I18nProvider";
 
+// 재접속 스크롤백 재생 시 xterm이 버퍼 속 터미널 질의(DA/DSR/OSC 색 등)에 "다시" 응답해
+// 입력창에 에코되는 문제(#807) 방지 — 질의는 화면 출력이 없어 재생 전 제거(라이브 스트림엔 미적용).
+// xterm.write는 비동기 파싱이라, 재생 시점에 term.onData(→pty)가 연결된 뒤 질의가 파싱돼 응답이 pty로 새 나감.
+function stripTermQueries(s: string): string {
+  return s
+    .replace(/\x1b\[[?>=]?[0-9;]*[cn]/g, "")             // Primary/Secondary/Tertiary DA(c) · DSR 커서/상태(n)
+    .replace(/\x1b\](?:4;\d+|1[0-9]);\?(?:\x07|\x1b\\)/g, "")  // OSC 색/팔레트 질의만(]4;n;? · ]1x;?) — ]0;제목? 등은 보존
+    .replace(/\x1b\[\?[0-9;]*\$p/g, "")                  // DECRQM 모드 질의
+    .replace(/\x1b\[>[0-9;]*q/g, "");                    // XTVERSION
+}
+
 export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
   const t = useT();
   const tRef = useRef(t);
@@ -78,7 +89,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
           const r = await nd.terminal.ensure({ id, cwd, cols: term.cols, rows: term.rows });
           if (disposed || !term) return;
           if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
-          if (r.buffer) term.write(r.buffer); // 재접속 시 이전 출력 재생(정확한 폭에서)
+          if (r.buffer) term.write(stripTermQueries(r.buffer)); // 재접속 시 이전 출력 재생(질의 시퀀스 제거 — 에코 방지 #807)
           offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
           // 셸 종료 시 빈 화면 방치 대신 안내(+로 새 터미널).
           offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${tRef.current("workspace.terminalExited")}\x1b[0m\r\n`); });
