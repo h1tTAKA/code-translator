@@ -65,7 +65,7 @@ interface NunopiDesktopApi {
     deleteComment(cwd: string, commentId: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;
     react(cwd: string, commentId: string, content: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;  // content=+1|-1|laugh|hooray|confused|heart|rocket|eyes
     bodyReact(cwd: string, number: number, content: string): Promise<{ ok: boolean; kind?: string; detail?: string }>;  // #822 이슈/PR 본문 리액션
-    editBody(cwd: string, kind: "issue" | "pr", number: number, body: string): Promise<{ ok: boolean; kind?: string; detail?: string }>;
+    editItem(cwd: string, kind: "issue" | "pr", number: number, title: string, body: string): Promise<{ ok: boolean; kind?: string; detail?: string }>;  // #822 제목·본문(빈 값은 미반영)
     setState(cwd: string, kind: "issue" | "pr", number: number, action: "close" | "reopen" | "ready" | "draft"): Promise<{ ok: boolean; kind?: string; detail?: string }>;
   };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.

@@ -47,7 +47,7 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     deleteComment: (cwd, commentId) => ipcRenderer.invoke("github:delete-comment", { cwd, commentId }),
     react: (cwd, commentId, content) => ipcRenderer.invoke("github:react", { cwd, commentId, content }),  // #820 리액션 토글
     bodyReact: (cwd, number, content) => ipcRenderer.invoke("github:body-react", { cwd, number, content }),  // #822 본문 리액션
-    editBody: (cwd, kind, number, body) => ipcRenderer.invoke("github:edit-body", { cwd, kind, number, body }),
+    editItem: (cwd, kind, number, title, body) => ipcRenderer.invoke("github:edit-item", { cwd, kind, number, title, body }),  // #822 제목·본문
     setState: (cwd, kind, number, action) => ipcRenderer.invoke("github:set-state", { cwd, kind, number, action }),
   },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).

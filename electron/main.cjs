@@ -371,13 +371,16 @@ ipcMain.handle("github:body-react", async (_e, { cwd, number, content }) => {
   if (mine) return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/${n}/reactions/${mine.id}`] });
   return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "POST", `repos/{owner}/{repo}/issues/${n}/reactions`, "-f", `content=${content}`] });
 });
-// 이슈·PR 본문 편집(#822) — gh issue/pr edit <n> --body.
-ipcMain.handle("github:edit-body", (_e, { cwd, kind, number, body }) => {
+// 이슈·PR 제목·본문 편집(#822) — gh issue/pr edit <n> --title/--body. 준 것만 반영.
+ipcMain.handle("github:edit-item", (_e, { cwd, kind, number, title, body }) => {
   const n = Number(number);
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
-  if (typeof body !== "string" || !body.trim()) return { ok: false, kind: "error", detail: "empty body" };
   const sub = kind === "pr" ? "pr" : "issue";
-  return githubBridge.ghRun({ gh: ghExe(), cwd, args: [sub, "edit", String(n), "--body", body] });
+  const args = [sub, "edit", String(n)];
+  if (typeof title === "string" && title.trim()) args.push("--title", title);
+  if (typeof body === "string" && body.trim()) args.push("--body", body);
+  if (args.length === 3) return Promise.resolve({ ok: false, kind: "error", detail: "nothing to edit" });
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args });
 });
 // 이슈·PR 상태 전환(#822) — close/reopen, PR draft↔ready. 화이트리스트로 안전.
 ipcMain.handle("github:set-state", (_e, { cwd, kind, number, action }) => {
