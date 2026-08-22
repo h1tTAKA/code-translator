@@ -1,11 +1,12 @@
 "use client";
 // GitHub 패널 이슈 상세(#813) — gh issue view(브릿지 #810) → 본문·코멘트(Markdown 재사용).
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconAlertTriangle, IconArrowLeft } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
 import CommentComposer from "@/components/workspace/github/CommentComposer";
+import GhAvatar from "@/components/workspace/github/GhAvatar";
 
 type Load = { loading: boolean; data?: GhIssueDetail; error?: string };
 
@@ -48,9 +49,13 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
         ) : (
           <div className="flex flex-col gap-3">
             <div>
-              <h2 className="text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{d.title}</h2>
+              <div className="flex items-start gap-2">
+                <h2 className="min-w-0 flex-1 text-[14px] font-semibold text-zinc-800 dark:text-zinc-100">{d.title}</h2>
+                {d.url && <a href={d.url} target="_blank" rel="noreferrer" title={t("github.openInBrowser")} aria-label={t("github.openInBrowser")} className="mt-0.5 shrink-0 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200"><IconExternalLink size={14} stroke={2} aria-hidden /></a>}
+              </div>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500">
                 <span className={`rounded-full px-1.5 py-px text-[10px] font-medium ${d.state.toUpperCase() === "OPEN" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-purple-500/15 text-purple-500 dark:text-purple-400"}`}>{d.state}</span>
+                <GhAvatar login={d.author?.login} size={14} />
                 <span>{d.author?.login}</span>
                 {d.createdAt && <span>· {relTime(d.createdAt)}</span>}
                 {d.milestone?.title && <span>· {d.milestone.title}</span>}
@@ -69,7 +74,7 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{t("github.comments")} · {d.comments.length}</p>
                 {d.comments.map((c, i) => (
                   <div key={i} className="rounded-md bg-zinc-50 p-2 dark:bg-zinc-800/40">
-                    <p className="mb-1 text-[10px] text-zinc-400 dark:text-zinc-500">{c.author?.login}</p>
+                    <p className="mb-1 flex items-center gap-1.5 text-[10px] text-zinc-400 dark:text-zinc-500"><GhAvatar login={c.author?.login} size={16} />{c.author?.login}{c.createdAt ? ` · ${relTime(c.createdAt)}` : ""}</p>
                     <Markdown className="text-[12px]">{c.body}</Markdown>
                   </div>
                 ))}
