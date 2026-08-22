@@ -2,7 +2,7 @@
 // 이슈·PR 코멘트 작성 컴포저(#820) — orca식 카드(textarea + 서식 툴바 + 취소/Send).
 // 서식 버튼은 선택영역에 Markdown 삽입. Cmd/Ctrl+Enter 전송. write라 명시적 Send만.
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconSend, IconBold, IconItalic, IconCode, IconQuote, IconList } from "@tabler/icons-react";
+import { IconLoader2, IconBold, IconItalic, IconCode, IconQuote, IconList } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 
 export default function CommentComposer({ root, kind, number, onPosted }: { root: string; kind: "issue" | "pr"; number: number; onPosted: () => void }) {
@@ -64,8 +64,8 @@ export default function CommentComposer({ root, kind, number, onPosted }: { root
           <div className="ml-auto flex items-center gap-1">
             {text && !sending && <button type="button" onClick={() => setText("")} className="rounded px-2 py-0.5 text-[11px] text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-200">{t("github.cancel")}</button>}
             <button type="button" onClick={() => void send()} disabled={sending || !text.trim()}
-              className="inline-flex items-center gap-1 rounded-md bg-mustard-500 px-2.5 py-1 text-[11px] font-semibold text-brown-900 transition hover:bg-mustard-400 disabled:opacity-40">
-              {sending ? <IconLoader2 size={12} className="animate-spin" aria-hidden /> : <IconSend size={12} stroke={2} aria-hidden />}
+              className="inline-flex items-center gap-1 rounded-md bg-zinc-800 px-3 py-1 text-[11px] font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-white dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500">
+              {sending && <IconLoader2 size={12} className="animate-spin" aria-hidden />}
               {sending ? t("github.sending") : t("github.send")}
             </button>
           </div>
