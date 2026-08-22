@@ -38,6 +38,18 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
       term.open(host);
       try { term.loadAddon(new webgl.WebglAddon()); } catch { /* WebGL 미지원 → 기본 렌더 폴백 */ }
 
+      // Shift+Enter(#799) — CSI-u(kitty/fixterms)로 인코딩된 "Shift+Enter" 키 이벤트를 전송.
+      // \x1b[13;2u = Enter(13) + Shift 수정자(2). 에이전트 CLI(Claude Code 등)가 이를 진짜 개행 키로
+      // 파싱해 멀티라인·백스페이스 정상(생 \n/ESC+CR은 리터럴로 오처리돼 1줄만/백스페이스 깨짐). false로 CR 제출 차단.
+      term.attachCustomKeyEventHandler((e) => {
+        if (e.type === "keydown" && e.key === "Enter" && e.shiftKey) {
+          e.preventDefault(); // 브라우저가 Enter를 textarea에 넣어 xterm이 CR을 또 보내는 것 차단(개행 후 CR 제출로 되돌아가던 원인)
+          nd.terminal.input({ id, data: "\x1b[13;2u" });
+          return false;
+        }
+        return true;
+      });
+
       // 한 프레임 미뤄 host 레이아웃이 확정된 뒤 fit → 정확한 cols 확보 후 재생.
       // open 직후 fit은 tab mount 시점 host 폭이 0으로 측정돼 극소 cols가 잡히고,
       // 그 폭으로 재생된 scrollback 줄바꿈이 굳어 위쪽이 세로로 깨진다(#682). live는 이후 resize로 정상.
