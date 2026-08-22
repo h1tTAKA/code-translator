@@ -99,7 +99,7 @@ export default function IssueDetail({ root, number, reloadKey, onBack }: { root:
             {editingBody ? (
               <div className="flex flex-col gap-1">
                 <div className="rounded-md border border-zinc-200 bg-white transition focus-within:border-mustard-500/60 dark:border-zinc-700 dark:bg-zinc-900">
-                  <textarea ref={bodyRef} value={bodyDraft} onChange={(e) => setBodyDraft(e.target.value)} disabled={actBusy} rows={6}
+                  <textarea ref={bodyRef} value={bodyDraft} onChange={(e) => setBodyDraft(e.target.value)} disabled={actBusy} rows={16}
                     className="w-full resize-y bg-transparent px-2 py-1.5 text-[12px] text-zinc-700 outline-none disabled:opacity-60 dark:text-zinc-200" />
                   <div className="border-t border-zinc-100 px-1.5 py-1 dark:border-zinc-800/60"><MarkdownToolbar taRef={bodyRef} setValue={setBodyDraft} /></div>
                 </div>
