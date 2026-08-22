@@ -7,6 +7,7 @@ import { useConfirm } from "@/components/ui/ConfirmDialog";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
 import ChecksView from "@/components/workspace/github/ChecksView";
+import MarkdownToolbar from "@/components/workspace/github/MarkdownToolbar";
 import CommentComposer from "@/components/workspace/github/CommentComposer";
 import CommentItem from "@/components/workspace/github/CommentItem";
 import GhAvatar from "@/components/workspace/github/GhAvatar";
@@ -32,6 +33,7 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
   const [editingBody, setEditingBody] = useState(false); // 제목·본문 편집(#822)
   const [titleDraft, setTitleDraft] = useState("");
   const [bodyDraft, setBodyDraft] = useState("");
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [actBusy, setActBusy] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
   const confirm = useConfirm();
@@ -111,8 +113,11 @@ export default function PrDetail({ root, number, reloadKey, onBack }: { root: st
             {/* 본문 — 편집(#822) */}
             {editingBody ? (
               <div className="flex flex-col gap-1">
-                <textarea value={bodyDraft} onChange={(e) => setBodyDraft(e.target.value)} disabled={actBusy} rows={6}
-                  className="w-full resize-y rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[12px] text-zinc-700 outline-none focus:border-mustard-500/60 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
+                <div className="rounded-md border border-zinc-200 bg-white transition focus-within:border-mustard-500/60 dark:border-zinc-700 dark:bg-zinc-900">
+                  <textarea ref={bodyRef} value={bodyDraft} onChange={(e) => setBodyDraft(e.target.value)} disabled={actBusy} rows={6}
+                    className="w-full resize-y bg-transparent px-2 py-1.5 text-[12px] text-zinc-700 outline-none disabled:opacity-60 dark:text-zinc-200" />
+                  <div className="border-t border-zinc-100 px-1.5 py-1 dark:border-zinc-800/60"><MarkdownToolbar taRef={bodyRef} setValue={setBodyDraft} /></div>
+                </div>
                 <div className="flex justify-end gap-1">
                   <button type="button" onClick={() => setEditingBody(false)} className="rounded px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">{t("github.cancel")}</button>
                   <button type="button" onClick={() => void runAct(() => window.nunopiDesktop!.github!.editItem(root, "pr", number, titleDraft.trim(), bodyDraft.trim()))} disabled={actBusy || !titleDraft.trim()} className="inline-flex items-center gap-1 rounded-md bg-zinc-800 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-white">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.save")}</button>
