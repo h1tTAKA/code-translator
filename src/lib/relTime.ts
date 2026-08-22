@@ -15,3 +15,11 @@ export function relTime(iso: string | undefined): string {
   if (mo < 12) return `${mo}mo`;
   return `${Math.floor(mo / 12)}y`;
 }
+
+// 절대 시각(#812) — 로케일 기준 "8월 22일 오후 7:38"식. ISO 없으면 "".
+export function fmtDateTime(iso: string | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}

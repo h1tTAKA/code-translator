@@ -311,6 +311,12 @@ ipcMain.handle("github:checks", async (_e, { cwd }) => {
   if (!r.ok && /no pull requests found|no default remote|not found/i.test(r.detail || "")) return { ok: true, data: { noPr: true } };
   return r;
 });
+// 체크 주석(#812) — gh api로 check-run annotations(경고/에러). id는 detailsUrl서 파싱한 job id.
+ipcMain.handle("github:check-annotations", (_e, { cwd, checkRunId }) => {
+  const id = Number(checkRunId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid check id" };
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/check-runs/${id}/annotations`] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());
