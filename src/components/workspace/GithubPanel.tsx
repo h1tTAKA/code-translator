@@ -91,6 +91,7 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
   const clearToken = useCallback(async () => {
     setTokenBusy(true); setTokenErr(null);
     try { await window.nunopiDesktop?.github?.clearToken?.(); if (mountedRef.current) { setHasToken(false); void run(); } }
+    catch (e) { if (mountedRef.current) setTokenErr(String((e as Error)?.message || e)); }
     finally { if (mountedRef.current) setTokenBusy(false); }
   }, [run]);
 

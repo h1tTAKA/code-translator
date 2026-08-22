@@ -295,10 +295,14 @@ function loadGhToken() {
 }
 function saveGhToken(token) {
   if (!safeStorage.isEncryptionAvailable()) return { ok: false, detail: "이 환경은 안전한 토큰 저장을 지원하지 않음(safeStorage 불가)" };
-  mkdirSync(app.getPath("userData"), { recursive: true });
-  const enc = safeStorage.encryptString(String(token)).toString("base64");
-  writeFileSync(ghTokenFile(), JSON.stringify({ enc }));
-  return { ok: true };
+  try {
+    mkdirSync(app.getPath("userData"), { recursive: true });
+    const enc = safeStorage.encryptString(String(token)).toString("base64");
+    writeFileSync(ghTokenFile(), JSON.stringify({ enc }));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, detail: String(e?.message || e).slice(0, 300) }; // 디스크 풀·권한 등 → reject 대신 에러 객체
+  }
 }
 function clearGhToken() { try { rmSync(ghTokenFile()); } catch { /* 없으면 무시 */ } }
 // gh 실행 env — 저장된 토큰 있으면 GH_TOKEN 주입, 없으면 기본 env(undefined → 브릿지가 process.env).
