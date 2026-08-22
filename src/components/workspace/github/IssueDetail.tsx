@@ -13,15 +13,17 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
   const [load, setLoad] = useState<Load>({ loading: true });
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  const reqIdRef = useRef(0); // 요청 세대 — 다른 이슈 빠르게 열 때 옛 fetch가 최신 덮어쓰지 않게(리뷰 🟡)
 
   useEffect(() => {
     const gh = window.nunopiDesktop?.github;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 미지원(web)/로딩 표시(number 변경마다 재조회)
     if (!gh?.issueView) { setLoad({ loading: false, error: t("github.desktopOnly") }); return; }
+    const myId = ++reqIdRef.current;
     setLoad({ loading: true });
     (async () => {
       const r = await gh.issueView(root, number);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || myId !== reqIdRef.current) return; // 언마운트/stale 결과 드롭
       if (r.ok) setLoad({ loading: false, data: r.data });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
     })();

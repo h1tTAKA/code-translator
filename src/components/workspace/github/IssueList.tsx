@@ -22,6 +22,7 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
   const [load, setLoad] = useState<Load>({ loading: true });
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  const reqIdRef = useRef(0); // 요청 세대 — 늦게 온 옛 fetch가 최신 결과 덮어쓰지 않게(IPC라 abort 불가, 리뷰 🟡)
 
   // 제목 호버 툴팁(#813) — dwell 지연 후 전체 제목 표시(fixed 위치, 리스트 overflow 잘림 회피). GitGraph 방식.
   const [hover, setHover] = useState<{ text: string; left: number; top: number; above: boolean } | null>(null);
@@ -41,10 +42,11 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
     const gh = window.nunopiDesktop?.github;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 미지원(web)/로딩 표시(root/filter/reload 변경마다 재조회)
     if (!gh?.issueList) { setLoad({ loading: false, error: t("github.desktopOnly") }); return; }
+    const myId = ++reqIdRef.current; // 이 fetch의 세대
     setLoad((p) => ({ loading: true, rows: p.rows, hasMore: p.hasMore })); // 기존 rows·hasMore 유지(append 중 리스트·스피너 안 사라지게)
     (async () => {
       const r = await gh.issueList(root, filter, limit);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || myId !== reqIdRef.current) return; // 언마운트/stale 결과 드롭
       // hasMore: 요청한 limit만큼 꽉 채워 왔으면 더 있을 수 있음(rows.length는 로딩 중 옛값이라 조건에 못 씀).
       if (r.ok) setLoad({ loading: false, rows: r.data, hasMore: r.data.length >= limit && limit < 1000 });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
