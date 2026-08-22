@@ -406,7 +406,7 @@ const termClient = createDaemonClient({
   },
   onExit: (id) => {
     liveBuffers.delete(id); delete savedBuffers[id];
-    cwdById.delete(id); lastScreen.delete(id); // #765 정리
+    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); // #765·#803 정리
     const tm = screenTimers.get(id); if (tm) { clearTimeout(tm); screenTimers.delete(id); }
     broadcast("terminal:exit", { id });
   },
@@ -433,8 +433,26 @@ ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
 });
 ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
-ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태 정리
-ipcMain.handle("terminal:list", () => termClient.list()); // 세션 목록(#764) — 레포탭 호버 카드용
+ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태 정리
+// 세션의 실행 중 에이전트 id | null(#803) — 터미널 탭 자동 이름·아이콘용.
+// 프로세스명만으론 node 래퍼 CLI(codex 등: 네이티브 자식을 spawn해 foreground pgrp 리더가 "node")를 못 잡아,
+// 버퍼 스크레이핑(parseAgentScreen)을 1순위로. 셸이면 종료로 간주(null). 버퍼 미판정이면 프로세스명 폴백.
+// 세션 신원 고정(#803) — 한번 에이전트로 잡히면 셸 복귀(종료)까지 그 신원 유지.
+// codex는 작업 중 배너가 스크롤아웃되면 버퍼 판정이 흔들려(claude 공유 스피너로 오판정) 탭이 깜빡일 수 있어,
+// 최초 판정을 셸 복귀까지 붙들어 안정화. 셸이면 해제해 다음 에이전트를 새로 잡음.
+const agentSticky = new Map(); // id → agent id
+function agentForId(id, proc) {
+  if (proc !== undefined && isShellProc(proc)) { agentSticky.delete(id); return null; }
+  if (agentSticky.has(id)) return agentSticky.get(id);
+  const parsed = parseAgentScreen(liveBuffers.get(id));
+  const a = (parsed && parsed.agent) || agentFromProcess(proc);
+  if (a) agentSticky.set(id, a);
+  return a || null;
+}
+ipcMain.handle("terminal:list", async () => {
+  const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름(#803)
+  return ss.map((s) => ({ ...s, agent: agentForId(s.id, s.process) }));
+});
 
 // 단일 인스턴스.
 if (!app.requestSingleInstanceLock()) {

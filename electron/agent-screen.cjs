@@ -70,7 +70,7 @@ const CODEX_WORKING = /•working\(|working\([^)]*esctointerrupt|esctointerrupt/
 const CODEX_CHROME = /openaicodex|codex(session|resume)/i;
 
 // 포그라운드 프로세스명 → 에이전트 id | null. "존재" 판정용(버퍼가 상태를 못 잡아도 에이전트가 떠 있음을 안다).
-const PROC_MATCH = [["claude", /claude/i], ["codex", /codex/i], ["gemini", /gemini/i], ["aider", /aider/i], ["opencode", /open-?code/i], ["cursor", /cursor/i], ["copilot", /copilot/i], ["amp", /^amp$/i], ["grok", /grok/i]];
+const PROC_MATCH = [["claude", /claude/i], ["codex", /codex/i], ["gemini", /gemini/i], ["antigravity", /antigravity/i], ["hermes", /hermes/i], ["aider", /aider/i], ["opencode", /open-?code/i], ["cursor", /cursor/i], ["copilot", /copilot/i], ["amp", /^amp$/i], ["grok", /grok/i]];
 function agentFromProcess(name) {
   const p = String(name || "").trim().toLowerCase().replace(/^-+/, "");
   if (!p) return null;
@@ -89,6 +89,24 @@ function parseAgentScreen(buffer) {
   const bottom = afterLastRule(stripAnsi(recentRaw(buffer, 4000))).toLowerCase().replace(/\s+/g, "");
   if (!wide && !title) return null;
   const task = titleTask(title); // "지금 뭐 하는지" 서브라인(타이틀의 작업 텍스트)
+
+  // ── 신원 우선판정(#803) ──────────────────
+  // 여러 CLI가 스피너 글리프·"esc to interrupt"·"? for shortcuts" 같은 공유 신호를 써서, 아래 claude 휴리스틱이
+  // 다른 에이전트를 claude로 오판정한다(codex·antigravity 등). 각 에이전트 "전용 배너"를 claude보다 먼저 확정.
+  // 순서 중요: antigravity 배너엔 "Gemini 3.1 Pro" 표기가 있어 gemini보다 먼저 둔다. (wide는 소문자·공백제거됨)
+  const STRONG = [
+    ["antigravity", /antigravity/],
+    ["codex", /openaicodex|codex(session|resume)/],
+    ["hermes", /hermes/],
+    ["cursor", /cursoragent|cursorcli/],  // "Cursor Agent" 배너. grok보다 먼저(스크롤백 grok 오매칭 방지)
+    ["grok", /grokcli|grok\d/],           // 배너/버전 동반만(맨 "grok" 단어는 대화·grep에도 흔해 sticky 오고정 방지)
+    ["gemini", /geminicli|gemini\d/],     // "Gemini 2.5/3.x" 등 버전 동반. antigravity가 먼저라 그쪽 배너의 Gemini 표기엔 안 걸림
+  ];
+  const strongWaiting = () => title.toLowerCase().includes("action required") || CLAUDE_WAITING.test(bottom) || CODEX_WAITING.test(bottom);
+  const strongWorking = () => isSpinnerGlyph(tc) || CLAUDE_WORKING.test(compact) || CODEX_WORKING.test(compact);
+  for (const [id, re] of STRONG) {
+    if (re.test(wide)) return { agent: id, state: strongWaiting() ? "waiting" : strongWorking() ? "working" : "idle", task };
+  }
 
   // ── Claude ──────────────────────────────
   const claudeTitle = isSpinnerGlyph(tc) || isClaudeIdleGlyph(tc); // claude가 세팅한 상태 글리프 타이틀
