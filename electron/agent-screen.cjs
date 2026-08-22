@@ -90,6 +90,24 @@ function parseAgentScreen(buffer) {
   if (!wide && !title) return null;
   const task = titleTask(title); // "지금 뭐 하는지" 서브라인(타이틀의 작업 텍스트)
 
+  // ── 신원 우선판정(#803) ──────────────────
+  // 여러 CLI가 스피너 글리프·"esc to interrupt"·"? for shortcuts" 같은 공유 신호를 써서, 아래 claude 휴리스틱이
+  // 다른 에이전트를 claude로 오판정한다(codex·antigravity 등). 각 에이전트 "전용 배너"를 claude보다 먼저 확정.
+  // 순서 중요: antigravity 배너엔 "Gemini 3.1 Pro" 표기가 있어 gemini보다 먼저 둔다. (wide는 소문자·공백제거됨)
+  const STRONG = [
+    ["antigravity", /antigravity/],
+    ["codex", /openaicodex|codex(session|resume)/],
+    ["hermes", /hermes/],
+    ["cursor", /cursoragent|cursorcli/],  // "Cursor Agent" 배너. grok보다 먼저(스크롤백 grok 오매칭 방지)
+    ["grok", /grok/],
+    ["gemini", /gemini/],
+  ];
+  const strongWaiting = () => title.toLowerCase().includes("action required") || CLAUDE_WAITING.test(bottom) || CODEX_WAITING.test(bottom);
+  const strongWorking = () => isSpinnerGlyph(tc) || CLAUDE_WORKING.test(compact) || CODEX_WORKING.test(compact);
+  for (const [id, re] of STRONG) {
+    if (re.test(wide)) return { agent: id, state: strongWaiting() ? "waiting" : strongWorking() ? "working" : "idle", task };
+  }
+
   // ── Claude ──────────────────────────────
   const claudeTitle = isSpinnerGlyph(tc) || isClaudeIdleGlyph(tc); // claude가 세팅한 상태 글리프 타이틀
   const isClaude = claudeTitle || CLAUDE_CHROME.test(wide) || CLAUDE_WORKING.test(compact) || CLAUDE_WAITING.test(bottom);

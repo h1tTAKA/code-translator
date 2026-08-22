@@ -1,6 +1,11 @@
 // 에이전트 브랜드 로고 + 프로세스명 식별(#764) — 레포탭 호버 카드에서 "어떤 에이전트가 도는가"를 아이콘으로.
 // 잘 알려진 에이전트는 인라인 브랜드 마크(CSP 안전), 그 외 알려진 에이전트는 브랜드색 모노그램. 셸/미지 프로세스는 에이전트 아님.
 
+import CodexLogo from "@/components/workspace/CodexLogo";
+import AntigravityLogo from "@/components/workspace/AntigravityLogo";
+import HermesLogo from "@/components/workspace/HermesLogo";
+import CursorLogo from "@/components/workspace/CursorLogo";
+
 export type AgentId = "claude" | "codex" | "gemini" | "antigravity" | "hermes" | "aider" | "opencode" | "cursor" | "copilot" | "amp" | "grok" | "other";
 
 // 프로세스명 → 에이전트 매칭. foreground 프로세스명(node-pty proc.process)에 대해 검사.
@@ -40,7 +45,7 @@ export function isShellProcess(processName: string | undefined): boolean {
 
 export const AGENT_META: Record<AgentId, { label: string; color: string }> = {
   claude: { label: "Claude", color: "#D97757" },   // Anthropic coral
-  codex: { label: "Codex", color: "#10A37F" },     // OpenAI teal
+  codex: { label: "Codex", color: "#7C6BF5" },     // Codex 앱 블루퍼플
   gemini: { label: "Gemini", color: "#4285F4" },   // Google blue
   antigravity: { label: "Antigravity", color: "#1A73E8" }, // Google Antigravity blue
   hermes: { label: "Hermes", color: "#C026D3" },   // Nous Hermes magenta
@@ -49,7 +54,7 @@ export const AGENT_META: Record<AgentId, { label: string; color: string }> = {
   cursor: { label: "Cursor", color: "#6B7280" },
   copilot: { label: "Copilot", color: "#8B5CF6" },
   amp: { label: "Amp", color: "#F97316" },
-  grok: { label: "Grok", color: "#111827" },
+  grok: { label: "Grok", color: "#9CA3AF" },       // 중립 그레이(흑백 브랜드 — 양 테마서 보이게)
   other: { label: "Agent", color: "#6B7280" },
 };
 
@@ -61,9 +66,9 @@ export function AgentLogo({ agent, size = 14 }: { agent: AgentId; size?: number 
     // Anthropic 선버스트 — 중심에서 12방향 광선.
     return (
       <svg {...common}>
-        <g stroke={c} strokeWidth={1.7} strokeLinecap="round">
+        <g stroke={c} strokeWidth={1.9} strokeLinecap="round">
           {[0, 30, 60, 90, 120, 150].map((deg) => {
-            const a = (deg * Math.PI) / 180, dx = Math.cos(a) * 9, dy = Math.sin(a) * 9;
+            const a = (deg * Math.PI) / 180, dx = Math.cos(a) * 10.6, dy = Math.sin(a) * 10.6;
             return <line key={deg} x1={12 - dx} y1={12 - dy} x2={12 + dx} y2={12 + dy} />;
           })}
         </g>
@@ -74,10 +79,10 @@ export function AgentLogo({ agent, size = 14 }: { agent: AgentId; size?: number 
     // Gemini 4점 스파클.
     return <svg {...common}><path d="M12 2c.4 5.3 4.3 9.6 10 10-5.7.4-9.6 4.3-10 10-.4-5.7-4.3-9.6-10-10 5.7-.4 9.6-4.3 10-10z" fill={c} /></svg>;
   }
-  if (agent === "codex") {
-    // OpenAI 육엽 근사 — 3개 타원 회전.
-    return <svg {...common}><g fill="none" stroke={c} strokeWidth={1.6}>{[0, 60, 120].map((r) => <ellipse key={r} cx={12} cy={12} rx={4} ry={9} transform={`rotate(${r} 12 12)`} />)}</g></svg>;
-  }
+  if (agent === "codex") return <CodexLogo size={size} />;    // 공식 로고(#803)
+  if (agent === "antigravity") return <AntigravityLogo size={size} />;   // 공식 로고(#803)
+  if (agent === "hermes") return <HermesLogo size={size} />;   // 공식 로고(#803, currentColor)
+  if (agent === "cursor") return <CursorLogo size={size} />;   // 공식 로고(#803, PNG 에셋)
   // 그 외 알려진 에이전트 — 브랜드색 원형 + 첫 글자 모노그램.
   const label = AGENT_META[agent]?.label ?? "A";
   return (
