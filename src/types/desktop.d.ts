@@ -31,6 +31,10 @@ interface NunopiDesktopApi {
     unwatch(opts: { id: string }): Promise<void>;
     onChanged(cb: (p: { id: string }) => void): () => void;
   };
+  // GitHub 패널(#809/#810) — gh CLI 브릿지. auth=인증 상태 진단(cwd=레포). 서브3~5서 checks/이슈/PR 메서드 추가 예정.
+  github?: {
+    auth(cwd: string): Promise<{ state: "ok" | "not-installed" | "not-authed" | "rate-limited" | "error"; detail?: string }>;
+  };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {
     ensure(opts: { id: string; cwd: string; cols: number; rows: number }): Promise<{ ok: boolean; buffer?: string; reason?: string }>;

@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     unwatch: (opts) => ipcRenderer.invoke("repo:unwatch", opts),
     onChanged: (cb) => { const h = (_e, p) => cb(p); ipcRenderer.on("repo:changed", h); return () => ipcRenderer.removeListener("repo:changed", h); },
   },
+  // GitHub 패널(#809/#810) — gh CLI 브릿지. auth=인증 상태 진단(서브3~5서 데이터 메서드 추가).
+  github: {
+    auth: (cwd) => ipcRenderer.invoke("github:auth", { cwd }),
+  },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {
     ensure: (opts) => ipcRenderer.invoke("terminal:ensure", opts),
