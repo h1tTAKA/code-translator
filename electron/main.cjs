@@ -284,9 +284,10 @@ ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRunti
 const ghExe = () => loadSavedRuntimePaths().gh || "gh";
 ipcMain.handle("github:auth", (_e, { cwd }) => githubBridge.authDiagnose({ gh: ghExe(), cwd }));
 // 이슈 목록·상세(#813) — gh issue list/view --json. state=open|closed|all(기본 open).
-ipcMain.handle("github:issue-list", (_e, { cwd, state }) => {
+ipcMain.handle("github:issue-list", (_e, { cwd, state, limit }) => {
   const st = state === "closed" ? "closed" : state === "all" ? "all" : "open";
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "list", "--json", "number,title,state,labels,author,createdAt,updatedAt", "--state", st, "--limit", "50"] });
+  const lim = Math.min(Math.max(Number(limit) || 50, 1), 1000); // 1..1000 클램프(더 보기 페이지네이션)
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "list", "--json", "number,title,state,labels,author,createdAt,updatedAt", "--state", st, "--limit", String(lim)] });
 });
 ipcMain.handle("github:issue-view", (_e, { cwd, number }) => {
   const n = Number(number);

@@ -18,6 +18,7 @@ function StateDot({ state }: { state: string }) {
 export default function IssueList({ root, reloadKey, onOpen }: { root: string; reloadKey: number; onOpen: (n: number) => void }) {
   const t = useT();
   const [filter, setFilter] = useState<Filter>("open");
+  const [limit, setLimit] = useState(50); // 더 보기 페이지네이션(#813)
   const [load, setLoad] = useState<Load>({ loading: true });
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -42,12 +43,12 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
     if (!gh?.issueList) { setLoad({ loading: false, error: t("github.desktopOnly") }); return; }
     setLoad({ loading: true });
     (async () => {
-      const r = await gh.issueList(root, filter);
+      const r = await gh.issueList(root, filter, limit);
       if (!mountedRef.current) return;
       if (r.ok) setLoad({ loading: false, rows: r.data });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
     })();
-  }, [root, filter, reloadKey, t]);
+  }, [root, filter, limit, reloadKey, t]);
 
   const FILTERS: Filter[] = ["open", "closed", "all"];
   return (
@@ -55,7 +56,7 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
       {/* 필터 탭 */}
       <div className="flex shrink-0 items-center gap-1 border-b border-zinc-100 px-2 py-1 dark:border-zinc-800/60">
         {FILTERS.map((f) => (
-          <button key={f} type="button" onClick={() => setFilter(f)} aria-pressed={filter === f}
+          <button key={f} type="button" onClick={() => { setFilter(f); setLimit(50); }} aria-pressed={filter === f}
             className={`rounded px-2 py-0.5 text-[11px] font-medium transition ${filter === f ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
             {t(f === "open" ? "github.filterOpen" : f === "closed" ? "github.filterClosed" : "github.filterAll")}
           </button>
@@ -98,6 +99,15 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
                 </button>
               </li>
             ))}
+            {/* 더 보기(#813) — 받은 수가 limit과 같으면 더 있을 수 있음. limit 증가로 재조회. */}
+            {load.rows.length >= limit && limit < 1000 && (
+              <li>
+                <button type="button" onClick={() => setLimit((l) => l + 50)}
+                  className="w-full px-3 py-2 text-center text-[11px] font-medium text-mustard-600 transition hover:bg-zinc-50 dark:text-mustard-400 dark:hover:bg-zinc-800/40">
+                  {t("github.loadMore")}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>

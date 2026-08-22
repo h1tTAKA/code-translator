@@ -44,7 +44,7 @@ interface NunopiDesktopApi {
   github?: {
     auth(cwd: string): Promise<{ state: "ok" | "not-installed" | "not-authed" | "rate-limited" | "error"; detail?: string }>;
     // 이슈 목록·상세(#813). 성공 { ok:true, data } | 실패 { ok:false, kind, detail }.
-    issueList(cwd: string, state?: "open" | "closed" | "all"): Promise<GhResult<GhIssue[]>>;
+    issueList(cwd: string, state?: "open" | "closed" | "all", limit?: number): Promise<GhResult<GhIssue[]>>;
     issueView(cwd: string, number: number): Promise<GhResult<GhIssueDetail>>;
   };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
