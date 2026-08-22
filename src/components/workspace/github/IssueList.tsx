@@ -41,7 +41,7 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
     const gh = window.nunopiDesktop?.github;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 미지원(web)/로딩 표시(root/filter/reload 변경마다 재조회)
     if (!gh?.issueList) { setLoad({ loading: false, error: t("github.desktopOnly") }); return; }
-    setLoad({ loading: true });
+    setLoad((p) => ({ loading: true, rows: p.rows })); // 기존 rows 유지(무한 스크롤 append 시 리스트 안 사라지게)
     (async () => {
       const r = await gh.issueList(root, filter, limit);
       if (!mountedRef.current) return;
@@ -50,22 +50,37 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
     })();
   }, [root, filter, limit, reloadKey, t]);
 
+  // 무한 스크롤(#813) — 하단 sentinel이 보이면 limit +50. 로딩 중/더 없음이면 스킵(최신 상태는 ref로 읽음).
+  // sentinel은 rows 로드 후에야 렌더되므로 콜백 ref로 부착(마운트 시엔 없어서 useEffect론 못 잡음).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const moreRef = useRef({ loading: true, hasMore: false });
+  useEffect(() => { moreRef.current = { loading: load.loading, hasMore: !!load.rows && load.rows.length >= limit && limit < 1000 }; }, [load, limit]);
+  const sentinelCb = useCallback((el: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    if (!el) return;
+    observerRef.current = new IntersectionObserver((ents) => {
+      if (ents[0]?.isIntersecting && !moreRef.current.loading && moreRef.current.hasMore) setLimit((l) => l + 50);
+    }, { root: scrollRef.current });
+    observerRef.current.observe(el);
+  }, []);
+
   const FILTERS: Filter[] = ["open", "closed", "all"];
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 필터 탭 */}
       <div className="flex shrink-0 items-center gap-1 border-b border-zinc-100 px-2 py-1 dark:border-zinc-800/60">
         {FILTERS.map((f) => (
-          <button key={f} type="button" onClick={() => { setFilter(f); setLimit(50); }} aria-pressed={filter === f}
+          <button key={f} type="button" onClick={() => { setFilter(f); setLimit(50); setLoad({ loading: true }); }} aria-pressed={filter === f}
             className={`rounded px-2 py-0.5 text-[11px] font-medium transition ${filter === f ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
             {t(f === "open" ? "github.filterOpen" : f === "closed" ? "github.filterClosed" : "github.filterAll")}
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {load.loading ? (
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+        {load.loading && !load.rows?.length ? (
           <div className="flex items-center gap-2 p-4 text-[12px] text-zinc-400 dark:text-zinc-500"><IconLoader2 size={14} className="animate-spin" aria-hidden /> …</div>
-        ) : load.error ? (
+        ) : load.error && !load.rows?.length ? (
           <div className="flex items-start gap-2 p-4 text-[12px] text-zinc-500 dark:text-zinc-400"><IconAlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" aria-hidden /><span className="break-words">{load.error}</span></div>
         ) : !load.rows?.length ? (
           <p className="p-4 text-[12px] text-zinc-400 dark:text-zinc-500">{t("github.empty")}</p>
@@ -99,16 +114,13 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
                 </button>
               </li>
             ))}
-            {/* 더 보기(#813) — 받은 수가 limit과 같으면 더 있을 수 있음. limit 증가로 재조회. */}
-            {load.rows.length >= limit && limit < 1000 && (
-              <li>
-                <button type="button" onClick={() => setLimit((l) => l + 50)}
-                  className="w-full px-3 py-2 text-center text-[11px] font-medium text-mustard-600 transition hover:bg-zinc-50 dark:text-mustard-400 dark:hover:bg-zinc-800/40">
-                  {t("github.loadMore")}
-                </button>
-              </li>
-            )}
           </ul>
+        )}
+        {/* 무한 스크롤 sentinel(#813) — 보이면 다음 페이지 로드. 더 있고 로딩 중이면 스피너. */}
+        {!!load.rows?.length && load.rows.length >= limit && limit < 1000 && (
+          <div ref={sentinelCb} className="flex items-center justify-center py-3 text-zinc-400 dark:text-zinc-500">
+            {load.loading && <IconLoader2 size={14} className="animate-spin" aria-hidden />}
+          </div>
         )}
       </div>
       {hover && (
