@@ -13,15 +13,38 @@ import type { CiDot } from "@/components/workspace/github/useBranchCi";
 
 type AuthState = "ok" | "not-installed" | "not-authed" | "rate-limited" | "error";
 type Probe = { loading: boolean; state?: AuthState; detail?: string };
-type Tab = "issues" | "prs"; // CI는 별도 탭 대신 PR 상세에 통합(#812) + 헤더 도트
+type OpenItem = { kind: "issue" | "pr"; number: number }; // 상세 열림 — 반반 분할(#824)이라 kind로 이슈/PR 구분
 
 export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiDot }) {
   const t = useT();
   const [probe, setProbe] = useState<Probe>({ loading: true });
   const [owner, setOwner] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("issues"); // 내부 탭(#814) — 이슈/PR
-  const [openItem, setOpenItem] = useState<number | null>(null); // 상세 열림(현재 탭 기준). null=목록.
+  const [open, setOpen] = useState<OpenItem | null>(null); // 상세 열림. null=반반 목록(#824).
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
+  const [topRatio, setTopRatio] = useState(0.5); // 이슈:PR 세로 비율(#824) — 가운데 선 드래그로 조절.
+  const splitRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null); // 진행 중 드래그 정리 함수(언마운트 시 호출)
+  // 가운데 선 드래그 — 컨테이너 높이 대비 마우스 Y로 비율 계산(0.15~0.85 클램프).
+  const onDragDivider = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const onMove = (ev: MouseEvent) => {
+      const el = splitRef.current; if (!el) return;
+      const r = el.getBoundingClientRect();
+      setTopRatio(Math.min(0.85, Math.max(0.15, (ev.clientY - r.top) / r.height)));
+    };
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", cleanup);
+      document.body.style.userSelect = "";
+      dragCleanupRef.current = null;
+    };
+    dragCleanupRef.current = cleanup; // 드래그 중 언마운트되면 useEffect가 이걸 호출
+    document.body.style.userSelect = "none"; // 드래그 중 텍스트 선택 방지
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", cleanup);
+  }, []);
+  // 드래그 중 언마운트 대비 — 남은 리스너·userSelect 정리(리뷰 🟡).
+  useEffect(() => () => dragCleanupRef.current?.(), []);
   const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null; // ciDot는 WorkspaceView서 prop(중복 폴링 방지 #812)
 
   const mountedRef = useRef(true);
@@ -77,25 +100,36 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
           <IconLoader2 size={14} className="animate-spin" aria-hidden /> {t("github.checking")}
         </div>
       ) : probe.state === "ok" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {/* 내부 탭(#814) — 이슈/PR. 상세 열려 있으면 탭 숨김(뒤로가기로 목록 복귀). */}
-          {openItem == null && (
-            <div className="flex shrink-0 items-center gap-1 border-b border-zinc-100 px-2 py-1 dark:border-zinc-800/60">
-              {(["issues", "prs"] as Tab[]).map((tb) => (
-                <button key={tb} type="button" onClick={() => setTab(tb)} aria-pressed={tab === tb}
-                  className={`relative rounded px-2 py-0.5 text-[11px] font-semibold transition ${tab === tb ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
-                  {t(tb === "issues" ? "github.issues" : "github.prs")}
-                  {tb === "prs" && ciDot && <span aria-hidden className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
-                </button>
-              ))}
+        open == null ? (
+          /* 상하 분할(#824) — 위=이슈 목록, 아래=PR 목록 동시. 가운데 선 드래그로 비율 조절. */
+          <div ref={splitRef} className="flex min-h-0 flex-1 flex-col">
+            <section className="flex min-h-0 flex-col" style={{ flex: topRatio }}>
+              <div className="flex shrink-0 items-center gap-1.5 bg-zinc-50 px-3 py-1 text-[11px] font-semibold text-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-400">
+                {t("github.issues")}
+              </div>
+              <div className="min-h-0 flex-1"><IssueList root={root} reloadKey={reload} onOpen={(n) => setOpen({ kind: "issue", number: n })} /></div>
+            </section>
+            {/* 드래그 핸들 — 가운데 선. 잡고 위아래로 끌면 비율 변경. */}
+            <div role="separator" aria-orientation="horizontal" onMouseDown={onDragDivider}
+              className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y border-zinc-200 bg-zinc-100 transition hover:bg-mustard-500/20 dark:border-zinc-800 dark:bg-zinc-800/60 dark:hover:bg-mustard-500/20">
+              <span className="h-0.5 w-8 rounded-full bg-zinc-300 transition group-hover:bg-mustard-500/60 dark:bg-zinc-600" aria-hidden />
             </div>
-          )}
-          <div className="min-h-0 flex-1">
-            {tab === "issues"
-              ? (openItem == null ? <IssueList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <IssueDetail key={openItem} root={root} number={openItem} reloadKey={reload} onBack={() => setOpenItem(null)} />)
-              : (openItem == null ? <PrList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <PrDetail key={openItem} root={root} number={openItem} reloadKey={reload} onBack={() => setOpenItem(null)} />)}
+            <section className="flex min-h-0 flex-col" style={{ flex: 1 - topRatio }}>
+              <div className="flex shrink-0 items-center gap-1.5 bg-zinc-50 px-3 py-1 text-[11px] font-semibold text-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-400">
+                {t("github.prs")}
+                {ciDot && <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
+              </div>
+              <div className="min-h-0 flex-1"><PrList root={root} reloadKey={reload} onOpen={(n) => setOpen({ kind: "pr", number: n })} /></div>
+            </section>
           </div>
-        </div>
+        ) : (
+          /* 상세 — 전체 차지(#824). 뒤로가기로 반반 목록 복귀. */
+          <div className="min-h-0 flex-1">
+            {open.kind === "issue"
+              ? <IssueDetail key={`issue-${open.number}`} root={root} number={open.number} reloadKey={reload} onBack={() => setOpen(null)} />
+              : <PrDetail key={`pr-${open.number}`} root={root} number={open.number} reloadKey={reload} onBack={() => setOpen(null)} />}
+          </div>
+        )
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <div className="flex flex-col gap-3">
