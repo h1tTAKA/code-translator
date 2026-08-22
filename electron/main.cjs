@@ -434,7 +434,19 @@ ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
 ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
 ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태 정리
-ipcMain.handle("terminal:list", () => termClient.list()); // 세션 목록(#764) — 레포탭 호버 카드용
+// 세션의 실행 중 에이전트 id | null(#803) — 터미널 탭 자동 이름·아이콘용.
+// 프로세스명만으론 node 래퍼 CLI(codex 등: 네이티브 자식을 spawn해 foreground pgrp 리더가 "node")를 못 잡아,
+// 버퍼 스크레이핑(parseAgentScreen)을 1순위로. 셸이면 종료로 간주(null). 버퍼 미판정이면 프로세스명 폴백.
+function agentForId(id, proc) {
+  if (proc !== undefined && isShellProc(proc)) return null;
+  const parsed = parseAgentScreen(liveBuffers.get(id));
+  if (parsed) return parsed.agent;
+  return agentFromProcess(proc);
+}
+ipcMain.handle("terminal:list", async () => {
+  const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름(#803)
+  return ss.map((s) => ({ ...s, agent: agentForId(s.id, s.process) }));
+});
 
 // 단일 인스턴스.
 if (!app.requestSingleInstanceLock()) {

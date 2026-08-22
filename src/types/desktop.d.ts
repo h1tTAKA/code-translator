@@ -38,7 +38,8 @@ interface NunopiDesktopApi {
     resize(payload: { id: string; cols: number; rows: number }): void;
     kill(payload: { id: string }): void;
     // 세션 목록(#764) — 레포탭 호버 카드용. process=foreground 프로세스명(claude/codex/zsh…), cwd=spawn 디렉터리.
-    list(): Promise<{ id: string; cwd: string; process: string; pid: number }[]>;
+    // agent(#803)=실행 중 에이전트 id | null(버퍼 파싱 우선 → node 래퍼 CLI도 감지). 탭 자동 이름·아이콘용.
+    list(): Promise<{ id: string; cwd: string; process: string; pid: number; agent: string | null }[]>;
     onData(cb: (p: { id: string; data: string }) => void): () => void;
     onExit(cb: (p: { id: string }) => void): () => void;
   };

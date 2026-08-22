@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconPlus, IconX, IconTerminal2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import Terminal from "@/components/workspace/Terminal";
+import { AgentLogo, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
 
 interface Tab { id: string; title: string }
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
@@ -78,6 +79,24 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   // (터미널 자동 펴기는 N/A: 접히면 pane·+버튼이 dock에서 제거돼 외부 "열기" 트리거가 없고, 재표시는 헤더 토글=이미 펴짐.)
   const scrollTabIntoView = useCallback((el: HTMLElement | null) => { el?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, []);
 
+  // 탭별 실행 중 에이전트(#803) — main이 버퍼 파싱으로 판정한 agent id(node 래퍼 CLI도 잡음). 탭 이름·아이콘용.
+  // pty는 push 이벤트가 없어(에이전트 실행/종료=프로세스 교체) 2s 폴링. list()는 전 세션 반환 → tab.id로 조회.
+  const [agentById, setAgentById] = useState<Record<string, AgentId>>({});
+  useEffect(() => {
+    const api = window.nunopiDesktop?.terminal;
+    if (!api?.list) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const ls = await api.list();
+        if (alive) setAgentById(Object.fromEntries(ls.filter((s) => s.agent).map((s) => [s.id, s.agent as AgentId])));
+      } catch { /* ignore */ }
+    };
+    void tick();
+    const iv = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 터미널 탭 바 — 에디터 탭 느낌(활성 상단 강조선·구분선·닫기). pr-6 외곽: 우상단 이동 그립 자리 예약(#716). */}
@@ -85,13 +104,18 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
       <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
         {tabs.map((tab) => {
           const on = tab.id === activeId;
+          // 실행 중 에이전트면 그 라벨·로고, 아니면(셸/유휴) 기존 "터미널 N"·터미널 아이콘. title은 안 바꿔 종료 시 자동 원복(#803).
+          const agent = agentById[tab.id] ?? null;
+          const label = agent ? AGENT_META[agent].label : tab.title;
           return (
             <div key={tab.id} ref={on ? scrollTabIntoView : undefined}
               className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}
               onClick={() => setActiveId(tab.id)}>
               {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-mustard-500" aria-hidden />}
-              <IconTerminal2 size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />
-              <span className="whitespace-nowrap">{tab.title}</span>
+              {agent
+                ? <span className="shrink-0"><AgentLogo agent={agent} size={13} /></span>
+                : <IconTerminal2 size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />}
+              <span className="whitespace-nowrap">{label}</span>
               {tabs.length > 1 && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
                   className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`} aria-label={t("workspace.terminalClose")}>
