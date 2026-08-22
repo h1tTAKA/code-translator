@@ -323,6 +323,14 @@ ipcMain.handle("github:job-steps", (_e, { cwd, jobId }) => {
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid job id" };
   return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/actions/jobs/${id}`, "--jq", "{steps: .steps}"] });
 });
+// 이슈·PR 코멘트 작성(#820, 첫 write) — gh issue/pr comment. number 정수·body 비어있지 않음 검증.
+ipcMain.handle("github:add-comment", (_e, { cwd, kind, number, body }) => {
+  const n = Number(number);
+  if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid number" };
+  if (typeof body !== "string" || !body.trim()) return { ok: false, kind: "error", detail: "empty body" };
+  const sub = kind === "pr" ? "pr" : "issue";
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: [sub, "comment", String(n), "--body", body] }); // no-shell, body는 인자(개행·특수문자 안전)
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());

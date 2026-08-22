@@ -59,6 +59,7 @@ interface NunopiDesktopApi {
     checks(cwd: string): Promise<GhResult<GhChecks>>;  // #812
     checkAnnotations(cwd: string, checkRunId: string): Promise<GhResult<GhAnnotation[]>>;  // #812
     jobSteps(cwd: string, jobId: string): Promise<GhResult<{ steps?: GhJobStep[] }>>;  // #812
+    addComment(cwd: string, kind: "issue" | "pr", number: number, body: string): Promise<{ ok: boolean; stdout?: string; kind?: string; detail?: string }>;  // #820
   };
   // 터미널(pty) — id별 세션(#647·#678 멀티탭). cwd는 spawn 작업 디렉터리. ensure는 세션 확보 + 재생용 scrollback 반환.
   terminal: {
