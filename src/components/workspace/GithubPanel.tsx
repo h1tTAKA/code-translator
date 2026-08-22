@@ -2,7 +2,7 @@
 // GitHub 패널(Epic #809, 서브2 #811) — 우측 패널의 GitHub 모드 컨테이너.
 // 이번 서브는 골격: gh 연결 상태(서브1 #810 authDiagnose) 진단 + owner/repo 표시 + 안내.
 // 실제 이슈·PR·CI는 서브3~5(#812/#813/#814)가 이 자리에 채운다.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconBrandGithub, IconLoader2, IconRefresh, IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 
@@ -15,17 +15,21 @@ export default function GithubPanel({ root }: { root: string }) {
   const [owner, setOwner] = useState<string | null>(null);
   const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null;
 
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
   const run = useCallback(async () => {
     const gh = window.nunopiDesktop?.github;
     if (!gh?.auth || !root) { setProbe({ loading: false, state: "error", detail: t("github.desktopOnly") }); return; }
     setProbe({ loading: true });
     try {
       const r = await gh.auth(root);
-      setProbe({ loading: false, state: r.state, detail: r.detail });
+      if (mountedRef.current) setProbe({ loading: false, state: r.state, detail: r.detail }); // 언마운트 후 setState 방지(리뷰 🔴)
     } catch (e) {
-      setProbe({ loading: false, state: "error", detail: String((e as Error)?.message || e) });
+      if (mountedRef.current) setProbe({ loading: false, state: "error", detail: String((e as Error)?.message || e) });
     }
-  }, [root, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t 제외: 로케일 전환 시 gh 재진단 유발 방지(에러 문자열만 영향, JSX 라벨은 live t로 리렌더)
+  }, [root]);
 
   // owner는 git-remote route(#777) 재사용, gh 인증은 서브1 브릿지. root 바뀌면 재진단.
   useEffect(() => {
