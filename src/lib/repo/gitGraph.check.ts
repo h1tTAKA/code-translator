@@ -68,4 +68,13 @@ assert.ok(g.rows.every((r) => r.lane >= 0), "모든 dot 레인 >=0");
 // 결정적: 두 번 동일.
 assert.deepStrictEqual(assignLanes(merged), g, "레인 배정 결정적");
 
+// 윈도우 밖 부모(-n 한도 초과) → 유령 레인 안 생김(#828). m2 머지의 2번째 부모 "gone"이 커밋 집합에 없음.
+const win = parseGitLog([
+  rec(["m2", "n1 gone", "K", "k@x", "3", "", "merge off-window branch", ""]),
+  rec(["n1", "n0", "K", "k@x", "2", "", "n1", ""]),
+  rec(["n0", "", "K", "k@x", "1", "", "n0", ""]),
+].join("\n"));
+const gw = assignLanes(win);
+assert.strictEqual(gw.laneCount, 1, "윈도우 밖 머지 부모는 레인 미할당 → 유령 없이 레인1개");
+
 console.log("gitGraph.check OK");

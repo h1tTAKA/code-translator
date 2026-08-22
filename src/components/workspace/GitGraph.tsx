@@ -29,22 +29,11 @@ const roundApex = (x1: number, ya: number, x2: number, yb: number) =>
   x2 > x1
     ? `C${x1 + (x2 - x1) * CURVE_F} ${ya} ${x2} ${yb - (yb - ya) * CURVE_F} ${x2} ${yb}`   // 트렁크(안,x1)→바깥(x2): 시작 수평, 끝 수직
     : `C${x1} ${ya + (yb - ya) * CURVE_F} ${x1 + (x2 - x1) * CURVE_F} ${yb} ${x2} ${yb}`; // 바깥(x1)→트렁크(안,x2): 시작 수직, 끝 수평
-// 대칭 S커브(#828) — 양 끝 수직 접선. 점에서 아래로 내려가며 부드럽게 넘어감(수평 돌출 없음).
-// 여러 레인 건너뛰는 넓은 엣지(머지 2번째 부모 등)에서 roundApex의 "옆으로 확 뻗는 스윕"을 없앤다.
-const sigmoid = (x1: number, y1: number, x2: number, y2: number) => {
-  const ym = (y1 + y2) / 2;
-  return `C${x1} ${ym} ${x2} ${ym} ${x2} ${y2}`;
-};
-// 곡선 선택 — 단일 레인(|dx|<=LANE_W)은 튜닝된 roundApex(#707 둥근 꼭지점), 그 이상은 sigmoid.
-const apex = (x1: number, ya: number, x2: number, yb: number) =>
-  Math.abs(x2 - x1) <= LANE_W ? roundApex(x1, ya, x2, yb) : sigmoid(x1, ya, x2, yb);
 const linkPath = (x1: number, y1: number, x2: number, y2: number) => {
   if (x1 === x2) return `M${x1} ${y1}L${x2} ${y2}`;
-  // 전환에 쓸 세로 구간 — 최소 한 행, 가로 이동량 이상(기울기 완화), 단 전체 세로거리 넘지 않게.
-  const span = Math.min(y2 - y1, Math.max(ROW_H, Math.abs(x2 - x1)));
-  if (y2 - y1 <= span * 1.01) return `M${x1} ${y1}${apex(x1, y1, x2, y2)}`;             // 짧은 거리 — 전 구간 곡선
-  if (x2 > x1) return `M${x1} ${y1}${apex(x1, y1, x2, y1 + span)}L${x2} ${y2}`;          // 바깥 분기 — span 동안 전환 후 직진
-  return `M${x1} ${y1}L${x1} ${y2 - span}${apex(x1, y2 - span, x2, y2)}`;                 // 안쪽 복귀 — 직진 후 span 동안 전환
+  if (y2 - y1 <= ROW_H * 1.5) return `M${x1} ${y1}${roundApex(x1, y1, x2, y2)}`;      // 인접 — 트렁크쪽 둥근 꼭지점
+  if (x2 > x1) return `M${x1} ${y1}${roundApex(x1, y1, x2, y1 + ROW_H)}L${x2} ${y2}`; // 바깥 분기 — 첫 행 곡선(수직 끝) 후 직진
+  return `M${x1} ${y1}L${x1} ${y2 - ROW_H}${roundApex(x1, y2 - ROW_H, x2, y2)}`;       // 안쪽 복귀 — 직진 후 끝 행 곡선
 };
 const STATUS = { M: ["M", "text-amber-600 dark:text-amber-500"], A: ["A", "text-emerald-600 dark:text-emerald-500"], D: ["D", "text-rose-600 dark:text-rose-500"], R: ["R", "text-sky-600 dark:text-sky-500"], C: ["C", "text-sky-600 dark:text-sky-500"] } as const;
 

@@ -9,8 +9,9 @@ const pexecFile = promisify(execFile);
 
 // 필드=Unit Separator(%x1f), 커밋=Record Separator(%x1e). body(%b)가 여러 줄이라
 // |·개행 구분은 파싱이 깨져 제어문자로 구분(커밋 메세지엔 실질적으로 안 나옴).
-// %H해시 %P부모 %an작성자 %ae이메일 %at시각 %D장식 %s제목 %b본문. --all 전 브랜치(미머지 포함), --topo-order로 브랜치별 묶음, -n 200.
-const ARGS = ["log", "--all", "--topo-order", "-n", "200", "--pretty=format:%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f%b%x1e"];
+// %H해시 %P부모 %an작성자 %ae이메일 %at시각 %D장식 %s제목 %b본문. --all 전 브랜치(미머지 포함), --topo-order로 브랜치별 묶음.
+// -n 한도 없음(#828): 전체 히스토리 → 머지 부모가 안 잘려 유령 레인 없음. (초대형 레포 대비 방어는 assignLanes에 유지 — 윈도우 밖 부모 레인 미할당.)
+const ARGS = ["log", "--all", "--topo-order", "--pretty=format:%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f%b%x1e"];
 
 export async function POST(request: Request): Promise<Response> {
   let path: unknown;
