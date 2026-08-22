@@ -10,6 +10,8 @@ export interface ConfirmOptions {
   // 메시지 아래 작은 회색 보조 설명(선택) — 안심 문구 등.
   detail?: string;
   confirmText?: string;
+  // 확인 버튼 라벨 앞 아이콘(선택).
+  confirmIcon?: React.ReactNode;
   cancelText?: string;
   // true면 확인 버튼을 위험(빨강)으로 — 삭제 등 되돌릴 수 없는 동작.
   danger?: boolean;
@@ -139,11 +141,12 @@ function ConfirmModal({
             type="button"
             autoFocus
             onClick={onConfirm}
-            className={`rounded-lg px-3.5 py-2 text-[13px] font-semibold shadow-sm transition ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] font-semibold shadow-sm transition ${
               tone === "danger" ? "bg-rose-600 text-white hover:bg-rose-700"
               : "bg-[#3B34E2] text-white hover:bg-[#322bc9] dark:bg-[#8b86f5] dark:text-zinc-900 dark:hover:bg-[#a5a0f8]"
             }`}
           >
+            {options.confirmIcon}
             {options.confirmText ?? t("confirm.ok")}
           </button>
         </div>

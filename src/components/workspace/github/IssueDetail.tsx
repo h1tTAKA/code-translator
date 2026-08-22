@@ -36,8 +36,8 @@ export default function IssueDetail({ root, number, reloadKey, onBack }: { root:
     if (r?.ok) { setEditingBody(false); setCmtNonce((n) => n + 1); } else setActErr(r?.detail || t("github.error"));
   };
   // 상태 전환은 실제 GitHub에 반영 → 확인 팝업 후 실행(#822).
-  const confirmState = async (action: "close" | "reopen", label: string) => {
-    if (await confirm({ title: label, message: t("github.confirmState"), tone: "warn", confirmText: label })) {
+  const confirmState = async (action: "close" | "reopen", label: string, icon: React.ReactNode) => {
+    if (await confirm({ title: label, message: t("github.confirmState"), tone: "warn", confirmText: label, confirmIcon: icon })) {
       void runAct(() => window.nunopiDesktop!.github!.setState(root, "issue", number, action));
     }
   };
@@ -116,8 +116,8 @@ export default function IssueDetail({ root, number, reloadKey, onBack }: { root:
             {/* 상태 액션(#822) — 닫기/다시 열기 */}
             <div className="flex flex-wrap items-center gap-1.5">
               {d.state.toUpperCase() === "OPEN"
-                ? <button type="button" onClick={() => void confirmState("close", t("github.close"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconCircleCheck size={13} stroke={2} className="text-purple-500" aria-hidden />}{t("github.close")}</button>
-                : <button type="button" onClick={() => void confirmState("reopen", t("github.reopen"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconCircleDot size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.reopen")}</button>}
+                ? <button type="button" onClick={() => void confirmState("close", t("github.close"), <IconCircleCheck size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconCircleCheck size={13} stroke={2} className="text-purple-500" aria-hidden />}{t("github.close")}</button>
+                : <button type="button" onClick={() => void confirmState("reopen", t("github.reopen"), <IconCircleDot size={15} stroke={2} aria-hidden />)} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconCircleDot size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.reopen")}</button>}
               {actErr && <span className="break-words text-[10px] text-rose-500">{actErr}</span>}
             </div>
             {d.comments?.length > 0 && (
