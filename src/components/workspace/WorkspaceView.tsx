@@ -258,6 +258,14 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     try { localStorage.setItem("nunopi:ws-collapsed", JSON.stringify([...n])); } catch { /* ignore */ }
     return n;
   });
+  // 접혀 있던 패널을 콘텐츠 열 때 자동으로 펴기(#801) — 접어둔 걸 잊고 파일/문서/아키텍처를 열면 안 보여 혼란.
+  // 이미 펴져 있으면 같은 Set 반환(no-op) — 매 클릭 불필요 리렌더 방지. toggle은 반대로 접어버리니 "펴기 전용" 별도.
+  const ensureExpanded = (p: PanelId) => setCollapsed((prev) => {
+    if (!prev.has(p)) return prev;
+    const n = new Set(prev); n.delete(p);
+    try { localStorage.setItem("nunopi:ws-collapsed", JSON.stringify([...n])); } catch { /* ignore */ }
+    return n;
+  });
   // 이 아키텍처(기능)에 대해 질문(#746) — 우측 챗에 arch 세션 열고(focus) 챗 패널 펴기.
   const askArch = (feature: string) => { focusChat(`arch:${feature}`, "arch", feature); setChatOpen(true); try { localStorage.setItem("nunopi:ws-chat-open", "1"); } catch { /* ignore */ } };
   // 카드→좌표 삽입(#746) — 챗 패널이 열려 있으면 이 기능의 arch 세션으로 전환 + 지칭 문구를 입력창에.
@@ -360,7 +368,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   }
 
   // 문서 탭 열기/닫기(#693) — 브라우저서 클릭해 열림(+ 버튼 없음).
-  function openDoc(id: string) { setDocTabs((prev) => (prev.includes(id) ? prev : [...prev, id])); setActiveDoc(id); }
+  function openDoc(id: string) { setDocTabs((prev) => (prev.includes(id) ? prev : [...prev, id])); setActiveDoc(id); ensureExpanded("doc"); }
   function closeDocTab(id: string) {
     setDocTabs((prev) => prev.filter((x) => x !== id));
     setActiveDoc((cur) => { if (cur !== id) return cur; const rest = docTabs.filter((x) => x !== id); return rest.length ? rest[rest.length - 1] : null; });
@@ -378,6 +386,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     setCodeTabs((prev) => (prev.some((x) => codeTabKey(x) === key) ? prev : [...prev, tb])); // 있으면 그대로(활성만 바꿈), 없으면 추가
     setActiveCode(key);
     focusForTab(tb);
+    ensureExpanded("code");
   }
   function activateCode(key: string) {
     setActiveCode(key);
@@ -521,7 +530,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             <>
               {leftFill !== "analyze" && <div onMouseDown={startDrag("analyzeH", analyzeH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />}
               <div style={leftFill === "analyze" ? undefined : { height: analyzeH }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "analyze" ? "min-h-0 flex-1" : "shrink-0"}`}>
-                <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => setFlowFeature(f)} />
+                <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => { setFlowFeature(f); ensureExpanded("flow"); }} />
               </div>
             </>
           )}
