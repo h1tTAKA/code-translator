@@ -14,6 +14,7 @@ const { createDaemonClient } = require("./daemon-client.cjs");
 const { removeRepoHooks } = require("./agent-hooks.cjs");
 const { getProviderUsage } = require("./provider-usage.cjs");
 const { startWatch, stopWatch, stopAll: stopAllWatchers } = require("./repo-watcher.cjs");
+const githubBridge = require("./github-bridge.cjs"); // GitHub 패널(#809/#810) gh CLI 브릿지
 const { join } = require("node:path");
 const net = require("node:net");
 
@@ -73,7 +74,7 @@ function safeResolve(fn) {
 
 // 유저가 설정 UI에서 지정한 런타임 CLI 경로 — userData/runtime-paths.json 영속.
 // 부팅 시 saved > env(NUNOPI_*_COMMAND) > resolver 우선순위로 반영("재시작 후 적용").
-const RUNTIME_PATH_KEYS = ["claudeCode", "codex", "opencode"];
+const RUNTIME_PATH_KEYS = ["claudeCode", "codex", "opencode", "gh"]; // gh=GitHub CLI(#810), 설정서 경로 지정 가능(없으면 PATH의 gh)
 function runtimePathsFile() {
   return join(app.getPath("userData"), "runtime-paths.json");
 }
@@ -279,6 +280,9 @@ ipcMain.handle("mode:isOpen", (_e, kind) => openModes.has(kind));
 ipcMain.handle("mode:list", () => [...openModes.keys()]);
 ipcMain.handle("runtime-paths:get", () => loadSavedRuntimePaths());
 ipcMain.handle("runtime-paths:set", (_e, paths) => ({ ok: true, saved: saveRuntimePaths(paths) }));
+// GitHub 패널(#810) — gh 경로는 설정값 우선, 없으면 PATH의 gh. IPC로 인증 상태 진단(서브3~5가 데이터 IPC 추가).
+const ghExe = () => loadSavedRuntimePaths().gh || "gh";
+ipcMain.handle("github:auth", (_e, { cwd }) => githubBridge.authDiagnose({ gh: ghExe(), cwd }));
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());
