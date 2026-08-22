@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     editItem: (cwd, kind, number, title, body) => ipcRenderer.invoke("github:edit-item", { cwd, kind, number, title, body }),  // #822 제목·본문
     setState: (cwd, kind, number, action) => ipcRenderer.invoke("github:set-state", { cwd, kind, number, action }),
     merge: (cwd, number, method) => ipcRenderer.invoke("github:merge", { cwd, number, method }),  // #822 PR 머지(method=merge|squash|rebase, --delete-branch)
+    setToken: (token) => ipcRenderer.invoke("github:set-token", { token }),  // #826 PAT 폴백 저장(safeStorage)
+    tokenStatus: () => ipcRenderer.invoke("github:token-status"),  // #826 토큰 존재 여부(값 비노출)
+    clearToken: () => ipcRenderer.invoke("github:clear-token"),  // #826 토큰 삭제
   },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {

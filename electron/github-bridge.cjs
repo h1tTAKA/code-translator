@@ -16,12 +16,13 @@ function classifyGhError(e) {
   return { kind: "error", detail: line.slice(0, 300) };
 }
 
-// gh 원시 실행. cwd=레포 디렉터리, args=배열(no-shell). 성공 { ok, stdout } | 실패 { ok:false, kind, detail }.
-async function ghRun({ gh, cwd, args, timeout = 15000 }) {
+// gh 원시 실행. cwd=레포 디렉터리, args=배열(no-shell). env=주입 환경(토큰 폴백 GH_TOKEN, #826). 없으면 process.env.
+// 성공 { ok, stdout } | 실패 { ok:false, kind, detail }.
+async function ghRun({ gh, cwd, args, timeout = 15000, env }) {
   // cwd 없음/비디렉터리면 execFile이 ENOENT를 던져 gh 미설치로 오분류됨 → 먼저 걸러 error로.
   if (cwd && (!existsSync(cwd) || !statSync(cwd).isDirectory())) return { ok: false, kind: "error", detail: "작업 디렉터리를 찾을 수 없음" };
   try {
-    const { stdout } = await pexecFile(gh || "gh", args, { cwd, timeout, maxBuffer: 10_000_000 });
+    const { stdout } = await pexecFile(gh || "gh", args, { cwd, timeout, maxBuffer: 10_000_000, env: env || process.env });
     return { ok: true, stdout };
   } catch (e) {
     return { ok: false, ...classifyGhError(e) };
@@ -29,16 +30,17 @@ async function ghRun({ gh, cwd, args, timeout = 15000 }) {
 }
 
 // gh --json 실행 후 파싱. 성공 { ok, data } | 실패 { ok:false, kind, detail }. (호출부가 args에 --json,필드 포함)
-async function ghJson({ gh, cwd, args }) {
-  const r = await ghRun({ gh, cwd, args });
+async function ghJson({ gh, cwd, args, env }) {
+  const r = await ghRun({ gh, cwd, args, env });
   if (!r.ok) return r;
   try { return { ok: true, data: JSON.parse(r.stdout || "null") }; }
   catch { return { ok: false, kind: "error", detail: "gh --json 출력 파싱 실패" }; }
 }
 
 // 인증 진단 — { state: "ok"|"not-installed"|"not-authed"|"rate-limited"|"error", detail? }.
-async function authDiagnose({ gh, cwd }) {
-  const r = await ghRun({ gh, cwd, args: ["auth", "status"], timeout: 8000 });
+// env에 GH_TOKEN 주입되면(#826) gh auth status가 그 토큰으로 exit 0 → ok.
+async function authDiagnose({ gh, cwd, env }) {
+  const r = await ghRun({ gh, cwd, args: ["auth", "status"], timeout: 8000, env });
   if (r.ok) return { state: "ok" };
   return { state: r.kind, detail: r.detail };
 }
