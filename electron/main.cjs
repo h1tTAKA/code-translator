@@ -1,7 +1,7 @@
 // 일렉트론 셸 — nunopi(Next 앱)를 데스크톱 창으로 감싼다.
 // dev: ELECTRON_START_URL(예: http://localhost:3000) 로드(next dev 병행, HMR).
 // prod: .next/standalone/server.js를 동적 포트로 spawn 후 그 localhost 로드.
-const { app, BrowserWindow, shell, ipcMain, Notification, dialog } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, Notification, dialog, clipboard } = require("electron");
 const { readFileSync, writeFileSync, mkdirSync, existsSync } = require("node:fs");
 const {
   startSnaServer,
@@ -248,6 +248,16 @@ async function boot() {
 
 // 설정 UI(renderer) ↔ main IPC — 런타임 CLI 경로 저장/조회 + 재시작.
 ipcMain.handle("window:isFullscreen", () => win?.isFullScreen() ?? false); // 초기 전체화면 상태(#779)
+// 클립보드 이미지 → 임시 PNG 저장(#799) — 터미널 Cmd+V 이미지 붙여넣기. 경로를 렌더러가 터미널에 주입.
+ipcMain.handle("clipboard:save-image", () => {
+  try {
+    const img = clipboard.readImage();
+    if (img.isEmpty()) return { ok: false };
+    const p = join(app.getPath("temp"), `nunopi-paste-${Date.now()}.png`);
+    writeFileSync(p, img.toPNG());
+    return { ok: true, path: p };
+  } catch (e) { return { ok: false, error: String(e?.message || e) }; }
+});
 // 모드 전용 창 열기(#789) — 유효 kind + 아직 어디에도 안 떠 있을 때만. 창 닫히면 자동 해제.
 ipcMain.handle("mode-window:open", (_e, kind) => {
   if (kind !== "ask" && kind !== "code" && kind !== "text" && kind !== "memorize") return { ok: false, reason: "invalid" };

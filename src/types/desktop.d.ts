@@ -8,6 +8,8 @@ interface NunopiDesktopApi {
   notify(payload: { title: string; body?: string }): Promise<{ ok: boolean; reason?: string }>;
   // 레포 폴더 선택(OS 네이티브 창). 취소 시 { canceled: true }.
   pickRepoFolder(): Promise<{ canceled: boolean; path?: string }>;
+  // 클립보드 이미지를 임시 PNG로 저장하고 경로 반환(#799) — 터미널 Cmd+V 이미지 붙여넣기. 이미지 없으면 ok:false.
+  saveClipboardImage?(): Promise<{ ok: boolean; path?: string; error?: string }>;
   // 학습 모드를 별도 창으로 열기(#789) — 멀티모니터. ok:false(reason:"exists")면 이미 떠 있음.
   openModeWindow?(kind: "ask" | "code" | "text" | "memorize"): Promise<{ ok: boolean; reason?: string }>;
   // 탭·창 통합 모드 중복 레지스트리(#789). 탭 점유/해제/조회 + 변경 구독(해제 함수 반환).

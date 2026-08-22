@@ -20,6 +20,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
     let offData: (() => void) | null = null;
     let offExit: (() => void) | null = null;
     let ro: ResizeObserver | null = null;
+    let onPaste: ((ev: ClipboardEvent) => void | Promise<void>) | undefined;
 
     (async () => {
       const [{ Terminal: XTerm }, { FitAddon }, webgl] = await Promise.all([
@@ -50,6 +51,23 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
         return true;
       });
 
+      // Cmd+V 이미지 붙여넣기(#799) — 클립보드에 이미지가 있으면 임시 PNG로 저장 후 그 경로를 터미널에
+      // 주입(에이전트 CLI가 파일 경로로 첨부 인식). 텍스트 붙여넣기는 가로채지 않고 xterm 기본 처리.
+      // capture 단계 — xterm textarea 핸들러보다 먼저 이미지만 preventDefault.
+      onPaste = async (ev: ClipboardEvent) => {
+        const items = ev.clipboardData?.items;
+        if (!items || !Array.from(items).some((it) => it.type.startsWith("image/"))) return; // 텍스트는 통과
+        ev.preventDefault();
+        ev.stopPropagation();
+        try {
+          const r = await nd.saveClipboardImage?.();
+          // bracketed paste(ESC[200~ … ESC[201~)로 경로를 "붙여넣기"로 전달 → Claude Code 등이 이미지
+          // 파일 경로로 인식해 [Image #N]으로 표시(생 키입력이면 경로 텍스트 그대로 남음).
+          if (r?.ok && r.path && term) nd.terminal.input({ id, data: `\x1b[200~${r.path}\x1b[201~` });
+        } catch { /* ignore */ }
+      };
+      host.addEventListener("paste", onPaste, true);
+
       // 한 프레임 미뤄 host 레이아웃이 확정된 뒤 fit → 정확한 cols 확보 후 재생.
       // open 직후 fit은 tab mount 시점 host 폭이 0으로 측정돼 극소 cols가 잡히고,
       // 그 폭으로 재생된 scrollback 줄바꿈이 굳어 위쪽이 세로로 깨진다(#682). live는 이후 resize로 정상.
@@ -77,7 +95,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
       });
     })();
 
-    return () => { disposed = true; offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
+    return () => { disposed = true; if (onPaste) host.removeEventListener("paste", onPaste, true); offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
   }, [id, cwd]);
 
   return <div ref={hostRef} className="h-full w-full overflow-hidden bg-white p-1.5 dark:bg-[#0b0c12]" />;
