@@ -2,9 +2,10 @@
 type GhResult<T> = { ok: true; data: T } | { ok: false; kind: string; detail?: string };
 interface GhLabel { name: string; color: string }
 interface GhActor { login: string; name?: string }
-interface GhIssue { number: number; title: string; state: string; labels: GhLabel[]; author: GhActor; updatedAt: string }
+interface GhIssue { number: number; title: string; state: string; labels: GhLabel[]; author: GhActor; createdAt: string; updatedAt: string }
 interface GhComment { author: GhActor; body: string; createdAt: string }
-interface GhIssueDetail extends GhIssue { body: string; comments: GhComment[]; url: string }
+interface GhMilestone { title: string }
+interface GhIssueDetail extends GhIssue { assignees: GhActor[]; milestone: GhMilestone | null; body: string; comments: GhComment[]; url: string }
 
 // 일렉트론 preload가 노출하는 데스크톱 API(웹에선 undefined).
 interface NunopiDesktopApi {

@@ -286,12 +286,12 @@ ipcMain.handle("github:auth", (_e, { cwd }) => githubBridge.authDiagnose({ gh: g
 // 이슈 목록·상세(#813) — gh issue list/view --json. state=open|closed|all(기본 open).
 ipcMain.handle("github:issue-list", (_e, { cwd, state }) => {
   const st = state === "closed" ? "closed" : state === "all" ? "all" : "open";
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "list", "--json", "number,title,state,labels,author,updatedAt", "--state", st, "--limit", "50"] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "list", "--json", "number,title,state,labels,author,createdAt,updatedAt", "--state", st, "--limit", "50"] });
 });
 ipcMain.handle("github:issue-view", (_e, { cwd, number }) => {
   const n = Number(number);
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid issue number" }; // 숫자만(플래그 오인 방지)
-  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "view", String(n), "--json", "number,title,state,labels,author,body,comments,url"] });
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "view", String(n), "--json", "number,title,state,labels,author,assignees,milestone,body,comments,createdAt,url"] });
 });
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
