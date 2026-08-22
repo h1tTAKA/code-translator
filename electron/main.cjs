@@ -331,6 +331,18 @@ ipcMain.handle("github:add-comment", (_e, { cwd, kind, number, body }) => {
   const sub = kind === "pr" ? "pr" : "issue";
   return githubBridge.ghRun({ gh: ghExe(), cwd, args: [sub, "comment", String(n), "--body", body] }); // no-shell, body는 인자(개행·특수문자 안전)
 });
+// 코멘트 수정/삭제(#820) — issue·PR 대화 코멘트는 공통 issues/comments 엔드포인트. commentId=url의 issuecomment id.
+ipcMain.handle("github:edit-comment", (_e, { cwd, commentId, body }) => {
+  const id = Number(commentId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
+  if (typeof body !== "string" || !body.trim()) return { ok: false, kind: "error", detail: "empty body" };
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "PATCH", `repos/{owner}/{repo}/issues/comments/${id}`, "-f", `body=${body}`] });
+});
+ipcMain.handle("github:delete-comment", (_e, { cwd, commentId }) => {
+  const id = Number(commentId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid comment id" };
+  return githubBridge.ghRun({ gh: ghExe(), cwd, args: ["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/comments/${id}`] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());
