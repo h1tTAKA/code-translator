@@ -361,11 +361,15 @@ async function pushScreenState(id) {
   if (!cwd || !appBase) return;
   const proc = procById.get(id);
   const gone = proc !== undefined && isShellProc(proc);         // 포그라운드가 셸 = 에이전트 종료
+  if (gone) agentSticky.delete(id);                             // 종료 시 신원 해제(#805)
   const parsed = gone ? null : parseAgentScreen(liveBuffers.get(id)); // {agent,state}|null
   const procAgent = gone ? null : agentFromProcess(proc);       // 프로세스명으로 "존재" 판정(버퍼 미판정 대비)
   let agent, state;
-  if (parsed) { agent = parsed.agent; state = mapScreenState(parsed.state); } // 버퍼가 상태 잡음(working/waiting/유휴→done)
-  else if (procAgent) { agent = procAgent; state = "done"; }    // 프로세스는 에이전트인데 버퍼 미판정 → 존재(유휴/체크), 스피너 아님
+  if (parsed) { agent = parsed.agent; state = mapScreenState(parsed.state); agentSticky.set(id, agent); } // 버퍼가 상태 잡음(working/waiting/유휴→done)
+  else if (procAgent) { agent = procAgent; state = "done"; agentSticky.set(id, agent); }    // 프로세스는 에이전트인데 버퍼 미판정 → 존재
+  // 배너 스크롤아웃 등으로 버퍼 미판정이어도, 셸이 아니고 이미 신원이 있으면 유지(#805) — 탭(agentForId)과 동일 sticky.
+  // hermes처럼 프로세스명이 python(래퍼 exec)이라 폴백도 안 되는 에이전트가 카드서 사라지던 문제.
+  else if (!gone && agentSticky.has(id)) { agent = agentSticky.get(id); state = "done"; }
   else {
     // 에이전트 없음(종료/셸/미인식) — 이전에 보고했으면 스토어에서 제거해 카드서 사라지게.
     if (lastScreen.has(id)) { lastScreen.delete(id); await postStatus({ cwd, sessionId: id, clear: true }); }
@@ -440,6 +444,7 @@ ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffe
 // 세션 신원 고정(#803) — 한번 에이전트로 잡히면 셸 복귀(종료)까지 그 신원 유지.
 // codex는 작업 중 배너가 스크롤아웃되면 버퍼 판정이 흔들려(claude 공유 스피너로 오판정) 탭이 깜빡일 수 있어,
 // 최초 판정을 셸 복귀까지 붙들어 안정화. 셸이면 해제해 다음 에이전트를 새로 잡음.
+// 탭(agentForId)과 카드(pushScreenState) 두 표면이 공유(#805) — 신원이 표면마다 갈리지 않게.
 const agentSticky = new Map(); // id → agent id
 function agentForId(id, proc) {
   if (proc !== undefined && isShellProc(proc)) { agentSticky.delete(id); return null; }
