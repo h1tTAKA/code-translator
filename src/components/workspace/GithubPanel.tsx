@@ -3,8 +3,10 @@
 // 이번 서브는 골격: gh 연결 상태(서브1 #810 authDiagnose) 진단 + owner/repo 표시 + 안내.
 // 실제 이슈·PR·CI는 서브3~5(#812/#813/#814)가 이 자리에 채운다.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconBrandGithub, IconLoader2, IconRefresh, IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
+import { IconBrandGithub, IconLoader2, IconRefresh, IconAlertTriangle } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import IssueList from "@/components/workspace/github/IssueList";
+import IssueDetail from "@/components/workspace/github/IssueDetail";
 
 type AuthState = "ok" | "not-installed" | "not-authed" | "rate-limited" | "error";
 type Probe = { loading: boolean; state?: AuthState; detail?: string };
@@ -13,6 +15,8 @@ export default function GithubPanel({ root }: { root: string }) {
   const t = useT();
   const [probe, setProbe] = useState<Probe>({ loading: true });
   const [owner, setOwner] = useState<string | null>(null);
+  const [openIssue, setOpenIssue] = useState<number | null>(null); // 이슈 상세 열림(#813). null=목록.
+  const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
   const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null;
 
   const mountedRef = useRef(true);
@@ -54,27 +58,26 @@ export default function GithubPanel({ root }: { root: string }) {
         <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-700 dark:text-zinc-200">
           {owner ? `${owner}/${repo ?? ""}` : (repo ?? "GitHub")}
         </span>
-        <button type="button" onClick={run} disabled={probe.loading}
+        <button type="button" onClick={() => { setReload((n) => n + 1); void run(); }} disabled={probe.loading}
           className="ml-auto shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 disabled:opacity-40 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
           title={t("github.refresh")} aria-label={t("github.refresh")}>
           <IconRefresh size={13} stroke={2} className={probe.loading ? "animate-spin" : ""} aria-hidden />
         </button>
       </div>
 
-      {/* 본문 — 인증 상태별 안내(서브3~5가 ok일 때 콘텐츠로 대체) */}
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        {probe.loading ? (
-          <div className="flex items-center gap-2 text-[12px] text-zinc-400 dark:text-zinc-500">
-            <IconLoader2 size={14} className="animate-spin" aria-hidden /> {t("github.checking")}
-          </div>
-        ) : probe.state === "ok" ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
-              <IconCircleCheck size={14} stroke={2} aria-hidden /> {t("github.connected")}
-            </div>
-            <p className="text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">{t("github.comingSoon")}</p>
-          </div>
-        ) : (
+      {/* 본문 — 연결(ok)이면 이슈 목록/상세(#813), 아니면 상태별 안내 */}
+      {probe.loading ? (
+        <div className="flex items-center gap-2 p-4 text-[12px] text-zinc-400 dark:text-zinc-500">
+          <IconLoader2 size={14} className="animate-spin" aria-hidden /> {t("github.checking")}
+        </div>
+      ) : probe.state === "ok" ? (
+        <div className="min-h-0 flex-1">
+          {openIssue == null
+            ? <IssueList root={root} reloadKey={reload} onOpen={setOpenIssue} />
+            : <IssueDetail root={root} number={openIssue} onBack={() => setOpenIssue(null)} />}
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-auto p-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-start gap-2">
               <IconAlertTriangle size={15} stroke={2} className="mt-0.5 shrink-0 text-amber-500" aria-hidden />
@@ -93,8 +96,8 @@ export default function GithubPanel({ root }: { root: string }) {
               {t("github.retry")}
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
