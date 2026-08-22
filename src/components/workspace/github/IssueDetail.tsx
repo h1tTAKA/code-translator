@@ -1,7 +1,7 @@
 "use client";
 // GitHub 패널 이슈 상세(#813) — gh issue view(브릿지 #810) → 본문·코멘트(Markdown 재사용).
 import { useEffect, useRef, useState } from "react";
-import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil } from "@tabler/icons-react";
+import { IconLoader2, IconAlertTriangle, IconArrowLeft, IconExternalLink, IconPencil, IconCircleCheck, IconCircleDot } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import Markdown from "@/components/learning/Markdown";
@@ -116,8 +116,8 @@ export default function IssueDetail({ root, number, reloadKey, onBack }: { root:
             {/* 상태 액션(#822) — 닫기/다시 열기 */}
             <div className="flex flex-wrap items-center gap-1.5">
               {d.state.toUpperCase() === "OPEN"
-                ? <button type="button" onClick={() => void confirmState("close", t("github.close"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.close")}</button>
-                : <button type="button" onClick={() => void confirmState("reopen", t("github.reopen"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.reopen")}</button>}
+                ? <button type="button" onClick={() => void confirmState("close", t("github.close"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconCircleCheck size={13} stroke={2} className="text-purple-500" aria-hidden />}{t("github.close")}</button>
+                : <button type="button" onClick={() => void confirmState("reopen", t("github.reopen"))} disabled={actBusy} className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">{actBusy ? <IconLoader2 size={13} className="animate-spin" aria-hidden /> : <IconCircleDot size={13} stroke={2} className="text-emerald-500" aria-hidden />}{t("github.reopen")}</button>}
               {actErr && <span className="break-words text-[10px] text-rose-500">{actErr}</span>}
             </div>
             {d.comments?.length > 0 && (
