@@ -21,6 +21,11 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
   const [owner, setOwner] = useState<string | null>(null);
   const [open, setOpen] = useState<OpenItem | null>(null); // 상세 열림. null=반반 목록(#824).
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
+  // 토큰(PAT) 폴백(#826) — 미인증 시 토큰 연결. hasToken=저장됨(값 비노출), tokenVal=입력중, tokenBusy=저장중.
+  const [hasToken, setHasToken] = useState(false);
+  const [tokenVal, setTokenVal] = useState("");
+  const [tokenBusy, setTokenBusy] = useState(false);
+  const [tokenErr, setTokenErr] = useState<string | null>(null);
   const [topRatio, setTopRatio] = useState(0.5); // 이슈:PR 세로 비율(#824) — 가운데 선 드래그로 조절.
   const splitRef = useRef<HTMLDivElement>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null); // 진행 중 드래그 정리 함수(언마운트 시 호출)
@@ -62,6 +67,32 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t 제외: 로케일 전환 시 gh 재진단 유발 방지(에러 문자열만 영향, JSX 라벨은 live t로 리렌더)
   }, [root]);
+
+  // 토큰 존재 여부 로드(#826) — 마운트 시 1회.
+  useEffect(() => {
+    let alive = true;
+    void window.nunopiDesktop?.github?.tokenStatus?.().then((r) => { if (alive) setHasToken(!!r?.hasToken); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // 토큰 저장 → 재진단(#826). gh가 GH_TOKEN으로 인증되면 probe가 ok로.
+  const saveToken = useCallback(async () => {
+    const tok = tokenVal.trim();
+    if (!tok || tokenBusy) return;
+    setTokenBusy(true); setTokenErr(null);
+    try {
+      const r = await window.nunopiDesktop?.github?.setToken?.(tok);
+      if (!mountedRef.current) return;
+      if (r?.ok) { setHasToken(true); setTokenVal(""); void run(); }
+      else setTokenErr(r?.detail || t("github.error"));
+    } catch (e) { if (mountedRef.current) setTokenErr(String((e as Error)?.message || e)); }
+    finally { if (mountedRef.current) setTokenBusy(false); }
+  }, [tokenVal, tokenBusy, run, t]);
+  // 토큰 해제 → 재진단(#826).
+  const clearToken = useCallback(async () => {
+    setTokenBusy(true); setTokenErr(null);
+    try { await window.nunopiDesktop?.github?.clearToken?.(); if (mountedRef.current) { setHasToken(false); void run(); } }
+    finally { if (mountedRef.current) setTokenBusy(false); }
+  }, [run]);
 
   // owner는 git-remote route(#777) 재사용, gh 인증은 서브1 브릿지. root 바뀌면 재진단.
   useEffect(() => {
@@ -149,6 +180,36 @@ export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiD
               className="self-start rounded-md border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
               {t("github.retry")}
             </button>
+            {/* 토큰(PAT) 폴백(#826) — gh 미설치가 아니면(설치는 됐으나 미인증/제한) 토큰으로 연결. */}
+            {probe.state !== "not-installed" && (
+              <div className="mt-1 flex flex-col gap-1.5 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
+                {hasToken ? (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-600 dark:text-emerald-400">{t("github.tokenConnected")}</span>
+                    <button type="button" onClick={() => void clearToken()} disabled={tokenBusy}
+                      className="rounded px-1.5 py-0.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 disabled:opacity-40 dark:hover:bg-zinc-800 dark:hover:text-zinc-200">
+                      {t("github.tokenDisconnect")}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[11px] font-medium text-zinc-600 dark:text-zinc-300">{t("github.tokenConnect")}</p>
+                    <p className="text-[10px] leading-relaxed text-zinc-400 dark:text-zinc-500">{t("github.tokenHelp")}</p>
+                    <div className="flex items-center gap-1.5">
+                      <input type="password" value={tokenVal} onChange={(e) => setTokenVal(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") void saveToken(); }}
+                        placeholder="ghp_…" disabled={tokenBusy} autoComplete="off" spellCheck={false}
+                        className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-700 outline-none focus:border-mustard-500/60 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
+                      <button type="button" onClick={() => void saveToken()} disabled={tokenBusy || !tokenVal.trim()}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md bg-zinc-800 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-white">
+                        {tokenBusy && <IconLoader2 size={11} className="animate-spin" aria-hidden />}{t("github.tokenSave")}
+                      </button>
+                    </div>
+                    {tokenErr && <p className="break-words text-[10px] text-rose-500">{tokenErr}</p>}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
