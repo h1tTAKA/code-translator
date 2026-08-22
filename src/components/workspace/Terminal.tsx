@@ -20,6 +20,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
     let offData: (() => void) | null = null;
     let offExit: (() => void) | null = null;
     let ro: ResizeObserver | null = null;
+    let onPaste: ((ev: ClipboardEvent) => void | Promise<void>) | undefined;
 
     (async () => {
       const [{ Terminal: XTerm }, { FitAddon }, webgl] = await Promise.all([
@@ -37,6 +38,35 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
       term.loadAddon(fit);
       term.open(host);
       try { term.loadAddon(new webgl.WebglAddon()); } catch { /* WebGL 미지원 → 기본 렌더 폴백 */ }
+
+      // Shift+Enter(#799) — CSI-u(kitty/fixterms)로 인코딩된 "Shift+Enter" 키 이벤트를 전송.
+      // \x1b[13;2u = Enter(13) + Shift 수정자(2). 에이전트 CLI(Claude Code 등)가 이를 진짜 개행 키로
+      // 파싱해 멀티라인·백스페이스 정상(생 \n/ESC+CR은 리터럴로 오처리돼 1줄만/백스페이스 깨짐). false로 CR 제출 차단.
+      term.attachCustomKeyEventHandler((e) => {
+        if (e.type === "keydown" && e.key === "Enter" && e.shiftKey) {
+          e.preventDefault(); // 브라우저가 Enter를 textarea에 넣어 xterm이 CR을 또 보내는 것 차단(개행 후 CR 제출로 되돌아가던 원인)
+          nd.terminal.input({ id, data: "\x1b[13;2u" });
+          return false;
+        }
+        return true;
+      });
+
+      // Cmd+V 이미지 붙여넣기(#799) — 클립보드에 이미지가 있으면 임시 PNG로 저장 후 그 경로를 터미널에
+      // 주입(에이전트 CLI가 파일 경로로 첨부 인식). 텍스트 붙여넣기는 가로채지 않고 xterm 기본 처리.
+      // capture 단계 — xterm textarea 핸들러보다 먼저 이미지만 preventDefault.
+      onPaste = async (ev: ClipboardEvent) => {
+        const items = ev.clipboardData?.items;
+        if (!items || !Array.from(items).some((it) => it.type.startsWith("image/"))) return; // 텍스트는 통과
+        ev.preventDefault();
+        ev.stopPropagation();
+        try {
+          const r = await nd.saveClipboardImage?.();
+          // bracketed paste(ESC[200~ … ESC[201~)로 경로를 "붙여넣기"로 전달 → Claude Code 등이 이미지
+          // 파일 경로로 인식해 [Image #N]으로 표시(생 키입력이면 경로 텍스트 그대로 남음).
+          if (r?.ok && r.path && term) nd.terminal.input({ id, data: `\x1b[200~${r.path}\x1b[201~` });
+        } catch { /* ignore */ }
+      };
+      host.addEventListener("paste", onPaste, true);
 
       // 한 프레임 미뤄 host 레이아웃이 확정된 뒤 fit → 정확한 cols 확보 후 재생.
       // open 직후 fit은 tab mount 시점 host 폭이 0으로 측정돼 극소 cols가 잡히고,
@@ -65,7 +95,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
       });
     })();
 
-    return () => { disposed = true; offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
+    return () => { disposed = true; if (onPaste) host.removeEventListener("paste", onPaste, true); offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
   }, [id, cwd]);
 
   return <div ref={hostRef} className="h-full w-full overflow-hidden bg-white p-1.5 dark:bg-[#0b0c12]" />;
