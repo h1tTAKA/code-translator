@@ -19,7 +19,7 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof path !== "string" || !path.trim()) return Response.json({ error: "path required" }, { status: 400 });
   if (!existsSync(path) || !statSync(path).isDirectory()) return Response.json({ error: "not a directory" }, { status: 400 });
   try {
-    const opts = { cwd: path, maxBuffer: 10_000_000, timeout: 8000 } as const;
+    const opts = { cwd: path, maxBuffer: 64_000_000, timeout: 15000 } as const; // 무한도 히스토리(#828) — 대형 레포 출력·시간 여유(≈16만 커밋)
     const { stdout } = await pexecFile("git", ARGS, opts);
     // 현재 브랜치(detached면 "HEAD"). 실패해도 로그는 반환.
     let branch = "";
