@@ -149,7 +149,7 @@ const ko: Dict = {
   "github.annotations": "주석",
   "github.fullDetails": "전체 세부정보 보기",
   "github.jobs": "작업",
-  "github.commentPlaceholder": "대화 시작…",
+  "github.commentPlaceholder": "코멘트 작성…",
   "github.send": "보내기",
   "github.sending": "보내는 중…",
   "workspace.terminalClose": "터미널 닫기",
