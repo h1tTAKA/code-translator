@@ -266,6 +266,9 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     try { localStorage.setItem("nunopi:ws-collapsed", JSON.stringify([...n])); } catch { /* ignore */ }
     return n;
   });
+  // 활성 탭이 탭바 오버플로로 스크롤 밖에 있으면 안 보임(#801) — 활성 탭 DOM에 콜백 ref 달아 스크롤 인투 뷰.
+  // 활성 탭 바뀔 때만 ref 재부착(콜백 identity 안정) → 그때 nearest로 최소 스크롤. 이미 보이면 no-op.
+  const scrollTabIntoView = useCallback((el: HTMLElement | null) => { el?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, []);
   // 이 아키텍처(기능)에 대해 질문(#746) — 우측 챗에 arch 세션 열고(focus) 챗 패널 펴기.
   const askArch = (feature: string) => { focusChat(`arch:${feature}`, "arch", feature); setChatOpen(true); try { localStorage.setItem("nunopi:ws-chat-open", "1"); } catch { /* ignore */ } };
   // 카드→좌표 삽입(#746) — 챗 패널이 열려 있으면 이 기능의 arch 세션으로 전환 + 지칭 문구를 입력창에.
@@ -418,7 +421,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             const on = key === activeCode;
             const name = tb.file.split("/").pop() ?? tb.file;
             return (
-              <div key={key} onClick={() => activateCode(key)}
+              <div key={key} ref={on ? scrollTabIntoView : undefined} onClick={() => activateCode(key)}
                 className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}>
                 {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-mustard-500" aria-hidden />}
                 {tb.kind === "diff"
