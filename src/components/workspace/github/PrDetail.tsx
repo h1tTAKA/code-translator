@@ -20,7 +20,7 @@ function stateLabel(d: GhPrDetail, t: (k: string) => string): { text: string; cl
   return { text: d.state, cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" };
 }
 
-export default function PrDetail({ root, number, onBack }: { root: string; number: number; onBack: () => void }) {
+export default function PrDetail({ root, number, reloadKey, onBack }: { root: string; number: number; reloadKey: number; onBack: () => void }) {
   const t = useT();
   const [load, setLoad] = useState<Load>({ loading: true });
   const mountedRef = useRef(true);
@@ -33,14 +33,14 @@ export default function PrDetail({ root, number, onBack }: { root: string; numbe
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 미지원(web)/로딩 표시(number 변경마다 재조회)
     if (!gh?.prView) { setLoad({ loading: false, error: t("github.desktopOnly") }); return; }
     const myId = ++reqIdRef.current;
-    setLoad({ loading: true });
+    setLoad((p) => ({ loading: true, data: p.data })); // 데이터 유지(새로고침·코멘트 후 화면 안 비게)
     (async () => {
       const r = await gh.prView(root, number);
       if (!mountedRef.current || myId !== reqIdRef.current) return;
       if (r.ok) setLoad({ loading: false, data: r.data });
       else setLoad({ loading: false, error: r.detail || t("github.error") });
     })();
-  }, [root, number, t, cmtNonce]);
+  }, [root, number, t, cmtNonce, reloadKey]);
 
   const d = load.data;
   const sl = d ? stateLabel(d, t) : null;
@@ -53,9 +53,9 @@ export default function PrDetail({ root, number, onBack }: { root: string; numbe
         <span className="ml-1 shrink-0 font-mono text-[10px] text-zinc-400 dark:text-zinc-500">#{number}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {load.loading ? (
+        {load.loading && !d ? (
           <div className="flex items-center gap-2 text-[12px] text-zinc-400 dark:text-zinc-500"><IconLoader2 size={14} className="animate-spin" aria-hidden /> …</div>
-        ) : load.error || !d || !sl ? (
+        ) : !d || !sl ? (
           <div className="flex items-start gap-2 text-[12px] text-zinc-500 dark:text-zinc-400"><IconAlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" aria-hidden /><span className="break-words">{load.error || t("github.error")}</span></div>
         ) : (
           <div className="flex flex-col gap-3">
