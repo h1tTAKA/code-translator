@@ -1,13 +1,15 @@
 // 에이전트 브랜드 로고 + 프로세스명 식별(#764) — 레포탭 호버 카드에서 "어떤 에이전트가 도는가"를 아이콘으로.
 // 잘 알려진 에이전트는 인라인 브랜드 마크(CSP 안전), 그 외 알려진 에이전트는 브랜드색 모노그램. 셸/미지 프로세스는 에이전트 아님.
 
-export type AgentId = "claude" | "codex" | "gemini" | "aider" | "opencode" | "cursor" | "copilot" | "amp" | "grok" | "other";
+export type AgentId = "claude" | "codex" | "gemini" | "antigravity" | "hermes" | "aider" | "opencode" | "cursor" | "copilot" | "amp" | "grok" | "other";
 
 // 프로세스명 → 에이전트 매칭. foreground 프로세스명(node-pty proc.process)에 대해 검사.
 const MATCH: [AgentId, RegExp][] = [
   ["claude", /claude/i],
   ["codex", /codex/i],
   ["gemini", /gemini/i],
+  ["antigravity", /antigravity/i],
+  ["hermes", /hermes/i],
   ["aider", /aider/i],
   ["opencode", /open-?code/i],
   ["cursor", /cursor/i],
@@ -40,6 +42,8 @@ export const AGENT_META: Record<AgentId, { label: string; color: string }> = {
   claude: { label: "Claude", color: "#D97757" },   // Anthropic coral
   codex: { label: "Codex", color: "#10A37F" },     // OpenAI teal
   gemini: { label: "Gemini", color: "#4285F4" },   // Google blue
+  antigravity: { label: "Antigravity", color: "#1A73E8" }, // Google Antigravity blue
+  hermes: { label: "Hermes", color: "#C026D3" },   // Nous Hermes magenta
   aider: { label: "Aider", color: "#14B8A6" },
   opencode: { label: "OpenCode", color: "#F59E0B" },
   cursor: { label: "Cursor", color: "#6B7280" },

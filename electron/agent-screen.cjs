@@ -70,7 +70,7 @@ const CODEX_WORKING = /•working\(|working\([^)]*esctointerrupt|esctointerrupt/
 const CODEX_CHROME = /openaicodex|codex(session|resume)/i;
 
 // 포그라운드 프로세스명 → 에이전트 id | null. "존재" 판정용(버퍼가 상태를 못 잡아도 에이전트가 떠 있음을 안다).
-const PROC_MATCH = [["claude", /claude/i], ["codex", /codex/i], ["gemini", /gemini/i], ["aider", /aider/i], ["opencode", /open-?code/i], ["cursor", /cursor/i], ["copilot", /copilot/i], ["amp", /^amp$/i], ["grok", /grok/i]];
+const PROC_MATCH = [["claude", /claude/i], ["codex", /codex/i], ["gemini", /gemini/i], ["antigravity", /antigravity/i], ["hermes", /hermes/i], ["aider", /aider/i], ["opencode", /open-?code/i], ["cursor", /cursor/i], ["copilot", /copilot/i], ["amp", /^amp$/i], ["grok", /grok/i]];
 function agentFromProcess(name) {
   const p = String(name || "").trim().toLowerCase().replace(/^-+/, "");
   if (!p) return null;
