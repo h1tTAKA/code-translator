@@ -6,6 +6,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import Markdown from "@/components/learning/Markdown";
 import { relTime } from "@/lib/relTime";
 import CommentComposer from "@/components/workspace/github/CommentComposer";
+import CommentItem from "@/components/workspace/github/CommentItem";
 import GhAvatar from "@/components/workspace/github/GhAvatar";
 
 type Load = { loading: boolean; data?: GhIssueDetail; error?: string };
@@ -73,10 +74,7 @@ export default function IssueDetail({ root, number, onBack }: { root: string; nu
               <div className="mt-1 flex flex-col gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{t("github.comments")} · {d.comments.length}</p>
                 {d.comments.map((c, i) => (
-                  <div key={i} className="rounded-md bg-zinc-50 p-2 dark:bg-zinc-800/40">
-                    <p className="mb-1 flex items-center gap-1.5 text-[10px] text-zinc-400 dark:text-zinc-500"><GhAvatar login={c.author?.login} size={16} />{c.author?.login}{c.createdAt ? ` · ${relTime(c.createdAt)}` : ""}</p>
-                    <Markdown className="text-[12px]">{c.body}</Markdown>
-                  </div>
+                  <CommentItem key={c.url || i} root={root} comment={c} onChanged={() => setCmtNonce((n) => n + 1)} />
                 ))}
               </div>
             )}
