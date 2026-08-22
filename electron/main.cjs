@@ -294,6 +294,17 @@ ipcMain.handle("github:issue-view", (_e, { cwd, number }) => {
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid issue number" }; // 숫자만(플래그 오인 방지)
   return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["issue", "view", String(n), "--json", "number,title,state,labels,author,assignees,milestone,body,comments,createdAt,url"] });
 });
+// PR 목록·상세(#814) — gh pr list/view --json. statusCheckRollup=CI 체크(서브3 재사용).
+ipcMain.handle("github:pr-list", (_e, { cwd, state, limit }) => {
+  const st = state === "closed" ? "closed" : state === "all" ? "all" : "open";
+  const lim = Math.min(Math.max(Number(limit) || 50, 1), 1000);
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["pr", "list", "--json", "number,title,state,isDraft,author,createdAt,updatedAt,statusCheckRollup", "--state", st, "--limit", String(lim)] });
+});
+ipcMain.handle("github:pr-view", (_e, { cwd, number }) => {
+  const n = Number(number);
+  if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid pr number" };
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["pr", "view", String(n), "--json", "number,title,state,isDraft,author,createdAt,assignees,body,comments,statusCheckRollup,mergeStateStatus,url"] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());

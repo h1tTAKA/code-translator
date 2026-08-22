@@ -7,15 +7,19 @@ import { IconBrandGithub, IconLoader2, IconRefresh, IconAlertTriangle } from "@t
 import { useT } from "@/lib/i18n/I18nProvider";
 import IssueList from "@/components/workspace/github/IssueList";
 import IssueDetail from "@/components/workspace/github/IssueDetail";
+import PrList from "@/components/workspace/github/PrList";
+import PrDetail from "@/components/workspace/github/PrDetail";
 
 type AuthState = "ok" | "not-installed" | "not-authed" | "rate-limited" | "error";
 type Probe = { loading: boolean; state?: AuthState; detail?: string };
+type Tab = "issues" | "prs";
 
 export default function GithubPanel({ root }: { root: string }) {
   const t = useT();
   const [probe, setProbe] = useState<Probe>({ loading: true });
   const [owner, setOwner] = useState<string | null>(null);
-  const [openIssue, setOpenIssue] = useState<number | null>(null); // 이슈 상세 열림(#813). null=목록.
+  const [tab, setTab] = useState<Tab>("issues"); // 내부 탭(#814) — 이슈/PR
+  const [openItem, setOpenItem] = useState<number | null>(null); // 상세 열림(현재 탭 기준). null=목록.
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
   const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null;
 
@@ -71,10 +75,23 @@ export default function GithubPanel({ root }: { root: string }) {
           <IconLoader2 size={14} className="animate-spin" aria-hidden /> {t("github.checking")}
         </div>
       ) : probe.state === "ok" ? (
-        <div className="min-h-0 flex-1">
-          {openIssue == null
-            ? <IssueList root={root} reloadKey={reload} onOpen={setOpenIssue} />
-            : <IssueDetail root={root} number={openIssue} onBack={() => setOpenIssue(null)} />}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* 내부 탭(#814) — 이슈/PR. 상세 열려 있으면 탭 숨김(뒤로가기로 목록 복귀). */}
+          {openItem == null && (
+            <div className="flex shrink-0 items-center gap-1 border-b border-zinc-100 px-2 py-1 dark:border-zinc-800/60">
+              {(["issues", "prs"] as Tab[]).map((tb) => (
+                <button key={tb} type="button" onClick={() => setTab(tb)} aria-pressed={tab === tb}
+                  className={`rounded px-2 py-0.5 text-[11px] font-semibold transition ${tab === tb ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
+                  {t(tb === "issues" ? "github.issues" : "github.prs")}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="min-h-0 flex-1">
+            {tab === "issues"
+              ? (openItem == null ? <IssueList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <IssueDetail root={root} number={openItem} onBack={() => setOpenItem(null)} />)
+              : (openItem == null ? <PrList root={root} reloadKey={reload} onOpen={setOpenItem} /> : <PrDetail root={root} number={openItem} onBack={() => setOpenItem(null)} />)}
+          </div>
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-4">

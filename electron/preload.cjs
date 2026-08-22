@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     auth: (cwd) => ipcRenderer.invoke("github:auth", { cwd }),
     issueList: (cwd, state, limit) => ipcRenderer.invoke("github:issue-list", { cwd, state, limit }),  // #813
     issueView: (cwd, number) => ipcRenderer.invoke("github:issue-view", { cwd, number }),
+    prList: (cwd, state, limit) => ipcRenderer.invoke("github:pr-list", { cwd, state, limit }),  // #814
+    prView: (cwd, number) => ipcRenderer.invoke("github:pr-view", { cwd, number }),
   },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {
