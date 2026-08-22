@@ -63,6 +63,7 @@ export interface GitGraphModel { rows: GraphRow[]; laneCount: number; }
 
 // 커밋 배열(최신순) → 레인 배정. 활성 레인에 "다음에 올 커밋 해시"를 담아 내려가며 배치.
 export function assignLanes(commits: GitCommit[]): GitGraphModel {
+  const inSet = new Set(commits.map((c) => c.hash)); // 로드된 커밋 집합 — 윈도우(-n) 밖 부모 판별용(#828)
   const lanes: (string | null)[] = []; // 각 레인이 기다리는 커밋 해시
   const rows: GraphRow[] = [];
   const firstNull = () => { const i = lanes.indexOf(null); return i === -1 ? lanes.length : i; };
@@ -77,11 +78,14 @@ export function assignLanes(commits: GitCommit[]): GitGraphModel {
 
     // 부모 라우팅: 첫 부모는 점 레인이 계속 이어감(부모가 이미 다른 레인에 있어도 "즉시 비우지 않고" 예약 유지 —
     // 수렴은 부모 커밋 행에서 처리). 이래야 서로 다른 브랜치가 같은 레인을 재사용해 겹쳐 그려지지 않는다(#707, Zed식 분리).
+    // 윈도우 밖 부모(-n 한도 초과로 안 실린 커밋)는 레인을 예약하지 않는다 — 영영 안 풀려 "유령 레인"이 되면
+    // laneCount만 부풀고 나머지 브랜치를 오른쪽으로 밀며 댕글링 스텁이 생긴다(#828). 렌더러가 짧은 스텁만 표시.
     const [p0, ...rest] = c.parents;
-    if (p0 !== undefined) lanes[lane] = p0;
-    else lanes[lane] = null; // 루트 커밋(부모 없음) → 레인 종료
-    // 나머지 부모(머지)는 새 레인으로 분기.
+    if (p0 !== undefined && inSet.has(p0)) lanes[lane] = p0;
+    else lanes[lane] = null; // 루트 커밋(부모 없음) 또는 윈도우 밖 첫 부모 → 레인 종료
+    // 나머지 부모(머지)는 새 레인으로 분기(윈도우 안인 것만).
     for (const p of rest) {
+      if (!inSet.has(p)) continue; // 윈도우 밖 머지 부모 → 유령 레인 방지
       if (lanes.indexOf(p) === -1) { const e = firstNull(); lanes[e] = p; }
     }
     // 꼬리 null 정리.
