@@ -8,6 +8,7 @@ import { relTime } from "@/lib/relTime";
 import CommentComposer from "@/components/workspace/github/CommentComposer";
 import CommentItem from "@/components/workspace/github/CommentItem";
 import GhAvatar from "@/components/workspace/github/GhAvatar";
+import ReactionBar from "@/components/workspace/github/ReactionBar";
 
 type Load = { loading: boolean; data?: GhIssueDetail; error?: string };
 
@@ -70,6 +71,8 @@ export default function IssueDetail({ root, number, reloadKey, onBack }: { root:
               </div>
             </div>
             {d.body?.trim() ? <Markdown className="text-[12px]">{d.body}</Markdown> : <p className="text-[12px] italic text-zinc-400 dark:text-zinc-500">—</p>}
+            {/* 본문 리액션(#822) */}
+            <ReactionBar groups={d.reactionGroups} onReact={(c) => void window.nunopiDesktop?.github?.bodyReact?.(root, number, c).then((r) => { if (r?.ok) setCmtNonce((n) => n + 1); })} />
             {d.comments?.length > 0 && (
               <div className="mt-1 flex flex-col gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{t("github.comments")} · {d.comments.length}</p>
