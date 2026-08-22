@@ -9,6 +9,7 @@ import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceChat";
 import GithubPanel from "@/components/workspace/GithubPanel";
+import { useBranchCi } from "@/components/workspace/github/useBranchCi";
 import TerminalPane from "@/components/workspace/TerminalPane";
 import UsageMonitor from "@/components/workspace/UsageMonitor";
 import GitGraph from "@/components/workspace/GitGraph";
@@ -253,6 +254,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const toggleAnalyze = () => { if (analyzeOpen && leftOpenCount === 1) return; setAnalyzeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-analyze-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const pickRightMode = (m: "chat" | "github") => setRightMode(() => { try { localStorage.setItem("nunopi:ws-right-mode", m); } catch { /* ignore */ } return m; }); // 우측 모드 전환(#811)
+  const ciDot = useBranchCi(path); // 현재 브랜치 CI 상태 도트(#812) — GitHub 토글 아이콘 배지
   const toggleLeft = () => setLeftOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-left-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); // 좌측 사이드바 접기/펴기(#758)
   // 중앙 패널 접기/펴기(#758) — 콘텐츠는 유지하고 dock 표시만. 존재하는 패널만 대상.
   const panelExists = (p: PanelId) => p === "terminal" || (p === "code" && hasCode) || (p === "doc" && hasDoc) || (p === "flow" && flowFeature !== null);
@@ -519,8 +521,10 @@ export default function WorkspaceView({ path, active = true, providerId, provide
               <IconMessageCircle size={16} stroke={2} aria-hidden />
             </button>
             <button type="button" onClick={() => pickRightMode("github")} aria-pressed={rightMode === "github"} title="GitHub" aria-label="GitHub"
-              className={`shrink-0 rounded-lg p-1.5 transition ${rightMode === "github" ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
+              className={`relative shrink-0 rounded-lg p-1.5 transition ${rightMode === "github" ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
               <IconBrandGithub size={16} stroke={2} aria-hidden />
+              {/* CI 상태 도트(#812) — 진행(노랑,깜빡)/통과(초록)/실패(빨강). PR 없음·끝남이면 숨김. */}
+              {ciDot && <span aria-hidden className={`absolute right-0.5 top-0.5 h-2 w-2 rounded-full ring-2 ring-white dark:ring-[#0b0c12] ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
             </button>
             <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
           </>
@@ -630,7 +634,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
               {/* 우측 패널 모드(#811) — 질문(Chat) ↔ GitHub 배타 렌더. 토글은 상단 헤더에 있음. */}
               {rightMode === "github" ? (
-                <GithubPanel root={path} />
+                <GithubPanel root={path} ciDot={ciDot} />
               ) : (
                 /* FlyCardProvider(#750) — 세션 카드 목록에서 카드 클릭 시 확대·상세(throwCard). 워크스페이스 카드는 출처이동 없음(빈 sourceIds). */
                 <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={flyNoSources} onGoToSource={() => {}}>

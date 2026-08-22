@@ -1,7 +1,7 @@
 // statusCheckRollup 정규화(#814) — CheckRun/StatusContext 혼재를 {name,state,url}로 통일.
 // 서브3(브랜치 CI)·서브5(PR) 공용. state: success|failure|pending|neutral.
 export type CheckState = "success" | "failure" | "pending" | "neutral";
-export interface Check { name: string; state: CheckState; url?: string }
+export interface Check { name: string; state: CheckState; url?: string; workflow?: string; startedAt?: string; completedAt?: string; description?: string; runId?: string; checkRunId?: string }
 export interface CheckSummary { pass: number; fail: number; pending: number; total: number }
 
 function oneState(c: GhCheckRaw): CheckState {
@@ -22,7 +22,20 @@ function oneState(c: GhCheckRaw): CheckState {
 }
 
 export function normalizeChecks(rollup: GhCheckRaw[] | undefined): Check[] {
-  return (rollup || []).map((c) => ({ name: c.name || c.context || "check", state: oneState(c), url: c.detailsUrl || c.targetUrl }));
+  // 이름 dedup(orca 참고) — 혼합 CI(Actions + 레거시 StatusContext)가 같은 이름을 중복 노출할 때
+  // CheckRun을 우선 유지(더 정확한 status/conclusion). 이름 없으면 dedup 대상서 제외.
+  const byName = new Map<string, Check>();
+  const out: Check[] = [];
+  for (const c of rollup || []) {
+    const name = c.name || c.context || "check";
+    // detailsUrl(.../actions/runs/<runId>/job/<jobId>)에서 작업흐름 id·체크(job) id 추출 — annotations 조회·표시용.
+    const m = (c.detailsUrl || "").match(/\/actions\/runs\/(\d+)\/job\/(\d+)/);
+    const item: Check = { name, state: oneState(c), url: c.detailsUrl || c.targetUrl, workflow: c.workflowName, startedAt: c.startedAt, completedAt: c.completedAt, description: c.description, runId: m?.[1], checkRunId: m?.[2] };
+    const prev = byName.get(name);
+    if (!prev) { byName.set(name, item); out.push(item); continue; }
+    if (c.__typename === "CheckRun") { const i = out.indexOf(prev); if (i >= 0) out[i] = item; byName.set(name, item); } // CheckRun이 StatusContext 이김
+  }
+  return out;
 }
 
 export function summarize(checks: Check[]): CheckSummary {

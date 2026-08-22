@@ -9,19 +9,20 @@ import IssueList from "@/components/workspace/github/IssueList";
 import IssueDetail from "@/components/workspace/github/IssueDetail";
 import PrList from "@/components/workspace/github/PrList";
 import PrDetail from "@/components/workspace/github/PrDetail";
+import type { CiDot } from "@/components/workspace/github/useBranchCi";
 
 type AuthState = "ok" | "not-installed" | "not-authed" | "rate-limited" | "error";
 type Probe = { loading: boolean; state?: AuthState; detail?: string };
-type Tab = "issues" | "prs";
+type Tab = "issues" | "prs"; // CI는 별도 탭 대신 PR 상세에 통합(#812) + 헤더 도트
 
-export default function GithubPanel({ root }: { root: string }) {
+export default function GithubPanel({ root, ciDot }: { root: string; ciDot?: CiDot }) {
   const t = useT();
   const [probe, setProbe] = useState<Probe>({ loading: true });
   const [owner, setOwner] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("issues"); // 내부 탭(#814) — 이슈/PR
   const [openItem, setOpenItem] = useState<number | null>(null); // 상세 열림(현재 탭 기준). null=목록.
   const [reload, setReload] = useState(0); // 헤더 새로고침 → 목록 재조회 트리거.
-  const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null;
+  const repo = root ? root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? null : null; // ciDot는 WorkspaceView서 prop(중복 폴링 방지 #812)
 
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -81,8 +82,9 @@ export default function GithubPanel({ root }: { root: string }) {
             <div className="flex shrink-0 items-center gap-1 border-b border-zinc-100 px-2 py-1 dark:border-zinc-800/60">
               {(["issues", "prs"] as Tab[]).map((tb) => (
                 <button key={tb} type="button" onClick={() => setTab(tb)} aria-pressed={tab === tb}
-                  className={`rounded px-2 py-0.5 text-[11px] font-semibold transition ${tab === tb ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
+                  className={`relative rounded px-2 py-0.5 text-[11px] font-semibold transition ${tab === tb ? "bg-mustard-500/15 text-mustard-600 dark:text-mustard-400" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
                   {t(tb === "issues" ? "github.issues" : "github.prs")}
+                  {tb === "prs" && ciDot && <span aria-hidden className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
                 </button>
               ))}
             </div>

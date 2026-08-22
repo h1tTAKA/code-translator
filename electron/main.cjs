@@ -305,6 +305,24 @@ ipcMain.handle("github:pr-view", (_e, { cwd, number }) => {
   if (!Number.isInteger(n) || n <= 0) return { ok: false, kind: "error", detail: "invalid pr number" };
   return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["pr", "view", String(n), "--json", "number,title,state,isDraft,author,createdAt,assignees,body,comments,statusCheckRollup,mergeStateStatus,url"] });
 });
+// 현재 브랜치 CI(#812) — gh pr view(번호 없이 = 현재 브랜치 PR)로 statusCheckRollup. PR 없으면 {noPr:true}.
+ipcMain.handle("github:checks", async (_e, { cwd }) => {
+  const r = await githubBridge.ghJson({ gh: ghExe(), cwd, args: ["pr", "view", "--json", "number,title,state,statusCheckRollup,url,headRefName"] });
+  if (!r.ok && /no pull requests found|no default remote|not found/i.test(r.detail || "")) return { ok: true, data: { noPr: true } };
+  return r;
+});
+// 체크 주석(#812) — gh api로 check-run annotations(경고/에러). id는 detailsUrl서 파싱한 job id.
+ipcMain.handle("github:check-annotations", (_e, { cwd, checkRunId }) => {
+  const id = Number(checkRunId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid check id" };
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/check-runs/${id}/annotations`] });
+});
+// 작업(job) 스텝 흐름(#812) — Actions job의 steps(Set up job…Complete job). job id=detailsUrl의 job id.
+ipcMain.handle("github:job-steps", (_e, { cwd, jobId }) => {
+  const id = Number(jobId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid job id" };
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/actions/jobs/${id}`, "--jq", "{steps: .steps}"] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());
