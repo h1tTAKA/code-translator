@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("nunopiDesktop", {
     prView: (cwd, number) => ipcRenderer.invoke("github:pr-view", { cwd, number }),
     checks: (cwd) => ipcRenderer.invoke("github:checks", { cwd }),  // #812 현재 브랜치 CI
     checkAnnotations: (cwd, checkRunId) => ipcRenderer.invoke("github:check-annotations", { cwd, checkRunId }),  // #812
+    jobSteps: (cwd, jobId) => ipcRenderer.invoke("github:job-steps", { cwd, jobId }),  // #812
   },
   // 터미널(pty) 브릿지 — 레포별 세션(#647).
   terminal: {

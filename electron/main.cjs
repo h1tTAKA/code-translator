@@ -317,6 +317,12 @@ ipcMain.handle("github:check-annotations", (_e, { cwd, checkRunId }) => {
   if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid check id" };
   return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/check-runs/${id}/annotations`] });
 });
+// 작업(job) 스텝 흐름(#812) — Actions job의 steps(Set up job…Complete job). job id=detailsUrl의 job id.
+ipcMain.handle("github:job-steps", (_e, { cwd, jobId }) => {
+  const id = Number(jobId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, kind: "error", detail: "invalid job id" };
+  return githubBridge.ghJson({ gh: ghExe(), cwd, args: ["api", `repos/{owner}/{repo}/actions/jobs/${id}`, "--jq", "{steps: .steps}"] });
+});
 ipcMain.handle("app:relaunch", () => { app.relaunch(); app.quit(); });
 // Claude·Codex 구독 사용 한도 조회(#735) — 로컬 크레덴셜로 각 provider usage 엔드포인트 호출.
 ipcMain.handle("provider-usage:get", () => getProviderUsage());

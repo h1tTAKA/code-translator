@@ -27,19 +27,28 @@ export function ChecksSummary({ rollup }: { rollup: GhCheckRaw[] | undefined }) 
 
 const ANN_COLOR: Record<string, string> = { failure: "text-rose-500", warning: "text-amber-500", notice: "text-sky-500" };
 
+function stepState(s: GhJobStep): CheckState {
+  if ((s.status || "").toLowerCase() !== "completed") return "pending";
+  const c = (s.conclusion || "").toLowerCase();
+  if (c === "success") return "success";
+  if (["failure", "timed_out", "cancelled", "action_required"].includes(c)) return "failure";
+  return "neutral"; // skipped, neutral
+}
+
 // 체크 하나의 펼친 상세 — 상태·시각·id·주석(lazy).
 function CheckDetail({ root, check }: { root: string; check: Check }) {
   const t = useT();
   const [ann, setAnn] = useState<{ loading: boolean; rows?: GhAnnotation[] }>({ loading: !!check.checkRunId });
+  const [steps, setSteps] = useState<{ loading: boolean; rows?: GhJobStep[] }>({ loading: !!check.checkRunId });
   const aliveRef = useRef(true);
   useEffect(() => {
     aliveRef.current = true;
     const id = check.checkRunId;
     const gh = window.nunopiDesktop?.github;
-    if (!id || !gh?.checkAnnotations) return;
+    if (!id || !gh) return;
     void (async () => {
-      const r = await gh.checkAnnotations(root, id);
-      if (aliveRef.current) setAnn({ loading: false, rows: r.ok ? r.data : [] });
+      if (gh.checkAnnotations) { const r = await gh.checkAnnotations(root, id); if (aliveRef.current) setAnn({ loading: false, rows: r.ok ? r.data : [] }); }
+      if (gh.jobSteps) { const r = await gh.jobSteps(root, id); if (aliveRef.current) setSteps({ loading: false, rows: r.ok ? (r.data.steps ?? []) : [] }); } // 작업 스텝(#812)
     })();
     return () => { aliveRef.current = false; };
   }, [root, check.checkRunId]);
@@ -69,6 +78,18 @@ function CheckDetail({ root, check }: { root: string; check: Check }) {
           ))}
         </div>
       ) : null)}
+      {/* 작업(job) 스텝 흐름 — Set up job … Complete job */}
+      {check.checkRunId && !steps.loading && steps.rows && steps.rows.length > 0 && (
+        <div className="mt-0.5 flex flex-col gap-0.5 border-l-2 border-zinc-200 pl-2 dark:border-zinc-700">
+          <span className="text-zinc-400 dark:text-zinc-500">{t("github.jobs")}</span>
+          {steps.rows.map((st, i) => (
+            <span key={i} className="flex items-center gap-1.5">
+              <StateIcon state={stepState(st)} size={11} />
+              <span className="min-w-0 flex-1 truncate text-zinc-500 dark:text-zinc-400">{st.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
