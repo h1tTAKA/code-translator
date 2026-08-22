@@ -11,7 +11,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 function stripTermQueries(s: string): string {
   return s
     .replace(/\x1b\[[?>=]?[0-9;]*[cn]/g, "")             // Primary/Secondary/Tertiary DA(c) · DSR 커서/상태(n)
-    .replace(/\x1b\][^\x07\x1b]*\?(?:\x07|\x1b\\)/g, "")  // OSC 색/팔레트 질의(…?BEL|ST)
+    .replace(/\x1b\](?:4;\d+|1[0-9]);\?(?:\x07|\x1b\\)/g, "")  // OSC 색/팔레트 질의만(]4;n;? · ]1x;?) — ]0;제목? 등은 보존
     .replace(/\x1b\[\?[0-9;]*\$p/g, "")                  // DECRQM 모드 질의
     .replace(/\x1b\[>[0-9;]*q/g, "");                    // XTVERSION
 }
