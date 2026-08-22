@@ -2,6 +2,7 @@
 // orca(stablyai/orca) src/main/github(gh-utils·auth-diagnose) 방식 채택: 유저 기존 gh auth 사용, --json 구조화.
 // 서브3~5(checks/이슈/PR)는 이 헬퍼에 args만 조립해 재사용한다.
 const { execFile } = require("node:child_process");
+const { existsSync, statSync } = require("node:fs");
 const { promisify } = require("node:util");
 const pexecFile = promisify(execFile);
 
@@ -17,6 +18,8 @@ function classifyGhError(e) {
 
 // gh 원시 실행. cwd=레포 디렉터리, args=배열(no-shell). 성공 { ok, stdout } | 실패 { ok:false, kind, detail }.
 async function ghRun({ gh, cwd, args, timeout = 15000 }) {
+  // cwd 없음/비디렉터리면 execFile이 ENOENT를 던져 gh 미설치로 오분류됨 → 먼저 걸러 error로.
+  if (cwd && (!existsSync(cwd) || !statSync(cwd).isDirectory())) return { ok: false, kind: "error", detail: "작업 디렉터리를 찾을 수 없음" };
   try {
     const { stdout } = await pexecFile(gh || "gh", args, { cwd, timeout, maxBuffer: 10_000_000 });
     return { ok: true, stdout };
