@@ -118,8 +118,8 @@ export default function IssueList({ root, reloadKey, onOpen }: { root: string; r
         )}
         {/* 무한 스크롤 sentinel(#813) — 보이면 다음 페이지 로드. 더 있고 로딩 중이면 스피너. */}
         {!!load.rows?.length && load.rows.length >= limit && limit < 1000 && (
-          <div ref={sentinelCb} className="flex items-center justify-center py-3 text-zinc-400 dark:text-zinc-500">
-            {load.loading && <IconLoader2 size={14} className="animate-spin" aria-hidden />}
+          <div ref={sentinelCb} className="flex items-center justify-center gap-1.5 py-3 text-[11px] text-zinc-400 dark:text-zinc-500">
+            <IconLoader2 size={13} className="animate-spin" aria-hidden /> {t("github.loadingMore")}
           </div>
         )}
       </div>
