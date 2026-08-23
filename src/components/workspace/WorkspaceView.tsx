@@ -304,6 +304,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   // 실시간 갱신(#739) — 활성 워크스페이스의 레포를 파일 워처로 감시. 변경 시 도트 재로드 + gitNonce↑(GitGraph 재fetch).
   // 활성 path만 watch(keep-alive 멀티탭 중복 방지). recursive 미지원이면 폴링 폴백.
   const [gitNonce, setGitNonce] = useState(0);
+  const [treeNonce, setTreeNonce] = useState(0); // 워처 변경 시 파일트리·문서 목록 재조회 신호(#830)
   useEffect(() => {
     if (!mounted || !active || !path) return;
     const api = window.nunopiDesktop;
@@ -311,7 +312,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     const id = path;
     let debounce: ReturnType<typeof setTimeout> | null = null;
     let poll: ReturnType<typeof setInterval> | null = null;
-    const refresh = () => { void loadGitStatus(path); setGitNonce((n) => n + 1); };
+    // 변경 시: 상태 도트 + GitGraph(gitNonce) + 파일트리·문서 목록(treeNonce) 갱신(#830).
+    const refresh = () => { void loadGitStatus(path); setGitNonce((n) => n + 1); setTreeNonce((n) => n + 1); };
     const onChange = () => { if (debounce) clearTimeout(debounce); debounce = setTimeout(refresh, 250); };
     const off = api.repo.onChanged((p) => { if (p.id === id) onChange(); });
     // watch 지원이어도 저빈도(15s) 안전망 폴링 병행 — fs.watch가 나중에 조용히 죽거나(좀비) 이벤트를 놓쳐도 결국 갱신.
@@ -327,28 +329,32 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     };
   }, [mounted, active, path, loadGitStatus]);
 
-  // 폴더 정해지면 파일트리 로드.
+  // 폴더 정해지면 파일트리 로드 + 워처 변경(treeNonce) 시 재조회(#830).
+  const prevTreePathRef = useRef<string | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
-    if (!path) { setFiles([]); setFileStatus({}); return; }
+    if (!path) { setFiles([]); setFileStatus({}); prevTreePathRef.current = null; return; }
     let cancelled = false;
-    setTreeLoading(true);
-    // 레포 전환 시 이전 목록·상태 즉시 비움 — key={path}로 리마운트되는 FileTree가 옛 레포의 changedAncestors(변경 폴더)를
-    // 물어 그 폴더 펼침이 새 레포 저장분에 섞이는 것 방지(#712 리뷰). 열린 파일 초기화는 안 함(위 path 이펙트가 레포별 복원).
-    setFiles([]); setFileStatus({});
+    // 레포 전환(path 변경) vs 워처 갱신(treeNonce만 변경) 구분(#830).
+    const switched = prevTreePathRef.current !== path;
+    prevTreePathRef.current = path;
+    // 전환 시에만 이전 목록·상태 즉시 비움 — key={path}로 리마운트되는 FileTree가 옛 레포의 changedAncestors(변경 폴더)를
+    // 물어 그 폴더 펼침이 새 레포 저장분에 섞이는 것 방지(#712 리뷰). 워처 갱신 땐 비우지 않고 결과만 교체(깜빡임 방지).
+    if (switched) { setTreeLoading(true); setFiles([]); setFileStatus({}); }
     (async () => {
       try {
         const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
         const d = await r.json();
-        if (!cancelled) setFiles(r.ok && Array.isArray(d.files) ? d.files : []);
-      } catch { if (!cancelled) setFiles([]); }
-      finally { if (!cancelled) setTreeLoading(false); }
-      if (!cancelled) void loadGitStatus(path); // 변경 파일 상태 도트(#687)·워킹트리 챗 승계(#689)용
+        if (!cancelled && r.ok && Array.isArray(d.files)) setFiles(d.files); // 실패 시 기존 목록 유지(빈 화면 방지)
+        else if (!cancelled && switched) setFiles([]);
+      } catch { if (!cancelled && switched) setFiles([]); }
+      finally { if (!cancelled && switched) setTreeLoading(false); }
+      if (!cancelled && switched) void loadGitStatus(path); // 변경 파일 상태 도트(#687)·워킹트리 챗 승계(#689)용. 갱신 땐 refresh()가 이미 호출.
     })();
     return () => { cancelled = true; };
-  }, [path, loadGitStatus]);
+  }, [path, treeNonce, loadGitStatus]);
 
-  // 문서 폴더 파일 목록 로드(#693) — /api/repo/tree 재사용(root=docsRoot).
+  // 문서 폴더 파일 목록 로드(#693) — /api/repo/tree 재사용(root=docsRoot). 워처 변경(treeNonce) 시 재조회(#830).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 문서 폴더 변경 시 재로드
     if (!docsRoot) { setDocsFiles([]); return; }
@@ -357,11 +363,11 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       try {
         const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: docsRoot }) });
         const d = await r.json();
-        if (!cancelled) setDocsFiles(r.ok && Array.isArray(d.files) ? d.files : []);
-      } catch { if (!cancelled) setDocsFiles([]); }
+        if (!cancelled && r.ok && Array.isArray(d.files)) setDocsFiles(d.files); // 실패 시 기존 유지
+      } catch { /* 기존 목록 유지 */ }
     })();
     return () => { cancelled = true; };
-  }, [docsRoot]);
+  }, [docsRoot, treeNonce]);
 
   // 문서 폴더 선택(#693) — 범용 폴더 선택기 재사용.
   async function pickDocs() {
