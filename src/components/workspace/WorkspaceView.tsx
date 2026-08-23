@@ -329,30 +329,41 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     };
   }, [mounted, active, path, loadGitStatus]);
 
-  // 폴더 정해지면 파일트리 로드 + 워처 변경(treeNonce) 시 재조회(#830).
-  const prevTreePathRef = useRef<string | null>(null);
+  // 폴더 정해지면 파일트리 로드(레포 전환 시). 스피너는 이 전환 로드에만 — 워처 갱신과 분리(무한 스피너 방지, #830).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 폴더 바뀌면 트리 재로드(경로 변경 시)
-    if (!path) { setFiles([]); setFileStatus({}); prevTreePathRef.current = null; return; }
+    if (!path) { setFiles([]); setFileStatus({}); return; }
     let cancelled = false;
-    // 레포 전환(path 변경) vs 워처 갱신(treeNonce만 변경) 구분(#830).
-    const switched = prevTreePathRef.current !== path;
-    prevTreePathRef.current = path;
-    // 전환 시에만 이전 목록·상태 즉시 비움 — key={path}로 리마운트되는 FileTree가 옛 레포의 changedAncestors(변경 폴더)를
-    // 물어 그 폴더 펼침이 새 레포 저장분에 섞이는 것 방지(#712 리뷰). 워처 갱신 땐 비우지 않고 결과만 교체(깜빡임 방지).
-    if (switched) { setTreeLoading(true); setFiles([]); setFileStatus({}); }
+    setTreeLoading(true);
+    // 레포 전환 시 이전 목록·상태 즉시 비움 — key={path}로 리마운트되는 FileTree가 옛 레포의 changedAncestors(변경 폴더)를
+    // 물어 그 폴더 펼침이 새 레포 저장분에 섞이는 것 방지(#712 리뷰). 열린 파일 초기화는 안 함(위 path 이펙트가 레포별 복원).
+    setFiles([]); setFileStatus({});
     (async () => {
       try {
         const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
         const d = await r.json();
-        if (!cancelled && r.ok && Array.isArray(d.files)) setFiles(d.files); // 실패 시 기존 목록 유지(빈 화면 방지)
-        else if (!cancelled && switched) setFiles([]);
-      } catch { if (!cancelled && switched) setFiles([]); }
-      finally { if (!cancelled && switched) setTreeLoading(false); }
-      if (!cancelled && switched) void loadGitStatus(path); // 변경 파일 상태 도트(#687)·워킹트리 챗 승계(#689)용. 갱신 땐 refresh()가 이미 호출.
+        if (!cancelled) setFiles(r.ok && Array.isArray(d.files) ? d.files : []);
+      } catch { if (!cancelled) setFiles([]); }
+      finally { if (!cancelled) setTreeLoading(false); }
+      if (!cancelled) void loadGitStatus(path); // 변경 파일 상태 도트(#687)·워킹트리 챗 승계(#689)용
     })();
     return () => { cancelled = true; };
-  }, [path, treeNonce, loadGitStatus]);
+  }, [path, loadGitStatus]);
+
+  // 워처 변경(treeNonce) 시 파일트리 무-스피너 재조회(#830) — 목록 안 비우고 결과만 in-place 교체(깜빡임 없음).
+  // treeLoading을 안 건드려 스피너가 갱신에 끼지 않게 함(전환 로드와 분리).
+  useEffect(() => {
+    if (!path || treeNonce === 0) return; // 초기(전환 이펙트가 담당) 스킵
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/repo/tree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+        const d = await r.json();
+        if (!cancelled && r.ok && Array.isArray(d.files)) setFiles(d.files); // 실패 시 기존 목록 유지
+      } catch { /* 기존 목록 유지 */ }
+    })();
+    return () => { cancelled = true; };
+  }, [path, treeNonce]);
 
   // 문서 폴더 파일 목록 로드(#693) — /api/repo/tree 재사용(root=docsRoot). 워처 변경(treeNonce) 시 재조회(#830).
   useEffect(() => {
