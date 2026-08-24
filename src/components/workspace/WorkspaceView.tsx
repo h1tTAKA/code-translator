@@ -312,15 +312,20 @@ export default function WorkspaceView({ path, active = true, providerId, provide
     const id = path;
     let debounce: ReturnType<typeof setTimeout> | null = null;
     let poll: ReturnType<typeof setInterval> | null = null;
-    // 변경 시: 상태 도트 + GitGraph(gitNonce) + 파일트리·문서 목록(treeNonce) 갱신(#830).
+    // heavy 갱신 — 상태 도트 + GitGraph(gitNonce) + 파일트리·문서(treeNonce). 실제 fs 변경 때만(#838).
     const refresh = () => { void loadGitStatus(path); setGitNonce((n) => n + 1); setTreeNonce((n) => n + 1); };
     const onChange = () => { if (debounce) clearTimeout(debounce); debounce = setTimeout(refresh, 250); };
     const off = api.repo.onChanged((p) => { if (p.id === id) onChange(); });
-    // watch 지원이어도 저빈도(15s) 안전망 폴링 병행 — fs.watch가 나중에 조용히 죽거나(좀비) 이벤트를 놓쳐도 결국 갱신.
-    // 미지원(supported:false)/실패면 이벤트가 없으니 빠른 3s 주기로.
+    // 성능(#838): 그래프(1965커밋 재조회+재렌더)·트리 통째 재조회(heavy)는 fs 이벤트서만. 안전망 폴링은 도트(git status)만
+    // 저비용 갱신 — 변경 없어도 15초마다 heavy로 돌던 churn 제거. fs.watch가 조용히 죽어도 도트는 유지, 그래프·트리는 수동 새로고침 커버.
+    // 단 watch 미지원/실패면 fs 이벤트가 아예 없으니 폴링이 heavy 유일 수단 → 그땐 refresh(heavy) 유지.
     void api.repo.watch({ id, root: path })
-      .then((r) => { poll = setInterval(refresh, r && r.supported === false ? 3000 : 15000); })
-      .catch(() => { poll = setInterval(refresh, 3000); });
+      .then((r) => {
+        poll = (r && r.supported === false)
+          ? setInterval(refresh, 3000)                             // 미지원: fs 이벤트 없음 → 폴링이 heavy
+          : setInterval(() => void loadGitStatus(path), 15000);    // 지원: 폴링은 도트만(heavy는 fs 이벤트서)
+      })
+      .catch(() => { poll = setInterval(refresh, 3000); });         // watch 실패 → heavy 폴링(유일 수단)
     return () => {
       off();
       if (debounce) clearTimeout(debounce);

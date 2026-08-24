@@ -107,12 +107,18 @@ export default function UsageMonitor({ active = true }: { active?: boolean }) {
     }
   }, []);
 
-  // 활성 워크스페이스에서 자동 갱신 — 진입 즉시 1회 + POLL_MS마다. 호버·수동 새로고침 없이 상시 최신.
+  // 활성 워크스페이스에서 자동 갱신 — 진입 즉시 1회 + POLL_MS마다.
+  // 성능(#838): 사용량은 에이전트가 CLI로 토큰을 실제 소비할 때만 변함 → 주기마다 terminal.list(cheap 로컬 IPC)로
+  // 실행 중 에이전트가 있을 때만 getProviderUsage(네트워크) 호출. idle엔 스킵(상시 네트워크 폴링 제거). 진입 1회는 유지.
   useEffect(() => {
     if (!active || !api?.getProviderUsage) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 비동기 로드(내부 setState는 이펙트 동기 실행 아님)
     void load(false);
-    const id = setInterval(() => void load(true), POLL_MS);
+    const id = setInterval(() => {
+      const list = window.nunopiDesktop?.terminal?.list;
+      if (!list) { void load(true); return; } // list 미지원이면 기존대로(안전)
+      void list().then((ss) => { if (Array.isArray(ss) && ss.some((s) => s.agent)) void load(true); }).catch(() => {});
+    }, POLL_MS);
     return () => clearInterval(id);
   }, [active, api, load]);
 

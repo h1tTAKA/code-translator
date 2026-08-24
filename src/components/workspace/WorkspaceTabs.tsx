@@ -115,15 +115,21 @@ export default function WorkspaceTabs({ active = true, providerId, providerSetti
       })).then((entries) => { if (alive) setRepoStatus(Object.fromEntries(entries)); });
     };
     void poll();
-    // SSE 푸시(#764) — 훅이 열린 레포 중 하나의 cwd 상태를 바꾸면 즉시 재조회. 폴링은 폴백 하트비트.
+    // SSE 푸시(#764) — 훅이 열린 레포 중 하나의 cwd 상태를 바꾸면 즉시 재조회. 이게 "실제 변화 시" 갱신의 주 경로.
     const within = (cwd: string) => { const a = norm(cwd); return repoPaths.some((p) => { const b = norm(p); return a === b || a.startsWith(b + "/"); }); };
     let es: EventSource | null = null;
+    let sseOk = false;
     try {
       es = new EventSource("/api/agent/status/stream");
+      es.onopen = () => { sseOk = true; };
       es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (typeof d?.cwd === "string" && within(d.cwd)) void poll(); } catch { /* ignore */ } };
+      es.onerror = () => { sseOk = false; };
     } catch { /* EventSource 미지원 → 폴링만 */ }
-    const iv = setInterval(poll, 1500);
-    return () => { alive = false; clearInterval(iv); es?.close(); };
+    // 성능(#838): 변경은 SSE가 push하므로 폴링은 느린 안전망만. 예전 1.5s×N레포 폴링이 로그 스팸·churn의 원인이었음.
+    // SSE가 살아있으면 20s 하트비트(놓친 push 대비), 죽었/미지원이면 3s로 촘촘히(폴링이 유일 수단).
+    const iv = setInterval(() => { void poll(); }, 20000);
+    const ivFast = setInterval(() => { if (!sseOk) void poll(); }, 3000); // SSE 다운 시에만 촘촘히
+    return () => { alive = false; clearInterval(iv); clearInterval(ivFast); es?.close(); };
   }, [mounted, active, tabs]);
 
   useEffect(() => {
