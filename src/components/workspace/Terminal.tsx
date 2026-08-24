@@ -31,6 +31,7 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
     let offData: (() => void) | null = null;
     let offExit: (() => void) | null = null;
     let ro: ResizeObserver | null = null;
+    let fallback: ReturnType<typeof setTimeout> | null = null;
     let onPaste: ((ev: ClipboardEvent) => void | Promise<void>) | undefined;
 
     (async () => {
@@ -79,34 +80,42 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
       };
       host.addEventListener("paste", onPaste, true);
 
-      // 한 프레임 미뤄 host 레이아웃이 확정된 뒤 fit → 정확한 cols 확보 후 재생.
-      // open 직후 fit은 tab mount 시점 host 폭이 0으로 측정돼 극소 cols가 잡히고,
-      // 그 폭으로 재생된 scrollback 줄바꿈이 굳어 위쪽이 세로로 깨진다(#682). live는 이후 resize로 정상.
-      requestAnimationFrame(async () => {
+      // host 폭이 확정된 뒤에만 fit/ensure(#832). open 직후·tab mount·독 분할 애니메이션 중엔 host 폭이 0~극소로
+      // 측정돼 cols가 2~10으로 잡히고, 그 폭으로 재생된 scrollback 줄바꿈이 굳어 세로로 깨진다(#682). 단일 rAF는
+      // 레이아웃 확정을 보장 못 함 → ResizeObserver가 "실제 폭"을 보고할 때 최초 ensure를 한 번 실행, 이후엔 live resize.
+      const MIN_W = 40; // 이보다 좁으면(≈5 cols 미만) 아직 레이아웃 미확정으로 보고 대기
+      let ensured = false;
+      const firstEnsure = async () => {
         if (disposed || !term) return;
-        try { fit.fit(); } catch { /* ignore */ }
         try {
           const r = await nd.terminal.ensure({ id, cwd, cols: term.cols, rows: term.rows });
           if (disposed || !term) return;
           if (!r.ok) { term.write(`\r\n[터미널 시작 실패${r.reason ? `: ${r.reason}` : ""} — node-pty 재빌드가 필요할 수 있어요]\r\n`); return; }
-          if (r.buffer) term.write(stripTermQueries(r.buffer)); // 재접속 시 이전 출력 재생(질의 시퀀스 제거 — 에코 방지 #807)
+          if (r.buffer) term.write(stripTermQueries(r.buffer)); // 정확한 cols 확보 후 재생(줄바꿈 안 굳음). 질의 시퀀스 제거(에코 방지 #807)
           offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
           // 셸 종료 시 빈 화면 방치 대신 안내(+로 새 터미널).
           offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${tRef.current("workspace.terminalExited")}\x1b[0m\r\n`); });
           term.onData((d) => nd.terminal.input({ id, data: d }));
-          ro = new ResizeObserver(() => {
-            if (!term) return;
-            try { fit.fit(); nd.terminal.resize({ id, cols: term.cols, rows: term.rows }); } catch { /* ignore */ }
-          });
-          ro.observe(host);
         } catch {
           // 핸들러 미등록(옛 메인) 등 — 크래시 대신 안내.
           if (term && !disposed) term.write("\r\n[터미널 연결 실패 — electron:dev를 완전히 껐다 재시작해 주세요]\r\n");
         }
-      });
+      };
+      // 폭이 잡혔을 때만 fit → 최초 1회 ensure, 이후 resize. 폭 미확정이면 스킵(다음 콜백/폴백서 처리).
+      const sync = () => {
+        if (disposed || !term || host.clientWidth < MIN_W) return;
+        try { fit.fit(); } catch { /* ignore */ }
+        if (!ensured) { ensured = true; void firstEnsure(); }
+        else { try { nd.terminal.resize({ id, cols: term.cols, rows: term.rows }); } catch { /* ignore */ } }
+      };
+      ro = new ResizeObserver(sync);
+      ro.observe(host);
+      requestAnimationFrame(sync); // 이미 폭이 잡혀 있으면 즉시 진행
+      // 폭이 끝내 안 잡혀도(희귀) 터미널이 빈 채 방치되지 않게 폴백 — 최후엔 강제 ensure(데몬이 cols 하한 클램프).
+      fallback = setTimeout(() => { if (!ensured && !disposed && term) { ensured = true; void firstEnsure(); } }, 1500);
     })();
 
-    return () => { disposed = true; if (onPaste) host.removeEventListener("paste", onPaste, true); offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
+    return () => { disposed = true; if (fallback) clearTimeout(fallback); if (onPaste) host.removeEventListener("paste", onPaste, true); offData?.(); offExit?.(); ro?.disconnect(); term?.dispose(); term = null; };
   }, [id, cwd]);
 
   return <div ref={hostRef} className="h-full w-full overflow-hidden bg-white p-1.5 dark:bg-[#0b0c12]" />;

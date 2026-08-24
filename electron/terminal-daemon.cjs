@@ -38,7 +38,8 @@ function ensure({ id, cwd, cols, rows }) {
     delete env.npm_config_prefix; delete env.NPM_CONFIG_PREFIX; // nvm 경고 방지(#674)
     delete env.NUNOPI_TERM_SOCK; delete env.NUNOPI_TERM_TOKEN; delete env.NUNOPI_TERM_SHELL; // 데몬 내부 env 누출 방지
     let proc;
-    try { proc = pty.spawn(shell, [], { name: "xterm-256color", cols: cols || 80, rows: rows || 24, cwd, env }); }
+    // cols 하한 20 클램프(#832) — 레이아웃 미확정 폭으로 극소 cols가 새 나가도 셸 출력이 세로로 깨지지 않게(FE 폭 가드 백스톱).
+    try { proc = pty.spawn(shell, [], { name: "xterm-256color", cols: Math.max(cols || 80, 20), rows: rows || 24, cwd, env }); }
     catch (e) { return { id, ok: false, reason: String((e && e.message) || e) }; }
     s = { proc, buffer: "", cwd };
     proc.onData((data) => {
