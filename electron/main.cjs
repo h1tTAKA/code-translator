@@ -611,7 +611,19 @@ function agentForId(id, proc) {
 }
 ipcMain.handle("terminal:list", async () => {
   const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름(#803)
-  return ss.map((s) => ({ ...s, agent: agentForId(s.id, s.process) }));
+  // 비활성(ensure 안 된=클릭 안 한) 탭도 에이전트 검출되게 liveBuffers 시드(#836).
+  //  - 새 데몬: list가 screen(buffer tail) 제공 → 그걸로 매번 갱신(최신 화면).
+  //  - 옛 데몬(screen 없음): liveBuffers에 없으면 ensure로 버퍼 끌어와 1회 시드 — 데몬 재시작·세션 손실 불필요.
+  await Promise.all(ss.map(async (s) => {
+    if (s.screen != null) { liveBuffers.set(s.id, s.screen); return; }
+    if (liveBuffers.has(s.id)) return;
+    try {
+      const r = await termClient.ensure({ id: s.id, cwd: s.cwd || cwdById.get(s.id) || process.cwd(), cols: 80, rows: 24 });
+      if (r && r.ok && r.buffer != null) liveBuffers.set(s.id, r.buffer);
+    } catch { /* ignore — 다음 폴링서 재시도 */ }
+  }));
+  // screen(버퍼 tail)은 검출에만 쓰고 렌더러엔 안 보냄(16KB×N 누출 방지).
+  return ss.map(({ screen, ...s }) => ({ ...s, agent: agentForId(s.id, s.process) }));
 });
 
 // 단일 인스턴스.
