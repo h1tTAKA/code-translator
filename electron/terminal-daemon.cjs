@@ -78,13 +78,15 @@ const server = net.createServer((sock) => {
       else if (m.t === "input") { const s = ptys.get(m.id); if (s) { try { s.proc.write(m.data); } catch { /* ignore */ } } }
       else if (m.t === "resize") { const s = ptys.get(m.id); if (s && m.cols > 0 && m.rows > 0) { try { s.proc.resize(m.cols, m.rows); } catch { /* ignore */ } } }
       else if (m.t === "kill") { const s = ptys.get(m.id); if (s) { try { s.proc.kill(); } catch { /* ignore */ } ptys.delete(m.id); } scheduleIdleReap(); }
-      else if (m.t === "list") { // 세션 목록(#764) — 레포탭 호버 카드용. cwd·foreground 프로세스명·pid.
+      else if (m.t === "list") { // 세션 목록(#764) — 레포탭 호버 카드 + 탭 에이전트 검출(#803/#836).
         const sessions = [];
         for (const [id, s] of ptys) {
           let procName = "", pid = 0;
           try { procName = s.proc.process || ""; } catch { /* node-pty getter 실패 관대 */ }
           try { pid = s.proc.pid || 0; } catch { /* pid getter도 관대 — 하나 throw로 list 통째 실패 방지 */ }
-          sessions.push({ id, cwd: s.cwd, process: procName, pid });
+          // buffer tail 동봉(#836) — main이 ensure(탭 클릭) 없이도 비활성 탭의 에이전트를 파싱하게.
+          // parseAgentScreen은 8KB tail만 보므로 16KB면 충분(전체 200KB 전송 낭비 방지).
+          sessions.push({ id, cwd: s.cwd, process: procName, pid, screen: s.buffer.slice(-16000) });
         }
         send(sock, { t: "listed", sessions });
       }

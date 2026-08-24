@@ -611,7 +611,11 @@ function agentForId(id, proc) {
 }
 ipcMain.handle("terminal:list", async () => {
   const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름(#803)
-  return ss.map((s) => ({ ...s, agent: agentForId(s.id, s.process) }));
+  // 비활성(ensure 안 된=클릭 안 한) 탭도 에이전트 검출되게, 데몬이 실어 준 screen(buffer tail)으로 liveBuffers 시드(#836).
+  // ensure 폴백은 안 씀 — list↔ensure 레이스로 세션이 reap되면 stray pty를 새로 spawn하는 위험(리뷰 🔴).
+  // 옛 데몬(screen 미제공)은 데몬 재시작 후 반영(dev: pkill terminal-daemon). screen은 검출용, 렌더러 미전송(누출 방지).
+  for (const s of ss) if (s.screen != null) liveBuffers.set(s.id, s.screen);
+  return ss.map(({ screen, ...s }) => ({ ...s, agent: agentForId(s.id, s.process) }));
 });
 
 // 단일 인스턴스.
