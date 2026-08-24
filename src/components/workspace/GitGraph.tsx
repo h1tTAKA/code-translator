@@ -66,10 +66,12 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
   const [untrackedOpen, setUntrackedOpen] = useState(false); // 미추적 하위그룹(기본 접힘, #699)
   // 커밋 호버 팝오버(#685) — 전체 메세지(제목+본문). fixed라 스크롤 컨테이너 잘림 회피.
   // dwell 지연: 그래프를 훑으며 지나갈 땐 안 뜨고, 머물러야(HOVER_DELAY_MS) 뜬다(orca식).
-  const [hover, setHover] = useState<{ subject: string; body: string; left: number; top: number; above: boolean } | null>(null);
+  const [hover, setHover] = useState<{ subject: string; body: string; left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearHover = useCallback(() => { if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; } setHover(null); }, []);
-  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []); // 언마운트 시 타이머 정리
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // 행→툴팁 이동 여유(호버 브릿지, #834)
+  // 행에서 벗어남 — 대기 중 dwell 취소 + 약간 지연 후 숨김(그 사이 툴팁으로 이동하면 툴팁 onMouseEnter가 취소).
+  const leaveRow = useCallback(() => { if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; } if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } hideTimer.current = setTimeout(() => { setHover(null); hideTimer.current = null; }, 140); }, []);
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); if (hideTimer.current) clearTimeout(hideTimer.current); }, []); // 언마운트 시 타이머 정리
 
   const load = useCallback(async () => {
     void refreshNonce; // 재fetch 트리거(#739) — 값 변하면 이 콜백 identity 바뀌어 아래 effect 재실행.
@@ -264,14 +266,24 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
               <div key={row.commit.hash}>
                 <button type="button" onClick={() => void toggle(row.commit.hash)}
                   onMouseEnter={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect(); // 좌표는 지금 캡처(지연 콜백서 currentTarget null)
-                    const POP_W = 380;
-                    const above = r.top > window.innerHeight / 2; // 아래쪽 행이면 위로 띄워 뷰포트 밖 잘림 방지
-                    const payload = { subject: row.commit.subject, body: row.commit.body, left: Math.max(8, Math.min(r.left, window.innerWidth - POP_W - 8)), top: above ? r.top - 4 : r.bottom + 4, above };
+                    const el = e.currentTarget; // DOM 노드 동기 캡처 — 좌표는 "표시 시점"에 재계산(dwell 중 스크롤 반영, 🔴)
+                    if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } // 재진입 시 예약된 숨김 취소
                     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-                    hoverTimer.current = setTimeout(() => setHover(payload), HOVER_DELAY_MS); // 머물러야 뜸
+                    hoverTimer.current = setTimeout(() => {
+                      const r = el.getBoundingClientRect(); // dwell 후 실제 위치(스크롤됐어도 정확)
+                      const POP_W = 380, MARGIN = 8, GAP = 4;
+                      const left = Math.max(MARGIN, Math.min(r.left, window.innerWidth - POP_W - MARGIN));
+                      // 위/아래 가용 공간 큰 쪽에 배치, 그 공간만큼 maxHeight → 뷰포트 밖으로 안 넘침(#834).
+                      const spaceBelow = window.innerHeight - r.bottom - MARGIN, spaceAbove = r.top - MARGIN;
+                      const below = spaceBelow >= spaceAbove;
+                      const maxHeight = Math.max(80, (below ? spaceBelow : spaceAbove) - GAP);
+                      // 아래=행 하단에 top 고정, 위=행 상단에 bottom 고정(위로 자라되 maxHeight로 상단 짤림 방지).
+                      setHover(below
+                        ? { subject: row.commit.subject, body: row.commit.body, left, top: r.bottom + GAP, maxHeight }
+                        : { subject: row.commit.subject, body: row.commit.body, left, bottom: window.innerHeight - (r.top - GAP), maxHeight });
+                    }, HOVER_DELAY_MS); // 머물러야 뜸
                   }}
-                  onMouseLeave={clearHover}
+                  onMouseLeave={leaveRow}
                   className="flex w-max min-w-full items-center text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50" style={{ height: ROW_H }}>
                   {/* 그래프 셀 — 가로는 colW로 클립(overflow-x:clip), 세로는 visible(점→점 곡선이 부모 행까지 뻗음, #707). */}
                   <div className="shrink-0" style={{ width: colW, height: ROW_H, overflowX: "clip", overflowY: "visible" }}>
@@ -343,9 +355,11 @@ export default function GitGraph({ root, onOpenDiff, onFocusBranch, onOpenChange
         </div>
       )}
       {hover && (
-        <div role="tooltip" aria-hidden
-          style={{ position: "fixed", left: hover.left, top: hover.top, transform: hover.above ? "translateY(-100%)" : undefined, maxWidth: 380, maxHeight: "60vh", zIndex: 50 }}
-          className="pointer-events-none overflow-hidden rounded-lg border border-zinc-200 bg-white p-2.5 text-[11px] leading-relaxed shadow-xl dark:border-zinc-700 dark:bg-zinc-800">
+        <div role="tooltip"
+          onMouseEnter={() => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } }} // 툴팁 위에선 숨김 취소(스크롤 가능)
+          onMouseLeave={() => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } setHover(null); }}
+          style={{ position: "fixed", left: hover.left, top: hover.top, bottom: hover.bottom, maxWidth: 380, maxHeight: hover.maxHeight, zIndex: 50 }}
+          className="overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-200 bg-white p-2.5 text-[11px] leading-relaxed shadow-xl dark:border-zinc-700 dark:bg-zinc-800">
           <div className="font-semibold text-zinc-800 dark:text-zinc-100">{hover.subject}</div>
           {hover.body && <div className="mt-1.5 whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">{hover.body}</div>}
         </div>
