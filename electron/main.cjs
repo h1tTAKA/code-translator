@@ -502,22 +502,19 @@ const mapScreenState = (s) => (s === "idle" ? "done" : s); // 파서 idle → �
 // 포그라운드가 셸이면 에이전트 종료로 간주(버퍼에 옛 화면이 남아도 무시). herdr도 포그라운드 프로세스로 게이트.
 const SHELLS = new Set(["zsh", "bash", "sh", "fish", "dash", "ksh", "pwsh", "powershell", "cmd", "login", "screen", "tmux"]);
 const isShellProc = (p) => SHELLS.has(String(p || "").trim().toLowerCase().replace(/^-+/, ""));
-async function refreshProcs() {
-  try { const ss = await termClient.list(); procById.clear(); for (const s of ss) procById.set(s.id, s.process); }
-  catch { /* 데몬 미응답 — procById 유지 */ }
-}
 async function postStatus(body) {
   if (!appBase) return;
   try { await fetch(`${appBase}/api/agent/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch { /* 서버 미준비 등 — 다음 틱에 재시도 */ }
 }
-async function pushScreenState(id) {
+async function pushScreenState(id, screen) {
   const cwd = cwdById.get(id);
   if (!cwd || !appBase) return;
   const proc = procById.get(id);
   const gone = proc !== undefined && isShellProc(proc);         // 포그라운드가 셸 = 에이전트 종료
   if (gone) agentSticky.delete(id);                             // 종료 시 신원 해제(#805)
-  const parsed = gone ? null : parseAgentScreen(liveBuffers.get(id)); // {agent,state}|null
+  // 활성=liveBuffers(full/fresh), 비활성=데몬 screen 힌트(#840). liveBuffers는 안 건드림(영속 안전).
+  const parsed = gone ? null : parseAgentScreen(liveBuffers.get(id) ?? screen); // {agent,state}|null
   const procAgent = gone ? null : agentFromProcess(proc);       // 프로세스명으로 "존재" 판정(버퍼 미판정 대비)
   let agent, state;
   if (parsed) { agent = parsed.agent; state = mapScreenState(parsed.state); agentSticky.set(id, agent); } // 버퍼가 상태 잡음(working/waiting/유휴→done)
@@ -542,7 +539,18 @@ function scheduleScreenParse(id) {
   if (screenTimers.has(id)) return; // 코얼레스(버스트 억제)
   screenTimers.set(id, setTimeout(() => { screenTimers.delete(id); void pushScreenState(id); }, 150));
 }
-setInterval(async () => { await refreshProcs(); for (const id of liveBuffers.keys()) void pushScreenState(id); }, 1200); // 프로세스 갱신 + 파싱(종료 감지·keep-alive)
+// 중앙 검출(#840) — 데몬 전 세션(비활성 포함)을 순회해 스크레이핑. 렌더러 마운트/클릭 무관하게 탭바·호버카드·도트 반영.
+// 매 틱 list 한 번(기존 refreshProcs가 하던 것) → procById·cwdById 보강 + screen을 pushScreenState 힌트로.
+setInterval(async () => {
+  let ss;
+  try { ss = await termClient.list(); } catch { return; } // 데몬 미응답 — 다음 틱
+  procById.clear();
+  for (const s of ss) {
+    procById.set(s.id, s.process);
+    if (s.cwd && !cwdById.has(s.id)) cwdById.set(s.id, s.cwd); // 비활성(ensure 안 됨) 세션 레포 매핑 보강 — 상태 POST용
+  }
+  for (const s of ss) void pushScreenState(s.id, s.screen); // liveBuffers.keys()가 아니라 전 세션
+}, 1200);
 
 // 데몬 소켓 클라이언트 — 죽어있으면 fork(detached,unref)로 스폰. data/exit는 렌더러로 브로드캐스트.
 // 소켓 주소 — Windows는 파일 경로 리슨 불가라 네임드 파이프(net이 자동 인식).
@@ -601,21 +609,20 @@ ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffe
 // 최초 판정을 셸 복귀까지 붙들어 안정화. 셸이면 해제해 다음 에이전트를 새로 잡음.
 // 탭(agentForId)과 카드(pushScreenState) 두 표면이 공유(#805) — 신원이 표면마다 갈리지 않게.
 const agentSticky = new Map(); // id → agent id
-function agentForId(id, proc) {
+// screen(#840): 데몬 list가 실어 준 buffer tail을 "파싱 힌트"로 받음. 활성 세션은 liveBuffers(full/fresh) 우선,
+// 비활성(ensure 안 됨)은 screen 힌트로 검출. liveBuffers는 절대 안 건드림 — 16KB tail로 덮으면 스크롤백 영속(#680) 손실.
+function agentForId(id, proc, screen) {
   if (proc !== undefined && isShellProc(proc)) { agentSticky.delete(id); return null; }
   if (agentSticky.has(id)) return agentSticky.get(id);
-  const parsed = parseAgentScreen(liveBuffers.get(id));
+  const parsed = parseAgentScreen(liveBuffers.get(id) ?? screen);
   const a = (parsed && parsed.agent) || agentFromProcess(proc);
   if (a) agentSticky.set(id, a);
   return a || null;
 }
 ipcMain.handle("terminal:list", async () => {
   const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름(#803)
-  // 비활성(ensure 안 된=클릭 안 한) 탭도 에이전트 검출되게, 데몬이 실어 준 screen(buffer tail)으로 liveBuffers 시드(#836).
-  // ensure 폴백은 안 씀 — list↔ensure 레이스로 세션이 reap되면 stray pty를 새로 spawn하는 위험(리뷰 🔴).
-  // 옛 데몬(screen 미제공)은 데몬 재시작 후 반영(dev: pkill terminal-daemon). screen은 검출용, 렌더러 미전송(누출 방지).
-  for (const s of ss) if (s.screen != null) liveBuffers.set(s.id, s.screen);
-  return ss.map(({ screen, ...s }) => ({ ...s, agent: agentForId(s.id, s.process) }));
+  // 비활성 탭도 검출: 데몬 screen(buffer tail)을 힌트로 agentForId에 전달(#836/#840). screen은 검출용, 렌더러 미전송(누출 방지).
+  return ss.map(({ screen, ...s }) => ({ ...s, agent: agentForId(s.id, s.process, screen) }));
 });
 
 // 단일 인스턴스.
