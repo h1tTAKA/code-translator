@@ -191,6 +191,8 @@ export function resolveCalls(
   const importByName = new Map<string, string>();
   for (const syms of importedSymbols.values()) for (const s of syms) if (!importByName.has(s.name)) importByName.set(s.name, s.id);
   // #843 scope-aware: owner 클래스별 메서드 인덱스 + caller id→owner. this/self 호출을 소속 클래스로 한정.
+  // first-wins(로컬/import 이름 해석과 동일 정책, 결정적). 오버로드(Java만)·동명 재정의는 arity 없이는 단일 엣지로
+  // 정확 구분 불가 → 첫 정의로 해석(문서화된 한계, 리뷰 🟡). arity 기반 구분은 후속(Graft resolve.ts 참고).
   const byOwnerName = new Map<string, string>(); // "Owner.method" → id(첫 것)
   const ownerOfId = new Map<string, string>();    // symbol id → owner 클래스
   for (const s of localSymbols) {
