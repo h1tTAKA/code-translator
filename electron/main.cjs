@@ -611,13 +611,17 @@ ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffe
 const agentSticky = new Map(); // id → agent id
 // screen(#840): 데몬 list가 실어 준 buffer tail을 "파싱 힌트"로 받음. 활성 세션은 liveBuffers(full/fresh) 우선,
 // 비활성(ensure 안 됨)은 screen 힌트로 검출. liveBuffers는 절대 안 건드림 — 16KB tail로 덮으면 스크롤백 영속(#680) 손실.
+// 신원 판정은 pushScreenState(카드)와 동일 우선순위(#841): 현재 화면 파싱 > 프로세스명 > sticky(폴백).
+// 예전엔 sticky를 파싱보다 먼저 return해서, 이전 세션(예: claude) 신원이 고정되면 새 에이전트(codex)를 켜도
+// 탭이 claude로 남았다(카드는 파싱 우선이라 codex로 바뀌어 표면 불일치). 현재 파싱을 우선해 신선한 배너가 stale sticky를 덮게.
 function agentForId(id, proc, screen) {
   if (proc !== undefined && isShellProc(proc)) { agentSticky.delete(id); return null; }
-  if (agentSticky.has(id)) return agentSticky.get(id);
   const parsed = parseAgentScreen(liveBuffers.get(id) ?? screen);
-  const a = (parsed && parsed.agent) || agentFromProcess(proc);
-  if (a) agentSticky.set(id, a);
-  return a || null;
+  if (parsed && parsed.agent) { agentSticky.set(id, parsed.agent); return parsed.agent; } // 현재 화면이 잡은 에이전트 우선
+  const procAgent = agentFromProcess(proc);
+  if (procAgent) { agentSticky.set(id, procAgent); return procAgent; }
+  if (agentSticky.has(id)) return agentSticky.get(id); // 배너 스크롤아웃 등 transient null → 마지막 신원 유지
+  return null;
 }
 ipcMain.handle("terminal:list", async () => {
   const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름(#803)
