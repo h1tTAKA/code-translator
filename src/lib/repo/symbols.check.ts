@@ -78,4 +78,13 @@ assert.ok(runEdge, "this.add() → 연결됨");
 const kAdd = mem.symbols.find((s) => s.name === "add" && s.owner === "K");
 assert.strictEqual(runEdge!.target, kAdd!.id, "this.add()는 모듈 add가 아니라 소속 클래스 K의 add로 해석(scope-aware)");
 
+// --- 관계 확장(#843): extends/implements + signature ---
+const her = await extractSymbols(`class A extends B implements C { m(a: number): string { return ""; } }`, "h.ts");
+assert.ok(her.heritage.some((h) => h.baseName === "B" && h.relation === "extends"), "extends B 추출");
+assert.ok(her.heritage.some((h) => h.baseName === "C" && h.relation === "implements"), "implements C 추출");
+assert.ok(her.symbols.find((s) => s.name === "m")?.signature?.includes("a: number"), "메서드 signature 추출");
+// Python bases → extends
+const pyc = await extractSymbols(`class Foo(Bar, Baz):\n  def m(self):\n    return 1`, "p.py");
+assert.ok(pyc.heritage.filter((h) => h.relation === "extends").length === 2, "Python bases 2개 extends");
+
 console.log("symbols.check OK");

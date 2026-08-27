@@ -36,6 +36,7 @@ export async function buildRepoGraph(root: string): Promise<RepoGraph> {
   // 파일별 심볼(resolveCalls용)·원시호출·import 대상. 두 패스: (1) 추출 (2) 호출 해석(이웃 심볼 필요).
   const symbolsByFile = new Map<string, SymbolInfo[]>();
   const callsByFile = new Map<string, RawCall[]>();
+  const heritageByFile = new Map<string, { classId: string; baseName: string; relation: "extends" | "implements" }[]>();
   const importTargetsByFile = new Map<string, string[]>(); // fromFile → 해석된 대상 파일들
 
   let reparsed = 0;
@@ -64,6 +65,7 @@ export async function buildRepoGraph(root: string): Promise<RepoGraph> {
     for (const c of ex.contains) edges.push(c);
     symbolsByFile.set(file, ex.symbols);
     callsByFile.set(file, ex.calls);
+    heritageByFile.set(file, ex.heritage);
   }
 
   // calls 해석(2패스) — 파일별 로컬 심볼 + import한 파일들의 심볼 테이블로 대상 매칭.
@@ -74,6 +76,25 @@ export async function buildRepoGraph(root: string): Promise<RepoGraph> {
     const imported = new Map<string, SymbolInfo[]>();
     for (const t of importTargetsByFile.get(file) ?? []) imported.set(t, symbolsByFile.get(t) ?? []);
     for (const e of resolveCalls(calls, local, imported)) edges.push(e);
+  }
+
+  // 상속(extends/implements) 해석 — baseName을 로컬 class 심볼 → import한 파일의 class 심볼 순으로 매칭(#843).
+  for (const file of scan.files) {
+    const hs = heritageByFile.get(file);
+    if (!hs || !hs.length) continue;
+    const localClass = new Map<string, string>(); // 이름 → class 심볼 id(로컬)
+    for (const s of symbolsByFile.get(file) ?? []) if (s.kind === "class" && !localClass.has(s.name)) localClass.set(s.name, s.id);
+    const importClass = new Map<string, string>();
+    for (const t of importTargetsByFile.get(file) ?? []) for (const s of symbolsByFile.get(t) ?? []) if (s.kind === "class" && !importClass.has(s.name)) importClass.set(s.name, s.id);
+    const seen = new Set<string>();
+    for (const h of hs) {
+      const target = localClass.get(h.baseName) ?? importClass.get(h.baseName);
+      if (!target || target === h.classId) continue;
+      const key = `${h.classId}|${target}|${h.relation}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ source: h.classId, target, relation: h.relation });
+    }
   }
 
   const nodes = [...fileNodes, ...symbolNodes];

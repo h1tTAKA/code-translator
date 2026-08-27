@@ -27,6 +27,7 @@ export interface SymbolInfo {
   name: string;
   kind: RepoNodeKind;
   owner?: string;      // 감싼 클래스 이름(#843 scope-aware) — this/self 멤버 호출을 이 클래스로 한정
+  signature?: string;  // 함수/메서드 시그니처(파라미터+반환타입, #843)
   startIndex: number;  // 바이트 범위(호출 스코프 판정·소스 조각용)
   endIndex: number;
   startRow: number;    // 표시용(1-based 아님, tree-sitter 0-based)
@@ -35,6 +36,9 @@ export interface SymbolInfo {
 // 원시 호출 — 아직 대상 미해결. callerId=이 호출을 감싼 심볼(없으면 null=모듈레벨, 버림).
 // member=this/self.x() 형태(대상이 caller의 소속 클래스 메서드) vs bare foo()(#843 Graft owner 기법).
 export interface RawCall { callerId: string; calleeName: string; member: boolean }
+
+// 원시 상속 — classId(하위 클래스 심볼 id) → baseName(상위 이름, 미해결). relation=extends|implements(#843).
+export interface RawHeritage { classId: string; baseName: string; relation: "extends" | "implements" }
 
 // 노드의 심볼명 — "name" 필드 우선, 없으면 첫 식별자류 자식.
 function symbolName(node: Parser.SyntaxNode): string | null {
@@ -45,6 +49,18 @@ function symbolName(node: Parser.SyntaxNode): string | null {
     if (c && /identifier|type_identifier|constant|field_identifier|name/.test(c.type)) return c.text;
   }
   return null;
+}
+
+// 함수/메서드 시그니처 — 파라미터 목록(+반환 타입). grammar별 필드명 차이 흡수(공통 후보).
+function signatureOf(node: Parser.SyntaxNode, name: string): string | undefined {
+  const params = node.childForFieldName("parameters")
+    ?? node.namedChildren.find((c) => c && /parameters|parameter_list|argument_list/.test(c.type));
+  if (!params) return undefined;
+  // 반환 타입: TS type_annotation / Go result / Java type 등 — 있으면 뒤에 붙임(best-effort).
+  const ret = node.childForFieldName("return_type")
+    ?? node.namedChildren.find((c) => c && /type_annotation|return/.test(c.type));
+  const sig = `${name}${params.text.replace(/\s+/g, " ")}${ret ? ` ${ret.text.replace(/\s+/g, " ")}` : ""}`;
+  return sig.length > 200 ? sig.slice(0, 200) : sig; // 과도한 길이 컷
 }
 
 // 호출식의 대상 — bare identifier(foo()) 또는 this/self 멤버(this.bar())만.
@@ -59,17 +75,20 @@ function calleeNameOf(fn: Parser.SyntaxNode): { name: string; member: boolean } 
 }
 
 // 소스+파일 → 심볼 목록 + 노드 + contains 엣지(file→symbol) + 원시 호출. 미지원 언어면 빈 결과.
-export async function extractSymbols(text: string, file: string): Promise<{ symbols: SymbolInfo[]; nodes: RepoNode[]; contains: RepoEdge[]; calls: RawCall[] }> {
+export async function extractSymbols(text: string, file: string): Promise<{ symbols: SymbolInfo[]; nodes: RepoNode[]; contains: RepoEdge[]; calls: RawCall[]; heritage: RawHeritage[] }> {
   const parsed = await parseFile(text, file);
-  if (!parsed) return { symbols: [], nodes: [], contains: [], calls: [] };
+  if (!parsed) return { symbols: [], nodes: [], contains: [], calls: [], heritage: [] };
 
   const symbols: SymbolInfo[] = [];
   const usedIds = new Set<string>();
+  const nodeById = new Map<string, Parser.SyntaxNode>(); // id → AST 노드(heritage 추출용)
   const add = (name: string, kind: RepoNodeKind, node: Parser.SyntaxNode) => {
     let id = `${file}#${name}`;
     if (usedIds.has(id)) { let n = 2; while (usedIds.has(`${id}:${n}`)) n++; id = `${id}:${n}`; } // 동명 심볼 유일화
     usedIds.add(id);
-    symbols.push({ id, name, kind, startIndex: node.startIndex, endIndex: node.endIndex, startRow: node.startPosition.row });
+    const signature = kind === "function" ? signatureOf(node, name) : undefined;
+    symbols.push({ id, name, kind, ...(signature ? { signature } : {}), startIndex: node.startIndex, endIndex: node.endIndex, startRow: node.startPosition.row });
+    nodeById.set(id, node);
   };
 
   // 전체 순회 — 심볼 노드면 수집(중첩 메서드·클로저 포함). ponytail: 깊이 제한 없음, 초대형 파일만 주의.
@@ -127,11 +146,36 @@ export async function extractSymbols(text: string, file: string): Promise<{ symb
     for (let i = 0; i < node.namedChildCount; i++) { const c = node.namedChild(i); if (c) walkCalls(c); }
   };
   walkCalls(parsed.tree.rootNode);
-  parsed.tree.delete(); // 순회 끝 — WASM tree 해제(추출물은 이미 원시값 배열이라 tree 불필요).
 
-  const nodes: RepoNode[] = symbols.map((s) => ({ id: s.id, label: s.name, file, kind: s.kind, ...(s.owner ? { owner: s.owner } : {}) }));
+  // 상속(#843) — class 심볼의 heritage 추출. TS: class_heritage>extends_clause/implements_clause,
+  // Python: class_definition>argument_list(bases=extends), Java: superclass/super_interfaces.
+  const heritage: RawHeritage[] = [];
+  for (const s of symbols) {
+    if (s.kind !== "class") continue;
+    const node = nodeById.get(s.id);
+    if (!node) continue;
+    const pushBases = (container: Parser.SyntaxNode | null | undefined, relation: "extends" | "implements") => {
+      if (!container) return;
+      for (let i = 0; i < container.namedChildCount; i++) {
+        const c = container.namedChild(i);
+        if (c && /identifier/.test(c.type) && c.text) heritage.push({ classId: s.id, baseName: c.text.replace(/<.*$/, ""), relation });
+      }
+    };
+    const heritageNode = node.namedChildren.find((c) => c?.type === "class_heritage");
+    if (heritageNode) { // TS/JS
+      pushBases(heritageNode.namedChildren.find((c) => c?.type === "extends_clause"), "extends");
+      pushBases(heritageNode.namedChildren.find((c) => c?.type === "implements_clause"), "implements");
+    }
+    pushBases(node.childForFieldName("superclass"), "extends");        // Java extends / Python bases(field 없으면 아래)
+    pushBases(node.childForFieldName("interfaces") ?? node.childForFieldName("super_interfaces"), "implements"); // Java
+    if (!heritageNode) pushBases(node.namedChildren.find((c) => c?.type === "argument_list"), "extends"); // Python bases
+  }
+
+  parsed.tree.delete(); // heritage 추출까지 끝 — 이제 WASM tree 해제(노드 접근 불가, freed 메모리).
+
+  const nodes: RepoNode[] = symbols.map((s) => ({ id: s.id, label: s.name, file, kind: s.kind, ...(s.owner ? { owner: s.owner } : {}), ...(s.signature ? { signature: s.signature } : {}) }));
   const contains: RepoEdge[] = symbols.map((s) => ({ source: file, target: s.id, relation: "contains" }));
-  return { symbols, nodes, contains, calls };
+  return { symbols, nodes, contains, calls, heritage };
 }
 
 // 원시 호출 → calls 엣지. 대상 해석: 같은 파일 심볼 우선, 없으면 import한 파일들 심볼 테이블서 이름 매칭.
