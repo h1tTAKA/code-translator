@@ -17,6 +17,7 @@ import DiffPane from "@/components/workspace/DiffPane";
 import DocViewer from "@/components/workspace/DocViewer";
 import RepoFlowPane from "@/components/workspace/RepoFlowPane";
 import RepoAnalyzeSection from "@/components/workspace/RepoAnalyzeSection";
+import RepoGraphViewer from "@/components/workspace/RepoGraphViewer";
 import { FlyCardProvider } from "@/components/memorize/FlyCard";
 import WorkspaceDockLayout, { defaultTree, pruneTree, leavesOf, isDockNode, appendPanel, removePanel, type DockNode, type PanelId } from "@/components/workspace/WorkspaceDockLayout";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
@@ -78,6 +79,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
   const [treeOpen, setTreeOpen] = useState(true);  // 파일 트리 열림(#733) — 하단 아이콘 바 토글, 기본 열림
   const [analyzeOpen, setAnalyzeOpen] = useState(false); // 좌측 "레포 분석하기" 섹션 열림(#743)
+  const [graphOpen, setGraphOpen] = useState(false); // 코드그래프 raw 뷰어 모달(#842 서브5, opt-in)
   const [flowFeature, setFlowFeature] = useState<string | null>(null); // 열린 플로우 패널의 기능(null=닫힘). dock에 flow 패널 존재 여부와 동기(#743)
   const [chatPrefill, setChatPrefill] = useState<{ text: string; n: number } | null>(null); // 챗 입력창 자동 삽입 신호(#746)
   const flyNoSources = useMemo(() => new Set<string>(), []); // FlyCardProvider용 빈 출처(워크스페이스 카드는 출처이동 없음, #750)
@@ -577,7 +579,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             <>
               {leftFill !== "analyze" && <div onMouseDown={startDrag("analyzeH", analyzeH)} className="h-1 shrink-0 cursor-row-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />}
               <div style={leftFill === "analyze" ? undefined : { height: analyzeH }} className={`flex flex-col overflow-hidden border-t border-zinc-200 dark:border-zinc-800 ${leftFill === "analyze" ? "min-h-0 flex-1" : "shrink-0"}`}>
-                <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => { setFlowFeature(f); ensureExpanded("flow"); }} />
+                <RepoAnalyzeSection root={path} providerId={providerId} providerSettings={providerSettings} onOpenFlow={(f) => { setFlowFeature(f); ensureExpanded("flow"); }} onOpenGraph={() => setGraphOpen(true)} />
               </div>
             </>
           )}
@@ -666,6 +668,8 @@ export default function WorkspaceView({ path, active = true, providerId, provide
             </aside>
           </>
         )}
+        {/* 코드그래프 raw 뷰어(#842 서브5) — 헤더 밑 콘텐츠 영역 오버레이(전체화면 아님). 노드 클릭 → 코드 탭. */}
+        {graphOpen && <RepoGraphViewer root={path} onOpenFile={(file) => openCodeTab({ kind: "file", file })} onClose={() => setGraphOpen(false)} />}
       </div>
     </div>
   );
