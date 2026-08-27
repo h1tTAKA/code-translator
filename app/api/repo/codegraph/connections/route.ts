@@ -11,12 +11,13 @@ export async function POST(request: Request): Promise<Response> {
   try { ({ path, files } = await request.json()); } catch { return Response.json({ error: "invalid body" }, { status: 400 }); }
   if (typeof path !== "string" || !path.trim()) return Response.json({ error: "path required" }, { status: 400 });
   if (!Array.isArray(files) || !files.every((f) => typeof f === "string")) return Response.json({ error: "files must be string[]" }, { status: 400 });
-  if (!existsSync(path) || !statSync(path).isDirectory()) return Response.json({ error: "not a directory" }, { status: 400 });
 
   try {
+    if (!existsSync(path) || !statSync(path).isDirectory()) return Response.json({ error: "not a directory" }, { status: 400 }); // statSync는 접근불가 시 throw → try 안에서
     const scan = scanRepo(path);
     const fingerprint = fingerprintFromScan(path, scan.files);
-    let graph = readCachedGraph(path)?.fingerprint === fingerprint ? readCachedGraph(path)!.graph : null;
+    const cached = readCachedGraph(path); // 1회만 읽어 재읽기 레이스·이중 IO 방지
+    let graph = cached?.fingerprint === fingerprint ? cached.graph : null;
     if (!graph) { graph = await buildRepoGraph(path, scan); writeCachedGraph(path, fingerprint, graph, Date.now()); }
     const connections = connectionsAmong(graph, files as string[]);
     return Response.json({ ok: true, connections });
