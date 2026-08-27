@@ -207,7 +207,7 @@ export default function RepoGraphViewer({ root, onOpenFile, onClose }: {
 
   const nodeCount = graph?.nodes.length ?? 0;
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-white/95 backdrop-blur-sm dark:bg-[#0b0c12]/95" role="dialog" aria-modal="true" aria-label={t("graph.title")}>
+    <div className="absolute inset-0 z-[60] flex flex-col bg-white/95 backdrop-blur-sm dark:bg-[#0b0c12]/95" role="dialog" aria-modal="true" aria-label={t("graph.title")}>
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
         <span className="mr-auto truncate text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">{t("graph.title")}</span>
         {nodeCount > 0 && <span className="shrink-0 text-[11px] text-zinc-400 dark:text-zinc-500">{t("graph.stats", { nodes: nodeCount, edges: graph?.edges.length ?? 0 })}</span>}

@@ -4,10 +4,14 @@
 // 버전 주의: grammar가 tree-sitter-cli 0.20으로 빌드돼 web-tree-sitter도 0.20이어야 ABI 맞음(신버전은 로드 실패).
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import Parser from "web-tree-sitter";
+import type Parser from "web-tree-sitter"; // 타입만(런타임 erase) — 값은 아래 require로.
 
 // external 패키지라 import.meta.url이 번들러 가상 경로가 됨 → 실제 node_modules 기준(cwd)으로 resolve.
 const require = createRequire(join(process.cwd(), "package.json"));
+
+// 런타임 로드는 require로 — Turbopack이 external CJS를 default-interop로 감싸 `Parser.init`이
+// `.default.init`으로 유실되던 문제 우회(node 스모크는 순수 ESM이라 무증상). export = Parser라 모듈=클래스.
+const TS = require("web-tree-sitter") as typeof import("web-tree-sitter");
 
 // 패키지 위치 기준으로 .wasm 경로를 런타임에 조립(번들러가 .wasm을 정적 분석·번들하지 않게 —
 // require.resolve로 직접 .wasm을 가리키면 Turbopack이 grammar wasm을 파싱하려다 깨진다).
@@ -42,7 +46,7 @@ const langCache = new Map<string, Parser.Language>();
 async function ensureInit(): Promise<void> {
   if (!initPromise) {
     const runtimeWasm = runtimeWasmPath();
-    initPromise = Parser.init({ locateFile: () => runtimeWasm });
+    initPromise = TS.init({ locateFile: () => runtimeWasm });
   }
   await initPromise;
 }
@@ -52,7 +56,7 @@ async function loadLanguage(grammar: string): Promise<Parser.Language> {
   const cached = langCache.get(grammar);
   if (cached) return cached;
   const wasmPath = grammarWasmPath(grammar);
-  const lang = await Parser.Language.load(wasmPath);
+  const lang = await TS.Language.load(wasmPath);
   langCache.set(grammar, lang);
   return lang;
 }
@@ -63,7 +67,7 @@ export async function parseFile(text: string, file: string): Promise<{ tree: Par
   if (!grammar) return null;
   await ensureInit();
   const lang = await loadLanguage(grammar);
-  const parser = new Parser();
+  const parser = new TS();
   parser.setLanguage(lang);
   const tree = parser.parse(text);
   parser.delete(); // WASM 힙 객체 — GC 안 됨. tree는 파서와 독립이라 여기서 파서 해제(호출자가 tree.delete()).
