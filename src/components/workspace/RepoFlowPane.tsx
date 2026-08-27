@@ -14,7 +14,7 @@ type FlowSection = { layer: string; nodes: FlowNode[] };
 type StreamEvent = { type: string; message?: string; response?: { summary?: string } };
 // 지하철식 직각 배선: 소스 노드 왼쪽에서 나와 → 왼쪽 거터의 전용 레인(세로) → 타깃 왼쪽으로 들어감.
 // 박스는 거터 오른쪽에만 있어 선이 박스를 뚫지 않음. 소스별 레인·색 분리로 스파게티 방지.
-type Line = { key: string; sk: string; tk: string; color: string; laneX: number; xs: number; ys: number; xt: number; yt: number };
+type Line = { key: string; sk: string; tk: string; color: string; laneX: number; xs: number; ys: number; xt: number; yt: number; grounded: boolean };
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const nk = (s: string) => s.trim().toLowerCase(); // 노드 이름 정규화 키(엣지 매칭용)
@@ -23,17 +23,6 @@ const EDGE_COLORS = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#c084fc", "#f4
 // 거터는 좁은 패널서 박스 폭을 뺏지 않게 상한(MAX_GUTTER)까지만. 레인이 상한 넘으면 x 재사용(색으로 구분).
 const MAX_GUTTER = 48, LANE_GAP = 5, LANE_MARGIN = 6, LANE_PAD = 10, CORNER = 5; // px
 const MAX_LANES = Math.max(1, Math.floor((MAX_GUTTER - LANE_MARGIN - LANE_PAD) / LANE_GAP));
-
-// next 있는 소스 노드들의 정규화 키를 등장 순으로 — 레인 인덱스·색 배정 기준(측정·거터폭 계산 공용).
-function sourceKeys(sections: FlowSection[]): string[] {
-  const seen = new Set<string>(); const out: string[] = [];
-  for (const s of sections) for (const n of s.nodes) {
-    if (!n.next?.length) continue;
-    const k = nk(n.name);
-    if (!seen.has(k)) { seen.add(k); out.push(k); }
-  }
-  return out;
-}
 
 // 튜터가 내는 "레이어 | 이름 | 파일:라인 | 역할 | →다음노드" 라인을 섹션으로. JSON 안 옴(튜터 페르소나).
 function parseFlow(text: string): FlowSection[] {
@@ -114,6 +103,51 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   const nodeEls = useRef(new Map<string, HTMLElement>()); // 이름키 → 노드 DOM(엣지 끝점 측정)
 
   const flowKey = feature && root ? `nunopi:ws:${root}:flow:${encodeURIComponent(feature)}` : null; // 레포+기능별 flow 영속 키(#743)
+  const [connKeys, setConnKeys] = useState<Set<string>>(new Set()); // 실측 연결 "fileA|fileB"(방향 보존, 조회는 양방향). #842 서브4
+
+  // 이름-레벨 엣지 = LLM next + 실측 뒷받침(grounded) + LLM이 놓친 실측 연결 보강. 곡선·레인·인접의 단일 소스.
+  const edges = useMemo(() => {
+    const list: { sk: string; tk: string; grounded: boolean }[] = [];
+    if (!sections) return list;
+    const hasConn = connKeys.size > 0; // 실측 없으면(미로드/조회실패/연결0) 기존 룩 유지 — grounded 취급(회귀 방지)
+    const keyToFile = new Map<string, string | undefined>();
+    const fileToRep = new Map<string, string>(); // 파일 → 대표 노드키(첫 등장). 플로우 노드는 대체로 파일당 1개.
+    for (const s of sections) for (const n of s.nodes) {
+      const k = nk(n.name);
+      if (!keyToFile.has(k)) keyToFile.set(k, n.file);
+      if (n.file && !fileToRep.has(n.file)) fileToRep.set(n.file, k);
+    }
+    const backs = (fa?: string, fb?: string) => !!fa && !!fb && (connKeys.has(`${fa}|${fb}`) || connKeys.has(`${fb}|${fa}`));
+    const seen = new Set<string>();
+    // 1) LLM next 엣지 — 실측 뒷받침 여부 태깅(실측 없으면 grounded 유지).
+    for (const s of sections) for (const n of s.nodes) {
+      const sk = nk(n.name);
+      for (const target of n.next ?? []) {
+        const tk = nk(target);
+        const pk = `${sk}->${tk}`;
+        if (sk === tk || seen.has(pk)) continue;
+        seen.add(pk);
+        list.push({ sk, tk, grounded: !hasConn || backs(n.file, keyToFile.get(tk)) });
+      }
+    }
+    // 2) LLM이 놓친 실측 연결 보강 — 대표 노드끼리, 중복(방향 무관) 아니면 grounded 엣지 추가.
+    // ponytail: 파일당 대표 1노드만 연결(한 파일에 노드 여럿이면 나머진 생략), 필요시 확장.
+    if (hasConn) for (const ck of connKeys) {
+      const [fa, fb] = ck.split("|");
+      const sk = fileToRep.get(fa), tk = fileToRep.get(fb);
+      if (!sk || !tk || sk === tk) continue;
+      if (seen.has(`${sk}->${tk}`) || seen.has(`${tk}->${sk}`)) continue;
+      seen.add(`${sk}->${tk}`);
+      list.push({ sk, tk, grounded: true });
+    }
+    return list;
+  }, [sections, connKeys]);
+
+  const laneKeys = useMemo(() => {
+    const seen = new Set<string>(); const out: string[] = [];
+    for (const e of edges) if (!seen.has(e.sk)) { seen.add(e.sk); out.push(e.sk); }
+    return out;
+  }, [edges]);
 
   // mode: "cache"=저장분 우선(자동), "regen"=전체 새로, "update"=새 노드만 병합 추가.
   const load = useCallback(async (mode: "cache" | "regen" | "update" = "cache") => {
@@ -177,23 +211,40 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   // 최신 sections 미러(갱신 병합 기준).
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
 
+  // 코드그래프 실측 연결 조회 — 플로우 노드 파일들 사이 실제 imports/calls. 곡선 근거화(#842 서브4).
+  useEffect(() => {
+    const files = sections && root ? [...new Set(sections.flatMap((s) => s.nodes.map((n) => n.file).filter((f): f is string => !!f)))] : [];
+    if (!root || !files.length) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 초기화(이미 비었으면 no-op)
+      setConnKeys((prev) => (prev.size ? new Set() : prev));
+      return;
+    }
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch("/api/repo/codegraph/connections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: root, files }) });
+        const d = await r.json().catch(() => null);
+        if (!alive || !Array.isArray(d?.connections)) return;
+        const set = new Set<string>();
+        for (const c of d.connections as { from: string; to: string }[]) set.add(`${c.from}|${c.to}`);
+        setConnKeys(set);
+      } catch { /* 그래프 조회 실패 → 근거화 없이 LLM 곡선만(graceful) */ }
+    })();
+    return () => { alive = false; };
+  }, [sections, root]);
+
   // 연결선 좌표 측정 — 각 노드 DOM 위치를 컨테이너 기준 상대좌표로. wrap/리사이즈 후 다시.
   const measure = useCallback(() => {
     const cont = flowRef.current;
-    if (!cont || !sections) { setLines([]); return; }
+    if (!cont || !edges.length) { setLines([]); return; }
     const cr = cont.getBoundingClientRect();
-    const keys = sourceKeys(sections);
+    const keys = laneKeys;
     // 1) 유효 엣지 수집(양끝 DOM 존재하는 것만).
-    const raw: { srcName: string; srcKey: string; tgt: string; tgtKey: string; a: HTMLElement; b: HTMLElement }[] = [];
-    for (const s of sections) for (const n of s.nodes) {
-      if (!n.next?.length) continue;
-      const a = nodeEls.current.get(nk(n.name));
-      if (!a) continue;
-      for (const target of n.next) {
-        const b = nodeEls.current.get(nk(target));
-        if (!b || b === a) continue;
-        raw.push({ srcName: n.name, srcKey: nk(n.name), tgt: target, tgtKey: nk(target), a, b });
-      }
+    const raw: { srcKey: string; tgtKey: string; grounded: boolean; a: HTMLElement; b: HTMLElement }[] = [];
+    for (const e of edges) {
+      const a = nodeEls.current.get(e.sk), b = nodeEls.current.get(e.tk);
+      if (!a || !b || a === b) continue;
+      raw.push({ srcKey: e.sk, tgtKey: e.tk, grounded: e.grounded, a, b });
     }
     // 2) 타깃별 incoming 개수 — 진입 y를 박스 높이에 분산(겹침 방지). 나감은 위쪽 한 점(버스)으로 모음.
     const inCount = new Map<string, number>();
@@ -209,10 +260,10 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
       const n = inCount.get(r.tgtKey)!;
       const k = inIdx.get(r.tgtKey) ?? 0; inIdx.set(r.tgtKey, k + 1);
       const frac = n === 1 ? 0.6 : 0.46 + ((k + 0.5) / n) * 0.44; // 들어옴: 0.46~0.90 균등 분산
-      out.push({ key: `${r.srcName}->${r.tgt}#${k}`, sk: r.srcKey, tk: r.tgtKey, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height * frac });
+      out.push({ key: `${r.srcKey}->${r.tgtKey}#${k}`, sk: r.srcKey, tk: r.tgtKey, color, laneX, xs, ys, xt: br.left - cr.left, yt: br.top - cr.top + br.height * frac, grounded: r.grounded });
     }
     setLines(out);
-  }, [sections]);
+  }, [edges, laneKeys]);
 
   // feature 바뀌면 자동 로드.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 비동기 로드(내부 setState는 이펙트 동기 실행 아님)
@@ -230,18 +281,16 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
 
   const [hovered, setHovered] = useState<string | null>(null); // 호버 카드 키(연결 강조)
   const [focused, setFocused] = useState<string | null>(null); // 클릭 포커스 카드 키(무관 어둡게)
-  const anyEdge = !!sections?.some((s) => s.nodes.some((n) => n.next?.length)); // 엣지 있으면 선으로, 없으면 꺾쇠 폴백
+  const anyEdge = edges.length > 0; // 엣지 있으면 선으로, 없으면 꺾쇠 폴백
 
-  // 노드별 인접집합(자기 + next 타깃 + 자기를 가리키는 소스). 양방향 대칭, 자기 포함.
+  // 노드별 인접집합(자기 + 연결 대상, 양방향). edges 기반이라 실측 보강 연결도 호버 강조됨.
   const adjacency = useMemo(() => {
     const m = new Map<string, Set<string>>();
     const add = (a: string, b: string) => { let s = m.get(a); if (!s) { s = new Set([a]); m.set(a, s); } s.add(b); };
-    if (sections) for (const sec of sections) for (const n of sec.nodes) {
-      const sk = nk(n.name); add(sk, sk);
-      for (const tgt of n.next ?? []) { const tk = nk(tgt); add(sk, tk); add(tk, sk); }
-    }
+    if (sections) for (const sec of sections) for (const n of sec.nodes) add(nk(n.name), nk(n.name)); // 고립 노드도 자기 포함
+    for (const e of edges) { add(e.sk, e.tk); add(e.tk, e.sk); }
     return m;
-  }, [sections]);
+  }, [sections, edges]);
   const relatedOf = useCallback((key: string | null) => (key ? adjacency.get(key) ?? new Set([key]) : null), [adjacency]);
 
   // 포커스(클릭)는 밖·다른카드 누르기 전까지 계속 유지, 호버는 그 위에 추가 강조 — 두 집합 합집합.
@@ -249,8 +298,8 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
   const focusSet = relatedOf(focused);
   const inFocus = (k: string) => !!focused && !!focusSet?.has(k);
   const inHover = (k: string) => !!hovered && !!hoverSet?.has(k);
-  const gutter = sections && anyEdge // 왼쪽 배선 레인 폭 — 상한 캡(좁은 패널 보호)
-    ? Math.min(MAX_GUTTER, LANE_MARGIN + Math.min(sourceKeys(sections).length, MAX_LANES) * LANE_GAP + LANE_PAD)
+  const gutter = anyEdge // 왼쪽 배선 레인 폭 — 상한 캡(좁은 패널 보호)
+    ? Math.min(MAX_GUTTER, LANE_MARGIN + Math.min(laneKeys.length, MAX_LANES) * LANE_GAP + LANE_PAD)
     : 0;
 
   return (
@@ -325,8 +374,10 @@ export default function RepoFlowPane({ feature, root, providerId, providerSettin
                 const incidentHover = !!hovered && (l.sk === hovered || l.tk === hovered);
                 const hot = incidentFocus || incidentHover;                 // 포커스/호버 노드에 붙은 선 → 굵게
                 const dim = !!focused && !incidentFocus && !incidentHover;   // 포커스 시 무관선 흐리게(호버선은 살림)
+                // grounded(실측 뒷받침)=실선/진하게, LLM 추측만=점선/연하게 — 룩 유지, 근거 여부만 구분.
                 return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={hot ? 3 : 1.75}
-                  opacity={dim ? 0.1 : hot ? 1 : 0.9} markerEnd="url(#flow-arrow)" className="transition-[stroke-width,opacity] duration-150" />;
+                  strokeDasharray={l.grounded ? undefined : "4 3"}
+                  opacity={dim ? 0.1 : hot ? 1 : l.grounded ? 0.9 : 0.5} markerEnd="url(#flow-arrow)" className="transition-[stroke-width,opacity] duration-150" />;
               })}
             </svg>
             {sections.map((s, i) => (
