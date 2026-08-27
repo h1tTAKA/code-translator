@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { IconSitemap, IconSparkles, IconLoader2, IconChevronRight, IconRefresh } from "@tabler/icons-react";
+import { IconSitemap, IconSparkles, IconLoader2, IconChevronRight, IconRefresh, IconBinaryTree2 } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 import { stripCardBlock } from "@/lib/cardSuggestion";
@@ -47,11 +47,12 @@ function parseCategories(text: string): RepoCategory[] {
 }
 
 // 좌측 "레포 분석하기" 섹션(#743) — [분석하기] → 기능 카테고리 목록 → 클릭 → 플로우 패널(feature=title).
-export default function RepoAnalyzeSection({ root, providerId, providerSettings, onOpenFlow }: {
+export default function RepoAnalyzeSection({ root, providerId, providerSettings, onOpenFlow, onOpenGraph }: {
   root: string;
   providerId: AgentProviderKind;
   providerSettings: ProviderSettings;
   onOpenFlow?: (feature: string) => void;
+  onOpenGraph?: () => void; // 코드그래프 raw 뷰어 열기(#842 서브5, opt-in)
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -134,6 +135,13 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       <div className="flex shrink-0 items-center gap-1 border-b border-zinc-200 px-2.5 py-1 text-[10px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
         <IconSitemap size={11} stroke={2} className="shrink-0" aria-hidden />
         <span className="mr-auto truncate">{t("repo.analyzeSection")}</span>
+        {/* 코드그래프 raw 뷰어(#842 서브5, opt-in) — 항상 열 수 있게. 서브4 플로우와 별개. */}
+        {onOpenGraph && (
+          <button type="button" onClick={onOpenGraph} title={t("graph.open")} aria-label={t("graph.open")}
+            className="shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-mustard-600 dark:hover:bg-zinc-800 dark:hover:text-mustard-400">
+            <IconBinaryTree2 size={13} stroke={2} aria-hidden />
+          </button>
+        )}
         {hasCats ? (
           <>
             {/* 갱신 — 이미 있는 목록에 새로 생긴 것만 추가(모달 확인). */}
