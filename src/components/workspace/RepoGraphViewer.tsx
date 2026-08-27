@@ -152,12 +152,13 @@ export default function RepoGraphViewer({ root, onOpenFile, onClose }: {
   }, []);
 
   // ── 팬/줌/드래그(손수) ──
-  const dragRef = useRef<{ node: SimNode | null; sx: number; sy: number; moved: boolean; panx: number; pany: number } | null>(null);
+  const dragRef = useRef<{ id: number; node: SimNode | null; sx: number; sy: number; moved: boolean; panx: number; pany: number } | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
+    if (dragRef.current) return; // 이미 한 포인터 추적 중 — 두 번째 터치 무시(멀티터치 상태 덮어쓰기 방지)
     const rect = e.currentTarget.getBoundingClientRect();
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
     const node = nodeAt(sx, sy);
-    dragRef.current = { node, sx, sy, moved: false, panx: viewRef.current.x, pany: viewRef.current.y };
+    dragRef.current = { id: e.pointerId, node, sx, sy, moved: false, panx: viewRef.current.x, pany: viewRef.current.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (node) { simRef.current?.alphaTarget(0.2).restart(); }
   };
@@ -170,6 +171,7 @@ export default function RepoGraphViewer({ root, onOpenFile, onClose }: {
       if (h !== hoverRef.current) { hoverRef.current = h; dirtyRef.current = true; }
       return;
     }
+    if (e.pointerId !== d.id) return; // 추적 중인 포인터만
     if (!d.moved && Math.abs(sx - d.sx) + Math.abs(sy - d.sy) > DRAG_THRESHOLD) d.moved = true;
     if (d.node) { // 노드 드래그 → fx/fy 고정(그래프 좌표)
       const { gx, gy } = toGraph(sx, sy);
@@ -179,7 +181,9 @@ export default function RepoGraphViewer({ root, onOpenFile, onClose }: {
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
-    const d = dragRef.current; dragRef.current = null;
+    const d = dragRef.current;
+    if (d && e.pointerId !== d.id) return; // 추적 포인터 아니면 무시
+    dragRef.current = null;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
     simRef.current?.alphaTarget(0);
     if (!d) return;
