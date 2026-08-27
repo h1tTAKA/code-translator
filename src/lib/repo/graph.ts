@@ -3,7 +3,7 @@
 // 정확도 강화(scope-aware 해석·관계 확장)는 후속 커밋서 resolveCalls/추출 보강.
 import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
-import { scanRepo } from "./scan";
+import { scanRepo, type ScanResult } from "./scan";
 import { detectLang } from "./langs";
 import { extractSymbols, resolveCalls, type SymbolInfo, type RawCall } from "./symbols";
 import type { RepoGraph, RepoNode, RepoEdge } from "./types";
@@ -24,8 +24,8 @@ function resolveImport(spec: string, fromFile: string, fileSet: Set<string>): st
 const baseName = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
 /** 레포 루트 → RepoGraph. 파일 노드 + import 엣지 + 심볼 노드 + contains + calls. */
-export async function buildRepoGraph(root: string): Promise<RepoGraph> {
-  const scan = scanRepo(root);
+export async function buildRepoGraph(root: string, pre?: ScanResult): Promise<RepoGraph> {
+  const scan = pre ?? scanRepo(root); // 라우트가 이미 스캔했으면 재사용(이중 스캔 방지, #845 🟡)
   const fileSet = new Set(scan.files);
 
   const fileNodes: RepoNode[] = [];
