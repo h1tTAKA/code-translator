@@ -72,6 +72,10 @@ assert.strictEqual(resolveCalls(un.calls, un.symbols, new Map()).length, 0, "미
 const mem = await extractSymbols(`function add(){}\nfunction useArr(){ const arr=[]; arr.add(1); }\nclass K { add(){} run(){ this.add(); } }`, "m.ts");
 const memEdges = resolveCalls(mem.calls, mem.symbols, new Map());
 assert.ok(!memEdges.some((e) => e.source === "m.ts#useArr"), "arr.add() → 로컬 add 오연결 안 함");
-assert.ok(memEdges.some((e) => e.target.endsWith("#add") && e.source.includes("#run")), "this.add() → 연결됨");
+// this.add() from run → 연결됨(dedup 접미 허용). #843 scope-aware: 모듈레벨 add가 아니라 K 클래스의 add로.
+const runEdge = memEdges.find((e) => e.source === "m.ts#run" && /#add(:\d+)?$/.test(e.target));
+assert.ok(runEdge, "this.add() → 연결됨");
+const kAdd = mem.symbols.find((s) => s.name === "add" && s.owner === "K");
+assert.strictEqual(runEdge!.target, kAdd!.id, "this.add()는 모듈 add가 아니라 소속 클래스 K의 add로 해석(scope-aware)");
 
 console.log("symbols.check OK");

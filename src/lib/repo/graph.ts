@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { scanRepo } from "./scan";
 import { detectLang } from "./langs";
-import { extractSymbols, resolveCalls, type SymbolInfo } from "./symbols";
+import { extractSymbols, resolveCalls, type SymbolInfo, type RawCall } from "./symbols";
 import type { RepoGraph, RepoNode, RepoEdge } from "./types";
 
 // import 지정자 → 레포 내 파일 id(상대경로) 해석. 상대(./ ../)만 내부 파일로 본다(패키지는 외부 → 버림).
@@ -35,7 +35,7 @@ export async function buildRepoGraph(root: string): Promise<RepoGraph> {
 
   // 파일별 심볼(resolveCalls용)·원시호출·import 대상. 두 패스: (1) 추출 (2) 호출 해석(이웃 심볼 필요).
   const symbolsByFile = new Map<string, SymbolInfo[]>();
-  const callsByFile = new Map<string, { callerId: string; calleeName: string }[]>();
+  const callsByFile = new Map<string, RawCall[]>();
   const importTargetsByFile = new Map<string, string[]>(); // fromFile → 해석된 대상 파일들
 
   let reparsed = 0;

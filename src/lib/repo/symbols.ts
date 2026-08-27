@@ -26,13 +26,15 @@ export interface SymbolInfo {
   id: string;          // "파일#이름" (중복 시 ":n" 접미)
   name: string;
   kind: RepoNodeKind;
+  owner?: string;      // 감싼 클래스 이름(#843 scope-aware) — this/self 멤버 호출을 이 클래스로 한정
   startIndex: number;  // 바이트 범위(호출 스코프 판정·소스 조각용)
   endIndex: number;
   startRow: number;    // 표시용(1-based 아님, tree-sitter 0-based)
 }
 
 // 원시 호출 — 아직 대상 미해결. callerId=이 호출을 감싼 심볼(없으면 null=모듈레벨, 버림).
-export interface RawCall { callerId: string; calleeName: string }
+// member=this/self.x() 형태(대상이 caller의 소속 클래스 메서드) vs bare foo()(#843 Graft owner 기법).
+export interface RawCall { callerId: string; calleeName: string; member: boolean }
 
 // 노드의 심볼명 — "name" 필드 우선, 없으면 첫 식별자류 자식.
 function symbolName(node: Parser.SyntaxNode): string | null {
@@ -45,13 +47,14 @@ function symbolName(node: Parser.SyntaxNode): string | null {
   return null;
 }
 
-// 호출식의 대상 이름 — bare identifier(foo()) 또는 this/self 멤버(this.bar())만.
+// 호출식의 대상 — bare identifier(foo()) 또는 this/self 멤버(this.bar())만.
 // 임의 객체 멤버(arr.push, xs.map)는 null — 빌트인/타 객체 메서드가 동명 로컬 심볼로 오연결되는 노이즈 차단(리뷰).
-function calleeNameOf(fn: Parser.SyntaxNode): string | null {
-  if (fn.type === "identifier") return fn.text;
+// member=true면 this/self.x() → resolve서 caller의 소속 클래스 메서드로만 한정(#843 scope-aware).
+function calleeNameOf(fn: Parser.SyntaxNode): { name: string; member: boolean } | null {
+  if (fn.type === "identifier") return { name: fn.text, member: false };
   const obj = fn.childForFieldName("object") ?? fn.childForFieldName("receiver") ?? fn.namedChild(0);
   const prop = fn.childForFieldName("property") ?? fn.childForFieldName("field") ?? fn.childForFieldName("name");
-  if (obj && /^(this|self)$/.test(obj.text) && prop?.text) return prop.text; // this.x / self.x 만 허용
+  if (obj && /^(this|self)$/.test(obj.text) && prop?.text) return { name: prop.text, member: true }; // this.x / self.x
   return null;
 }
 
@@ -91,24 +94,34 @@ export async function extractSymbols(text: string, file: string): Promise<{ symb
   };
   walk(parsed.tree.rootNode);
 
-  // 호출 수집 — call 노드마다 대상 이름 + 감싼 심볼(범위 내포, 최내곽). 모듈레벨 호출은 버림.
-  // 최내곽 = 범위 좁은 심볼(메서드가 클래스보다 우선). 심볼을 범위 큰→작은 정렬 후 마지막 내포가 최내곽.
+  // 범위 정렬(큰→작은) — 최내곽 판정 공용. 좁은 게 뒤 → 덮어써 최내곽.
   const byRange = [...symbols].sort((a, b) => (b.endIndex - b.startIndex) - (a.endIndex - a.startIndex));
   const containerOf = (idx: number): string | null => {
     let hit: string | null = null;
-    for (const s of byRange) if (idx >= s.startIndex && idx < s.endIndex) hit = s.id; // 좁은 게 뒤 → 덮어씀
+    for (const s of byRange) if (idx >= s.startIndex && idx < s.endIndex) hit = s.id;
     return hit;
   };
+  // owner(#843) — 각 심볼을 감싼 최내곽 class 심볼의 이름. this/self 멤버 호출을 그 클래스로 한정하는 데 씀.
+  const ownerOf = (s: SymbolInfo): string | undefined => {
+    let hit: string | undefined;
+    for (const c of byRange) {
+      if (c.id === s.id || c.kind !== "class") continue;
+      if (s.startIndex >= c.startIndex && s.endIndex <= c.endIndex) hit = c.name; // 더 좁은 class가 뒤 → 덮어씀
+    }
+    return hit;
+  };
+  for (const s of symbols) s.owner = ownerOf(s);
+
   const calls: RawCall[] = [];
   const seenCall = new Set<string>();
   const walkCalls = (node: Parser.SyntaxNode) => {
     if (node.type === "call_expression" || node.type === "call" || node.type === "call_expression_statement") {
       const fn = node.childForFieldName("function") ?? node.childForFieldName("method") ?? node.namedChild(0);
-      const name = fn ? calleeNameOf(fn) : null;
+      const callee = fn ? calleeNameOf(fn) : null;
       const caller = containerOf(node.startIndex);
-      if (name && caller) {
-        const key = `${caller}|${name}`;
-        if (!seenCall.has(key)) { seenCall.add(key); calls.push({ callerId: caller, calleeName: name }); }
+      if (callee && caller) {
+        const key = `${caller}|${callee.name}|${callee.member ? 1 : 0}`;
+        if (!seenCall.has(key)) { seenCall.add(key); calls.push({ callerId: caller, calleeName: callee.name, member: callee.member }); }
       }
     }
     for (let i = 0; i < node.namedChildCount; i++) { const c = node.namedChild(i); if (c) walkCalls(c); }
@@ -116,7 +129,7 @@ export async function extractSymbols(text: string, file: string): Promise<{ symb
   walkCalls(parsed.tree.rootNode);
   parsed.tree.delete(); // 순회 끝 — WASM tree 해제(추출물은 이미 원시값 배열이라 tree 불필요).
 
-  const nodes: RepoNode[] = symbols.map((s) => ({ id: s.id, label: s.name, file, kind: s.kind }));
+  const nodes: RepoNode[] = symbols.map((s) => ({ id: s.id, label: s.name, file, kind: s.kind, ...(s.owner ? { owner: s.owner } : {}) }));
   const contains: RepoEdge[] = symbols.map((s) => ({ source: file, target: s.id, relation: "contains" }));
   return { symbols, nodes, contains, calls };
 }
@@ -133,11 +146,25 @@ export function resolveCalls(
   // import 파일별 이름→id(첫 것).
   const importByName = new Map<string, string>();
   for (const syms of importedSymbols.values()) for (const s of syms) if (!importByName.has(s.name)) importByName.set(s.name, s.id);
+  // #843 scope-aware: owner 클래스별 메서드 인덱스 + caller id→owner. this/self 호출을 소속 클래스로 한정.
+  const byOwnerName = new Map<string, string>(); // "Owner.method" → id(첫 것)
+  const ownerOfId = new Map<string, string>();    // symbol id → owner 클래스
+  for (const s of localSymbols) {
+    if (s.owner) { ownerOfId.set(s.id, s.owner); const k = `${s.owner}.${s.name}`; if (!byOwnerName.has(k)) byOwnerName.set(k, s.id); }
+  }
 
   const edges: RepoEdge[] = [];
   const seen = new Set<string>();
   for (const c of calls) {
-    const target = localByName.get(c.calleeName) ?? importByName.get(c.calleeName);
+    let target: string | undefined;
+    if (c.member) {
+      // this/self.x() — caller의 소속 클래스 메서드로만. 없으면 미해결(bare 이름 추측 금지, Graft 원칙).
+      const owner = ownerOfId.get(c.callerId);
+      target = owner ? byOwnerName.get(`${owner}.${c.calleeName}`) : undefined;
+    } else {
+      // bare foo() — 로컬 이름 우선, 없으면 import.
+      target = localByName.get(c.calleeName) ?? importByName.get(c.calleeName);
+    }
     if (!target || target === c.callerId) continue; // 미해결·자기호출 스킵
     const key = `${c.callerId}|${target}`;
     if (seen.has(key)) continue;

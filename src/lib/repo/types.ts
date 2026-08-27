@@ -9,6 +9,7 @@ export interface RepoNode {
   label: string;     // 표시명(파일명)
   file: string;      // 상대경로(파일)
   kind: RepoNodeKind;
+  owner?: string;    // 메서드/멤버가 속한 클래스 이름(#843 scope-aware 해석용, Graft owner 기법)
   group?: string;    // 군집(자식3은 최상위 폴더 기준 임시)
   community?: number; // 커뮤니티 id(Louvain, 자식6) — 실제 연결 촘촘한 논리 덩어리
 }
