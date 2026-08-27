@@ -2,13 +2,15 @@
 // 자식 #590은 파일 노드 + import 엣지까지. 심볼(function/component)·calls는 후속.
 
 export type RepoNodeKind = "file" | "function" | "component" | "class" | "type";
-export type RepoRelation = "imports" | "calls" | "contains" | "extends";
+export type RepoRelation = "imports" | "calls" | "contains" | "extends" | "implements";
 
 export interface RepoNode {
   id: string;        // 레포 루트 기준 상대경로(파일 노드) — 고유 키
   label: string;     // 표시명(파일명)
   file: string;      // 상대경로(파일)
   kind: RepoNodeKind;
+  owner?: string;    // 메서드/멤버가 속한 클래스 이름(#843 scope-aware 해석용, Graft owner 기법)
+  signature?: string; // 함수/메서드 시그니처(파라미터+반환타입) — 표시·검색용(#843)
   group?: string;    // 군집(자식3은 최상위 폴더 기준 임시)
   community?: number; // 커뮤니티 id(Louvain, 자식6) — 실제 연결 촘촘한 논리 덩어리
 }
