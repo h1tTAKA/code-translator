@@ -5,6 +5,7 @@ import { IconSitemap, IconSparkles, IconLoader2, IconChevronRight, IconRefresh, 
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 import { stripCardBlock } from "@/lib/cardSuggestion";
+import { fetchGraphDigest } from "@/lib/repo/fetchDigest";
 
 // 레포 기능 카테고리(#743) — 에이전트가 파일 목록 보고 나눔.
 export type RepoCategory = { id: string; title: string; blurb?: string };
@@ -89,8 +90,10 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       if (!files.length) { fail("no files (tree empty)"); return; }
       const list = files.filter((f) => !/(^|\/)(node_modules|\.git|dist|build|\.next|\.turbo)(\/|$)/.test(f)).slice(0, 600);
       const name = root.split("/").filter(Boolean).pop() ?? root;
-      const ctx = `레포: ${name}\n파일 목록:\n${list.join("\n")}`;
-      const prompt = `위 레포 파일 목록을 보고, 이 레포의 주요 기능/영역을 **빠짐없이** 나눠줘. 개수를 억지로 제한하지 말고 실제로 있는 만큼(보통 8~20개), 중요한 영역이 하나도 누락되지 않게, 서로 겹치지 않게. 인사·서론·다른 설명 없이 **목록만**, 각 항목을 아래 형식으로 **한 줄씩** 적어줘:\n\`slug\` · 제목 · 한줄설명\n(slug은 kebab-case 영문. 예: \`token-usage\` · 토큰 사용량 모니터 · 로컬 토큰으로 provider usage API 호출)`;
+      // 실측 그래프 다이제스트(모듈·의존·허브) — 있으면 카테고리를 실제 구조에 근거화(#842 서브3). 실패 시 폴백.
+      const digest = await fetchGraphDigest(root);
+      const ctx = `레포: ${name}\n파일 목록:\n${list.join("\n")}${digest ? `\n\n${digest}` : ""}`;
+      const prompt = `위 레포 파일 목록${digest ? "과 실측 코드그래프 구조(모듈·의존·허브)" : ""}를 보고, 이 레포의 주요 기능/영역을 **빠짐없이** 나눠줘.${digest ? " 모듈 구조·허브 파일을 근거로 실제 경계에 맞춰 나누고, 파일 목록만으로 짐작하지 마." : ""} 개수를 억지로 제한하지 말고 실제로 있는 만큼(보통 8~20개), 중요한 영역이 하나도 누락되지 않게, 서로 겹치지 않게. 인사·서론·다른 설명 없이 **목록만**, 각 항목을 아래 형식으로 **한 줄씩** 적어줘:\n\`slug\` · 제목 · 한줄설명\n(slug은 kebab-case 영문. 예: \`token-usage\` · 토큰 사용량 모니터 · 로컬 토큰으로 provider usage API 호출)`;
       // 2) chat 모드 재사용(WorkspaceChat과 동일 경로) — 스트림 result.summary = 응답 텍스트.
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
