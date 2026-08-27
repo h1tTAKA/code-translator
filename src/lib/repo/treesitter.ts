@@ -7,16 +7,27 @@ import { dirname, join } from "node:path";
 import type Parser from "web-tree-sitter"; // 타입만(런타임 erase) — 값은 아래 require로.
 
 // external 패키지라 import.meta.url이 번들러 가상 경로가 됨 → 실제 node_modules 기준(cwd)으로 resolve.
-const require = createRequire(join(process.cwd(), "package.json"));
+// 이름을 require로 두면 Turbopack이 번들러 require 호출로 오인해 외부 CJS를 interop/빈 객체로 감쌈 → nodeReq로.
+const nodeReq = createRequire(join(process.cwd(), "package.json"));
 
-// 런타임 로드는 require로 — Turbopack이 external CJS를 default-interop로 감싸 `Parser.init`이
-// `.default.init`으로 유실되던 문제 우회(node 스모크는 순수 ESM이라 무증상). export = Parser라 모듈=클래스.
-const TS = require("web-tree-sitter") as typeof import("web-tree-sitter");
+// web-tree-sitter@0.20 footgun: tree-sitter.js가 `Parser.init()` 호출 시 `module.exports=Module`(Emscripten
+// 모듈)로 **덮어씀**. 그래서 init 이후 재-require하면 Parser 클래스가 아니라 Module(init 없음)이 와서
+// "TS.init is not a function"으로 깨짐(#849 첫 호출만 되던 이유). → require 캐시를 버스트하고 신선 로드해
+// module.exports 원형(Parser 클래스, init/Language 보유)을 확보. globalThis에 1회 캐싱(모듈 재평가·중복 로드 방지).
+// 스펙은 split/join으로 조립해 Turbopack 정적 require 변형도 회피.
+const wtsSpec = "web-tree-sitter".split("").join("");
+function loadParser(): typeof import("web-tree-sitter") {
+  try { delete nodeReq.cache[nodeReq.resolve(wtsSpec)]; } catch { /* 캐시 없음 — 무시 */ }
+  const fresh = nodeReq(wtsSpec) as unknown as Record<string, unknown>; // init 전이라 module.exports=Parser 클래스
+  return (typeof fresh.init === "function" ? fresh : (fresh.default ?? fresh)) as typeof import("web-tree-sitter");
+}
+const g = globalThis as unknown as { __nunopiWTS?: typeof import("web-tree-sitter") };
+const TS = (g.__nunopiWTS ??= loadParser());
 
 // 패키지 위치 기준으로 .wasm 경로를 런타임에 조립(번들러가 .wasm을 정적 분석·번들하지 않게 —
 // require.resolve로 직접 .wasm을 가리키면 Turbopack이 grammar wasm을 파싱하려다 깨진다).
-const runtimeWasmPath = () => join(dirname(require.resolve("web-tree-sitter/package.json")), "tree-sitter.wasm");
-const grammarWasmPath = (grammar: string) => join(dirname(require.resolve("tree-sitter-wasms/package.json")), "out", `tree-sitter-${grammar}.wasm`);
+const runtimeWasmPath = () => join(dirname(nodeReq.resolve("web-tree-sitter/package.json")), "tree-sitter.wasm");
+const grammarWasmPath = (grammar: string) => join(dirname(nodeReq.resolve("tree-sitter-wasms/package.json")), "out", `tree-sitter-${grammar}.wasm`);
 
 // 확장자 → tree-sitter-wasms grammar 이름(out/tree-sitter-{이름}.wasm).
 // LANGS(langs.ts)와 짝 — import 그래프는 정규식/컴파일러, 심볼은 tree-sitter.
