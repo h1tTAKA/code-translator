@@ -1,8 +1,12 @@
 // 에이전트 상태 수신·조회(#764) — Claude Code 등 CLI 훅이 이벤트를 POST하면 저장 + SSE 푸시,
 // 레포탭/호버 카드가 GET(폴백)·SSE(실시간)로 읽는다. 저장·푸시 로직은 @/lib/agentStatus 싱글턴.
 import { upsert, query, emit, remove, normPath, prune, type AgentState } from "@/lib/agentStatus";
+import { emitEdit } from "@/lib/mcpActivity";
 
 export const runtime = "nodejs";
+
+// 코드 편집·실행 툴만 학습 신호로(#857). Read/Grep/Glob 등 탐색은 노이즈라 제외(그래프 툴이 커버).
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "Update", "Bash"]);
 
 // Claude 훅 이벤트 → 상태. 모르는 이벤트(SubagentStop 등)는 null(상태 변경 안 함).
 function deriveState(event: string): AgentState | null {
@@ -59,6 +63,12 @@ export async function POST(request: Request): Promise<Response> {
   }, now);
   prune(now);
   emit(cwd); // SSE 구독자에게 즉시 푸시(폴링 대기 없이)
+  // 편집 활동을 학습 스트림으로도(#857) — 코드 편집·실행 툴일 때만. emit 실패가 응답 막지 않게.
+  try {
+    const tool = typeof body.tool === "string" ? body.tool : "";
+    const target = shortToolInput(body.toolInput);
+    if (state === "working" && tool && target && EDIT_TOOLS.has(tool)) emitEdit(cwd, tool, target, false, now);
+  } catch { /* 무시 */ }
   return Response.json({ ok: true });
 }
 
