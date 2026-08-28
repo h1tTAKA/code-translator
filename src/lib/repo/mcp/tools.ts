@@ -20,7 +20,7 @@ const byId = (g: RepoGraph) => new Map(g.nodes.map((n) => [n.id, n]));
 
 export const TOOLS: McpTool[] = [
   {
-    name: "nunopi_find_code",
+    name: "katchup_find_code",
     description: "심볼 이름으로 정의 위치 찾기(file:line, 종류, 시그니처). '이 함수/클래스 어디 정의됨?'",
     inputSchema: { type: "object", properties: { name: { type: "string", description: "심볼 이름(함수/클래스/타입)" } }, required: ["name"] },
     handler: async (root, args) => {
@@ -33,7 +33,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "nunopi_trace_calls",
+    name: "katchup_trace_calls",
     description: "호출 관계 추적. direction=callers(누가 이 심볼 부름)/callees(이 심볼이 뭘 부름)/both.",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, direction: { type: "string", enum: ["callers", "callees", "both"] } }, required: ["symbol"] },
     handler: async (root, args) => {
@@ -53,7 +53,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "nunopi_find_all",
+    name: "katchup_find_all",
     description: "심볼/파일 이름의 모든 그래프 참조(imports/calls/contains/extends/implements) 나열.",
     inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
     handler: async (root, args) => {
@@ -66,7 +66,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "nunopi_file_api",
+    name: "katchup_file_api",
     description: "한 파일의 심볼 스켈레톤(함수/클래스/타입 + 줄 + 시그니처). 파일 열지 않고 API 파악.",
     inputSchema: { type: "object", properties: { file: { type: "string", description: "레포 상대경로(끝부분만도 매칭)" } }, required: ["file"] },
     handler: async (root, args) => {
@@ -79,7 +79,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "nunopi_repo_map",
+    name: "katchup_repo_map",
     description: "레포 구조 요약(모듈 맵 + 모듈간 의존 + 핵심 허브 파일). 코드베이스 첫 파악용.",
     inputSchema: { type: "object", properties: {} },
     handler: async (root) => {
@@ -88,7 +88,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "nunopi_search",
+    name: "katchup_search",
     description: "그래프 기반 관련 코드 검색(PageRank, 임베딩 없음). 'how does X work / X 관련 코드' 자연어 쿼리.",
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] },
     handler: async (root, args) => {
@@ -101,7 +101,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "nunopi_check_freshness",
+    name: "katchup_check_freshness",
     description: "코드그래프가 현재 소스와 최신인지 확인(파일 변경 시 다음 조회에서 재빌드됨).",
     inputSchema: { type: "object", properties: {} },
     handler: async (root) => {

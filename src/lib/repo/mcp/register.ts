@@ -1,10 +1,10 @@
 // 에이전트 MCP 설정 생성·주입(#853) — 서버(Node) 전용. 우리 코드그래프 브릿지를 각 CLI 에이전트에 등록.
-// 병합 원칙: 기존 설정 보존, 우리 항목(nunopi-codegraph)만 추가/갱신(덮어쓰기 금지).
+// 병합 원칙: 기존 설정 보존, 우리 항목(mustard-katchup)만 추가/갱신(덮어쓰기 금지).
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
-export const MCP_NAME = "nunopi-codegraph";
+export const MCP_NAME = "mustard-katchup";
 
 export interface ServerSpec { command: string; args: string[] }
 

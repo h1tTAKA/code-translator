@@ -53,8 +53,8 @@ rl.on("line", (line) => {
       reply(id, {
         protocolVersion: params?.protocolVersion || "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "nunopi-codegraph", version: VERSION },
-        instructions: "nunopi 코드그래프 툴. 파일을 뒤지기 전에 nunopi_repo_map으로 구조를 먼저 잡고, find_code/trace_calls/find_all/file_api/search로 정확히 짚어라.",
+        serverInfo: { name: "mustard-katchup", version: VERSION },
+        instructions: "Mustard Katchup 코드그래프 툴. 파일을 뒤지기 전에 katchup_repo_map으로 구조를 먼저 잡고, katchup_find_code/trace_calls/find_all/file_api/search로 정확히 짚어라.",
       });
       return;
     case "notifications/initialized":
