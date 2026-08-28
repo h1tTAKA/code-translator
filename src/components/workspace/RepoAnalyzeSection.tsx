@@ -227,7 +227,7 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       {/* 에이전트 MCP 연결 모달(#853, opt-in) — 대상 선택 후 설정 주입. */}
       {mcpOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMcpOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[20rem] rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-700 dark:bg-[#15161d]">
+          <div onClick={(e) => e.stopPropagation()} className="nunopi-scroll flex max-h-[85%] w-full max-w-[20rem] flex-col overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-700 dark:bg-[#15161d]">
             <p className="flex items-center gap-1.5 text-[12px] font-semibold text-zinc-700 dark:text-zinc-100"><IconPlugConnected size={13} stroke={2} aria-hidden /> {t("mcp.title")}</p>
             <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">{t("mcp.desc")}</p>
             <div className="mt-2.5 flex flex-col gap-1.5">
