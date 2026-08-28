@@ -33,7 +33,8 @@ function narrativePrompt(repo: string, lines: string[]): string {
 // analyze 응답서 해설만 남기기 — 카드 펜스/raw 카드 JSON([{"term"…])/코드펜스 이후 잘라내고 정리.
 function cleanNarrative(raw: string): string {
   let s = stripCardBlock(raw);
-  const cut = s.search(/```|nunopi-cards|\[\s*\{\s*"(term|word|title)"/i);
+  // 코드펜스/카드 마커/줄머리 raw 카드 JSON 이후 절단(프로즈 중간 오탐 방지 위해 카드 JSON은 줄머리 앵커).
+  const cut = s.search(/```|nunopi-cards|(^|\n)\s*\[\s*\{\s*"(term|word|title)"/i);
   if (cut >= 0) s = s.slice(0, cut);
   return s.trim();
 }
@@ -60,9 +61,15 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
   useEffect(() => { cfgRef.current = { providerId, providerSettings, locale, autoExplain }; }, [providerId, providerSettings, locale, autoExplain]);
 
   // 새 이벤트 이후 조용해지면 그동안 묶음을 한 챕터로 해설(직렬 1건).
+  // 단일 타이머 예약(항상 이전 것 정리 → 중복 타이머 누수 방지, cavecrew).
+  const schedule = useCallback((fn: () => void) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(fn, QUIET_MS);
+  }, []);
+
   const flush = useCallback(async () => {
     const { providerId: pid, providerSettings: ps, locale: loc, autoExplain: auto } = cfgRef.current;
-    if (busyRef.current) { timerRef.current = setTimeout(() => void flush(), QUIET_MS); return; } // 진행 중이면 뒤로
+    if (busyRef.current) { schedule(() => void flush()); return; } // 진행 중이면 뒤로(단일 타이머)
     if (!auto || !pid) return;
     const all = eventsRef.current;
     const batch = all.slice(lastIdxRef.current);
@@ -90,8 +97,8 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
       const text = cleanNarrative(answer) || "—";
       setChapters((p) => p.map((c) => (c.id === id ? { ...c, status: "done", text } : c)));
     } catch { setChapters((p) => p.map((c) => (c.id === id ? { ...c, status: "error" } : c))); }
-    finally { busyRef.current = false; if (eventsRef.current.length > lastIdxRef.current) { timerRef.current = setTimeout(() => void flush(), QUIET_MS); } } // 그새 쌓였으면 이어서
-  }, [root]);
+    finally { busyRef.current = false; if (eventsRef.current.length > lastIdxRef.current) schedule(() => void flush()); } // 그새 쌓였으면 이어서(단일 타이머)
+  }, [root, schedule]);
 
   // SSE 구독 — 이벤트 수집 + debounce로 흐름 해설 예약.
   useEffect(() => {
@@ -104,11 +111,10 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
       if (!ev?.target) return;
       eventsRef.current = [...eventsRef.current, ev].slice(-200);
       setEvents(eventsRef.current);
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => void flush(), QUIET_MS); // 조용해지면 해설
+      schedule(() => void flush()); // 조용해지면 해설(단일 타이머)
     };
     return () => { es.close(); if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [root, flush]);
+  }, [root, flush, schedule]);
 
   useEffect(() => {
     if (!events.length && !chapters.length) return;

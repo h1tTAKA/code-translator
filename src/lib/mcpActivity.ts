@@ -37,7 +37,7 @@ export function emitToolCall(root: string, tool: string, args: Record<string, un
   if (!c) return;
   const ev: ActivityEvent = { root: normPath(root), tool, kind: c.kind, target: c.target, isError, ts: now };
   ring.push(ev);
-  if (ring.length > RING_MAX) ring.splice(0, ring.length - RING_MAX);
+  if (ring.length > RING_MAX) ring.splice(0, ring.length - RING_MAX); // ponytail: 200번째마다 O(n) splice, 처리량 커지면 Ring 클래스로
   for (const fn of listeners) { try { fn(ev); } catch { /* 개별 리스너 실패 무시 */ } }
 }
 
@@ -50,5 +50,5 @@ export function subscribe(fn: (e: ActivityEvent) => void): () => void {
 // 최근 이벤트(초기 표시용) — root 필터.
 export function recent(root: string, limit = 50): ActivityEvent[] {
   const r = normPath(root);
-  return ring.filter((e) => e.root === r).slice(-limit);
+  return ring.filter((e) => e.root === r).slice(-limit).map((e) => ({ ...e })); // 방어 복사(호출부 변이로 링 오염 방지)
 }
