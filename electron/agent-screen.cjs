@@ -106,9 +106,11 @@ function parseAgentScreen(buffer) {
     ["gemini", /geminicli|gemini-\d/],    // Gemini CLI 배너 or 하이픈 모델id("gemini-2.5"). antigravity 모델표기 "Gemini 3.1 Pro"(공백→"gemini3.1", 하이픈X)엔 안 걸림 — 배너 스크롤아웃 시 antigravity→gemini flip 방지(#861)
   ];
   const strongWaiting = () => title.toLowerCase().includes("action required") || CLAUDE_WAITING.test(bottom) || CODEX_WAITING.test(bottom);
-  // 상태(working)는 라이브 신호만 — 스피너 글리프(현재) 또는 현 입력영역의 esc-to-interrupt. 전사 스크롤백의
-  // 토큰수(예 "302 tokens")로 working 추론 금지(끝난 턴을 작업중으로 오판, orca 원칙: infer 말고 라이브만).
-  const workingLive = () => isSpinnerGlyph(tc) || /esctointerrupt/.test(bottom);
+  // 상태(working)는 라이브 신호만 — 스피너(타이틀 or 본문), 진행 타이머 "(5m 29s·"(카운트업), esc-to-interrupt.
+  // 완료 토큰수("302 tokens")·과거 사고("Thought for 4s,")는 제외(끝난 턴을 작업중으로 오판 방지). Claude는
+  // 스피너를 타이틀 아닌 본문("✳ Crafting… (5m 29s·")에 두므로 본문 타이머·스피너도 봐야(idle 오탐/작업중 누락 균형).
+  const WORKING_LIVE = /esctointerrupt|\(\d+m?\d*s[·)]/;                 // 진행 타이머 "(5m 29s·"·인터럽트 = 라이브
+  const workingLive = () => isSpinnerGlyph(tc) || WORKING_LIVE.test(compact);
   const strongWorking = workingLive;
   for (const [id, re] of STRONG) {
     if (re.test(wide)) return { agent: id, state: strongWaiting() ? "waiting" : strongWorking() ? "working" : "idle", task };
