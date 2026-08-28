@@ -76,3 +76,53 @@ export function connectAgents(root: string, targets: AgentTarget[], bridgePath: 
   }
   return out;
 }
+
+// ── 룰 파일 지침 주입(#858) — 에이전트가 세션마다 읽어 katchup 툴을 자율적으로 쓰게 ──
+const RULE_START = "<!-- nunopi:katchup:start -->";
+const RULE_END = "<!-- nunopi:katchup:end -->";
+
+// 룰 스니펫(마커 포함) — 파일을 뒤지기 전에 그래프 툴을 먼저 쓰라는 지침.
+export function ruleSnippet(): string {
+  return `${RULE_START}
+## 코드 탐색: mustard-katchup MCP를 먼저 써라
+
+이 레포엔 코드그래프 MCP(mustard-katchup)가 연결돼 있다. 파일을 grep하거나 열어 뒤지기 **전에** 아래 툴을 먼저 써서 정확·빠르게 찾아라:
+
+- \`katchup_repo_map\` — 레포 구조·핵심 파일 파악(처음 진입 시)
+- \`katchup_find_code\` — 심볼 정의 위치(file:line, 시그니처)
+- \`katchup_trace_calls\` — 누가 이 함수/컴포넌트를 부르나(수정 전 **영향 범위** 확인 필수)
+- \`katchup_find_all\` — 심볼/파일의 모든 참조
+- \`katchup_file_api\` — 파일 안 열고 심볼 스켈레톤
+- \`katchup_search\` — 자연어로 관련 코드 랭킹
+
+원칙: 구조·정의·호출관계는 grep 대신 위 툴로. 코드 수정 전 반드시 \`trace_calls\`로 영향 범위 확인.
+${RULE_END}`;
+}
+
+// 순수 병합 — 기존 마커 블록 있으면 교체, 없으면 append. 마커 밖 내용 보존.
+export function mergeRuleDoc(existing: string, snippet: string): string {
+  if (!existing.trim()) return snippet + "\n";
+  const re = new RegExp(`${RULE_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${RULE_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+  if (re.test(existing)) return existing.replace(re, snippet);
+  return existing.replace(/\n*$/, "\n\n") + snippet + "\n";
+}
+
+// 대상 룰 파일 경로 — Claude=CLAUDE.md, 범용/Codex=AGENTS.md.
+function ruleFile(root: string, target: AgentTarget): string {
+  return join(root, target === "claude" ? "CLAUDE.md" : "AGENTS.md");
+}
+export function writeRules(root: string, targets: AgentTarget[]): Array<{ target: AgentTarget; path: string; action: "created" | "updated" }> {
+  const snippet = ruleSnippet();
+  const seen = new Set<string>();
+  const out: Array<{ target: AgentTarget; path: string; action: "created" | "updated" }> = [];
+  for (const t of targets) {
+    const path = ruleFile(root, t);
+    if (seen.has(path)) continue; // claude+codex가 같은 AGENTS.md면 1회
+    seen.add(path);
+    const existed = existsSync(path);
+    const prev = existed ? readFileSync(path, "utf8") : "";
+    writeFileSync(path, mergeRuleDoc(prev, snippet));
+    out.push({ target: t, path, action: existed ? "updated" : "created" });
+  }
+  return out;
+}

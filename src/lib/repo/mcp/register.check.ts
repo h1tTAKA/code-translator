@@ -1,6 +1,6 @@
 // register 병합 점검 — node --experimental-strip-types src/lib/repo/mcp/register.check.ts
 import assert from "node:assert";
-import { mergeClaudeDoc, mergeCodexToml, MCP_NAME } from "./register.ts";
+import { mergeClaudeDoc, mergeCodexToml, mergeRuleDoc, ruleSnippet, MCP_NAME } from "./register.ts";
 
 const spec = { command: "/usr/bin/node", args: ["/app/bridge.cjs", "/repo", "http://127.0.0.1:3000"] };
 
@@ -35,5 +35,18 @@ assert.equal((re2.match(/args = \[/g) || []).length, 1, "args 한 줄만(orphan 
 assert.ok(re2.includes("[other.table]") && re2.includes("k = 1"), "뒤 테이블 보존");
 assert.ok(!re2.includes('"old"'), "옛 command 교체됨");
 assert.ok(re2.includes('"/repo"'), "새 args 반영");
+
+// 룰 파일 마커 병합 — 기존 내용 보존 + 우리 블록만, 재실행 중복 없음
+const snip = ruleSnippet();
+const existingMd = "# My Project\n\n프로젝트 설명입니다.\n";
+const r1 = mergeRuleDoc(existingMd, snip);
+assert.ok(r1.includes("# My Project") && r1.includes("프로젝트 설명입니다."), "기존 CLAUDE.md 내용 보존");
+assert.ok(r1.includes("katchup_repo_map"), "룰 스니펫 추가");
+// 재실행 → 블록 1개(중복 없음)
+const r2 = mergeRuleDoc(r1, snip);
+assert.strictEqual((r2.match(/nunopi:katchup:start/g) || []).length, 1, "마커 블록 1개(재실행 중복 X)");
+assert.ok(r2.includes("# My Project"), "재실행에도 기존 보존");
+// 빈 파일
+assert.ok(mergeRuleDoc("", snip).includes("katchup_trace_calls"), "빈 파일도 생성");
 
 console.log("register.check OK");
