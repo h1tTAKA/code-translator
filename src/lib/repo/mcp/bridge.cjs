@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports -- 순수 CJS 브릿지(에이전트가 plain node로 spawn, TS/ESM 아님) */
 // 코드그래프 MCP stdio 브릿지(#853) — 손수 JSON-RPC 2.0(SDK 없음, Graft 모델).
 // 에이전트 CLI가 spawn. 툴 실행은 우리 앱의 Next 라우트(/api/repo/mcp/tool)로 위임 → lib 해석 문제 0.
 // stdout=프로토콜 전용(로그는 stderr). 앱이 떠 있어야 동작(에이전트는 앱 터미널서 돌므로 항상 켜짐).
