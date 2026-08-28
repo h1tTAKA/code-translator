@@ -2,23 +2,14 @@
 // + 심볼/호출 추출(symbols) → RepoGraph{nodes,edges}. 파싱은 전부 WASM tree-sitter(treesitter.ts, 네이티브 없음).
 // 정확도 강화(scope-aware 해석·관계 확장)는 후속 커밋서 resolveCalls/추출 보강.
 import { readFileSync } from "node:fs";
-import { join, posix } from "node:path";
+import { join } from "node:path";
 import { scanRepo, type ScanResult } from "./scan";
 import { detectLang } from "./langs";
 import { extractSymbols, resolveCalls, type SymbolInfo, type RawCall } from "./symbols";
 import type { RepoGraph, RepoNode, RepoEdge } from "./types";
 
-// import 지정자 → 레포 내 파일 id(상대경로) 해석. 상대(./ ../)만 내부 파일로 본다(패키지는 외부 → 버림).
-// fromFile 기준 dirname에서 spec을 합치고, 확장자/인덱스 후보를 fileSet에서 찾음. 없으면 null.
-const CANDIDATE_EXTS = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java", ".kt", ".rb", ".rs", ".php", ".cs", ".c", ".cc", ".cpp", ".swift"];
-const INDEX_BASES = ["index.ts", "index.tsx", "index.js", "index.jsx", "__init__.py"];
-function resolveImport(spec: string, fromFile: string, fileSet: Set<string>): string | null {
-  if (!spec.startsWith(".")) return null; // 패키지/절대 — 외부, 스킵
-  const base = posix.normalize(posix.join(posix.dirname(fromFile), spec));
-  for (const ext of CANDIDATE_EXTS) { const c = base + ext; if (fileSet.has(c)) return c; }
-  for (const idx of INDEX_BASES) { const c = posix.join(base, idx); if (fileSet.has(c)) return c; }
-  return null;
-}
+// import 해석(상대 + tsconfig 별칭 + baseUrl)은 경량 모듈 imports.ts로 분리.
+import { resolveImport, loadAliases } from "./imports";
 
 // 파일명(경로 마지막) — 노드 label용.
 const baseName = (p: string) => p.slice(p.lastIndexOf("/") + 1);
@@ -27,6 +18,7 @@ const baseName = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 export async function buildRepoGraph(root: string, pre?: ScanResult): Promise<RepoGraph> {
   const scan = pre ?? scanRepo(root); // 라우트가 이미 스캔했으면 재사용(이중 스캔 방지, #845 🟡)
   const fileSet = new Set(scan.files);
+  const alias = loadAliases(root); // tsconfig paths(@/* 등) 별칭 해석 — Next 앱 엣지 확보
 
   const fileNodes: RepoNode[] = [];
   const symbolNodes: RepoNode[] = [];
@@ -52,7 +44,7 @@ export async function buildRepoGraph(root: string, pre?: ScanResult): Promise<Re
       let specs: string[] = [];
       try { specs = lang.extract(text); } catch { specs = []; }
       for (const spec of specs) {
-        const target = resolveImport(spec, file, fileSet);
+        const target = resolveImport(spec, file, fileSet, alias ?? undefined);
         if (target && target !== file) { importEdges.push({ source: file, target, relation: "imports" }); targets.push(target); }
       }
       importTargetsByFile.set(file, targets);
