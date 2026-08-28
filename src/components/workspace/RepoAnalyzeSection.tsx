@@ -229,8 +229,8 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMcpOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="nunopi-scroll flex max-h-[85%] w-full max-w-[20rem] flex-col overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-700 dark:bg-[#15161d]">
             <p className="flex items-center gap-1.5 text-[12px] font-semibold text-zinc-700 dark:text-zinc-100"><IconPlugConnected size={13} stroke={2} aria-hidden /> {t("mcp.title")}</p>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">{t("mcp.desc")}</p>
-            <div className="mt-2.5 flex flex-col gap-1.5">
+            <p className="mt-1.5 shrink-0 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">{t("mcp.desc")}</p>
+            <div className="mt-2.5 flex shrink-0 flex-col gap-1.5">
               {(["claude", "codex"] as const).map((k) => (
                 <label key={k} className="flex cursor-pointer items-center gap-2 text-[12px] text-zinc-700 dark:text-zinc-200">
                   <input type="checkbox" checked={mcpTargets.has(k)} disabled={mcpBusy}
@@ -239,9 +239,9 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
                 </label>
               ))}
             </div>
-            {mcpDone && <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-emerald-500/10 p-1.5 text-[10px] text-emerald-700 dark:text-emerald-400">{mcpDone}</pre>}
-            {mcpErr && <p className="mt-2 break-words text-[10px] text-rose-500">{mcpErr}</p>}
-            <div className="mt-3 flex justify-end gap-1.5">
+            {mcpDone && <pre className="mt-2 shrink-0 whitespace-pre-wrap break-all rounded bg-emerald-500/10 p-1.5 text-[10px] text-emerald-700 dark:text-emerald-400">{mcpDone}</pre>}
+            {mcpErr && <p className="mt-2 shrink-0 break-words text-[10px] text-rose-500">{mcpErr}</p>}
+            <div className="mt-3 flex shrink-0 justify-end gap-1.5">
               <button type="button" onClick={() => setMcpOpen(false)}
                 className="rounded-md px-2.5 py-1 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">{mcpDone ? t("mem.close") : t("confirm.cancel")}</button>
               {!mcpDone && (
