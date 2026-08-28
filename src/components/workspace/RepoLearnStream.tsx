@@ -1,8 +1,9 @@
 "use client";
-// 실시간 학습 스트림(#855) — MCP 연결 에이전트가 코드그래프 툴을 부를 때마다 "지금 탐색 중인 개념"을
-// 실시간 표시(SSE) + 개념마다 "무엇·용어·왜"를 LLM이 짧게 설명(analyze 재사용). 에이전트 작업을 옆에서 학습.
+// 실시간 학습 스트림(#855) — MCP 연결 에이전트가 코드그래프 툴을 부르는 흐름을 실시간 관찰(SSE) +
+// 그 "작업 흐름"을 자연스러운 산문으로 해설(개념·용어·왜). 툴콜 하나씩 사전식이 아니라, 잠깐 조용해지면
+// 그동안의 툴콜 묶음을 한 문단으로 해설해 라이브 코멘터리처럼 쌓임.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconCode, IconFile, IconSearch, IconSitemap, IconActivity, IconPointFilled, IconChevronDown, IconLoader2 } from "@tabler/icons-react";
+import { IconCode, IconFile, IconSearch, IconSitemap, IconActivity, IconPointFilled, IconLoader2 } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 import Markdown from "@/components/learning/Markdown";
@@ -10,23 +11,21 @@ import { stripCardBlock } from "@/lib/cardSuggestion";
 
 type ConceptKind = "symbol" | "file" | "query" | "repo";
 interface ActivityEvent { root: string; tool: string; kind: ConceptKind; target: string; isError: boolean; ts: number }
-interface Concept { key: string; kind: ConceptKind; target: string; tool: string; count: number; lastTs: number; lastError: boolean }
-type Expl = { status: "loading" | "done" | "error"; text?: string };
+interface Chapter { id: number; status: "loading" | "done" | "error"; text?: string; ts: number }
 type StreamEvent = { type: string; message?: string; response?: { summary?: string } };
 
 const KIND_ICON: Record<ConceptKind, typeof IconCode> = { symbol: IconCode, file: IconFile, query: IconSearch, repo: IconSitemap };
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const ago = (ts: number, now: number) => { const s = Math.max(0, Math.round((now - ts) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`; };
+const QUIET_MS = 3000;   // 이만큼 조용하면 그동안 활동을 한 챕터로 해설
+const MAX_BATCH = 14;    // 한 챕터에 담을 최근 툴콜 수 상한
 
-// 개념 종류별 "무엇·용어·왜" 설명 프롬프트(초보 눈높이, 코드 없이 개념·이유 위주).
-function promptFor(kind: ConceptKind, target: string, repo: string): string {
-  const tail = "개발 초보도 이해하게 한국어 2~3문장으로. 무엇인지 + 핵심 용어 + 왜 이렇게 쓰는지(이유). 코드 없이, 장황하지 않게.";
-  switch (kind) {
-    case "symbol": return `레포 "${repo}"에서 지금 에이전트가 살펴보는 심볼 \`${target}\`이 보통 무슨 역할을 하는 함수/클래스인지 ${tail}`;
-    case "file": return `레포 "${repo}"에서 파일 \`${target}\`이 대략 무슨 역할을 하는지 ${tail}`;
-    case "query": return `레포 "${repo}"에서 "${target}" 관련 동작·흐름이 보통 어떻게 이뤄지는지 ${tail}`;
-    case "repo": return `레포 "${repo}"의 전체 구조를 처음 보는 사람에게 ${tail}`;
-  }
+// 활동 묶음 → "흐름 해설" 프롬프트. 사전식 나열 금지, 자연스러운 산문.
+function narrativePrompt(repo: string, lines: string[]): string {
+  return `한 AI 코딩 에이전트가 방금 레포 "${repo}"에서 코드그래프를 아래 순서로 탐색했어:\n${lines.join("\n")}\n\n`
+    + `이 흐름만 보고, 에이전트가 지금 무슨 작업을 파악하려는 중인지 + 등장한 핵심 개념·용어 + 왜 이렇게 접근하는지를 `
+    + `개발 초보가 옆에서 따라 이해하도록 자연스러운 한국어 산문 3~5문장으로 풀어줘. `
+    + `사전식 항목 나열("A는 …, B는 …")이나 소제목·불릿 말고, 실제로 무슨 일이 일어나는지 흐르는 이야기로. 코드는 넣지 마.`;
 }
 
 export default function RepoLearnStream({ root, providerId, providerSettings }: {
@@ -36,31 +35,37 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
 }) {
   const t = useT();
   const { locale } = useLocale();
-  const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [live, setLive] = useState(false);
   const [now, setNow] = useState(() => 0);
-  const [expl, setExpl] = useState<Record<string, Expl>>({});
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [autoExplain, setAutoExplain] = useState(true);
 
-  // 비동기 큐에서 최신값 읽기(stale 회피).
-  const metaRef = useRef(new Map<string, { kind: ConceptKind; target: string }>());
-  const queuedRef = useRef(new Set<string>()); // 이미 생성 시작한 개념(중복 방지)
-  const queueRef = useRef<string[]>([]);
+  const eventsRef = useRef<ActivityEvent[]>([]);   // 전체 이벤트(배치 계산, stale 회피)
+  const lastIdxRef = useRef(0);                      // 마지막 해설한 이벤트 인덱스
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(false);
+  const chapIdRef = useRef(0);
   const cfgRef = useRef({ providerId, providerSettings, locale, autoExplain });
   useEffect(() => { cfgRef.current = { providerId, providerSettings, locale, autoExplain }; }, [providerId, providerSettings, locale, autoExplain]);
 
-  // 개념 하나 설명 생성(analyze chat 재사용, 스트림 result.summary).
-  const explainOne = useCallback(async (key: string) => {
-    const meta = metaRef.current.get(key);
-    const { providerId: pid, providerSettings: ps, locale: loc } = cfgRef.current;
-    if (!meta || !pid) return;
-    setExpl((p) => ({ ...p, [key]: { status: "loading" } }));
+  // 새 이벤트 이후 조용해지면 그동안 묶음을 한 챕터로 해설(직렬 1건).
+  const flush = useCallback(async () => {
+    const { providerId: pid, providerSettings: ps, locale: loc, autoExplain: auto } = cfgRef.current;
+    if (busyRef.current) { timerRef.current = setTimeout(() => void flush(), QUIET_MS); return; } // 진행 중이면 뒤로
+    if (!auto || !pid) return;
+    const all = eventsRef.current;
+    const batch = all.slice(lastIdxRef.current);
+    if (!batch.length) return;
+    lastIdxRef.current = all.length;
+    const lines = batch.slice(-MAX_BATCH).map((e) => `- ${e.tool.replace(/^katchup_/, "")}: ${e.target}${e.isError ? " (실패)" : ""}`);
+    const id = ++chapIdRef.current;
+    setChapters((p) => [{ id, status: "loading" as const, ts: Date.now() }, ...p].slice(0, 40));
+    busyRef.current = true;
     try {
       const res = await fetch("/api/agent/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId: pid, request: { code: `레포: ${basename(root)}`, locale: loc, providerId: pid, mode: "chat", messages: [{ role: "user", content: promptFor(meta.kind, meta.target, basename(root)) }], providerSettings: ps } }),
+        body: JSON.stringify({ providerId: pid, request: { code: `레포: ${basename(root)}`, locale: loc, providerId: pid, mode: "chat", messages: [{ role: "user", content: narrativePrompt(basename(root), lines) }], providerSettings: ps } }),
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
       const reader = res.body.getReader(); const dec = new TextDecoder();
@@ -72,26 +77,13 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
         for (const l of ls) { if (!l.trim()) continue; let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { continue; } if (ev.type === "result") answer = ev.response?.summary ?? ""; else if (ev.type === "error") streamErr = ev.message ?? "error"; }
       }
       if (streamErr) throw new Error(streamErr);
-      setExpl((p) => ({ ...p, [key]: { status: "done", text: stripCardBlock(answer).trim() || "—" } }));
-    } catch { setExpl((p) => ({ ...p, [key]: { status: "error" } })); }
+      const text = stripCardBlock(answer).trim() || "—";
+      setChapters((p) => p.map((c) => (c.id === id ? { ...c, status: "done", text } : c)));
+    } catch { setChapters((p) => p.map((c) => (c.id === id ? { ...c, status: "error" } : c))); }
+    finally { busyRef.current = false; if (eventsRef.current.length > lastIdxRef.current) { timerRef.current = setTimeout(() => void flush(), QUIET_MS); } } // 그새 쌓였으면 이어서
   }, [root]);
 
-  // 큐 직렬 처리(동시 1건 — 비용·순서 제어).
-  const pump = useCallback(async () => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    while (queueRef.current.length) { const key = queueRef.current.shift()!; await explainOne(key); }
-    busyRef.current = false;
-  }, [explainOne]);
-
-  const enqueue = useCallback((key: string) => {
-    if (queuedRef.current.has(key)) return; // 개념당 1회만
-    queuedRef.current.add(key);
-    queueRef.current.push(key);
-    void pump();
-  }, [pump]);
-
-  // SSE 구독 — 툴콜 이벤트 → 개념 목록 + (자동설명 ON·provider 있으면) 새 개념 설명 큐.
+  // SSE 구독 — 이벤트 수집 + debounce로 흐름 해설 예약.
   useEffect(() => {
     if (!root) return;
     const es = new EventSource(`/api/repo/mcp/activity/stream?root=${encodeURIComponent(root)}`);
@@ -100,32 +92,23 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
     es.onmessage = (m) => {
       let ev: ActivityEvent; try { ev = JSON.parse(m.data) as ActivityEvent; } catch { return; }
       if (!ev?.target) return;
-      const key = `${ev.kind}|${ev.target}`;
-      metaRef.current.set(key, { kind: ev.kind, target: ev.target });
-      setConcepts((prev) => {
-        const found = prev.find((c) => c.key === key);
-        const merged: Concept = found
-          ? { ...found, tool: ev.tool, count: found.count + 1, lastTs: ev.ts, lastError: ev.isError }
-          : { key, kind: ev.kind, target: ev.target, tool: ev.tool, count: 1, lastTs: ev.ts, lastError: ev.isError };
-        return [merged, ...prev.filter((c) => c.key !== key)].slice(0, 100);
-      });
-      const cfg = cfgRef.current;
-      if (cfg.autoExplain && cfg.providerId) enqueue(key); // dedup은 enqueue서
+      eventsRef.current = [...eventsRef.current, ev].slice(-200);
+      setEvents(eventsRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => void flush(), QUIET_MS); // 조용해지면 해설
     };
-    return () => es.close();
-  }, [root, enqueue]);
+    return () => { es.close(); if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [root, flush]);
 
   useEffect(() => {
-    if (!concepts.length) return;
+    if (!events.length && !chapters.length) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 상대시간 초기 스냅(이후 1s 틱)
     setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [concepts.length]);
+  }, [events.length, chapters.length]);
 
-  const toggle = useCallback((key: string) => {
-    setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else { n.add(key); if (!queuedRef.current.has(key) && cfgRef.current.providerId) enqueue(key); } return n; }); // 자동설명 OFF여도 펼치면 생성
-  }, [enqueue]);
+  const recentEvents = events.slice(-8).reverse(); // 최근 활동(꼬리) 타임라인
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#0b0c12]">
@@ -139,37 +122,35 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
           <IconPointFilled size={10} stroke={2} aria-hidden /> {live ? t("learn.live") : t("learn.idle")}
         </span>
       </div>
-      <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto p-2">
-        {!concepts.length ? (
-          <p className="px-2 py-6 text-center text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">{t("learn.empty")}</p>
+      <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto">
+        {!events.length ? (
+          <p className="px-4 py-6 text-center text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">{t("learn.empty")}</p>
         ) : (
-          <ul className="flex flex-col gap-1">
-            {concepts.map((c) => {
-              const Icon = KIND_ICON[c.kind];
-              const e = expl[c.key];
-              const open = expanded.has(c.key);
-              return (
-                <li key={c.key} className="rounded-md border border-zinc-100 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-800/30">
-                  <button type="button" onClick={() => toggle(c.key)} className="flex w-full items-start gap-2 px-2.5 py-1.5 text-left">
-                    <Icon size={14} stroke={2} className={`mt-0.5 shrink-0 ${c.lastError ? "text-rose-400" : "text-mustard-600 dark:text-mustard-400"}`} aria-hidden />
-                    <span className="min-w-0 flex-1">
-                      <span className="block break-all text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{c.target}</span>
-                      <span className="block text-[10px] text-zinc-400 dark:text-zinc-500">{c.tool.replace(/^katchup_/, "")} · {ago(c.lastTs, now || c.lastTs)}{c.count > 1 ? ` · ×${c.count}` : ""}</span>
-                    </span>
-                    {e?.status === "loading" ? <IconLoader2 size={12} stroke={2} className="mt-0.5 shrink-0 animate-spin text-zinc-400" aria-hidden />
-                      : <IconChevronDown size={13} stroke={2} className={`mt-0.5 shrink-0 text-zinc-400 transition ${open ? "" : "-rotate-90"}`} aria-hidden />}
-                  </button>
-                  {open && (
-                    <div className="border-t border-zinc-200/70 px-3 py-2 text-[11.5px] leading-relaxed text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">
-                      {e?.status === "done" ? <Markdown>{e.text ?? ""}</Markdown>
-                        : e?.status === "error" ? <span className="text-[10px] text-rose-500">{t("learn.explainError")}</span>
-                        : <span className="flex items-center gap-1.5 text-[10px] text-zinc-400"><IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> {t("learn.explaining")}</span>}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            {/* 흐름 해설(산문 챕터, 최신 먼저) */}
+            <div className="flex flex-col gap-2 p-2.5">
+              {chapters.map((c) => (
+                <div key={c.id} className="rounded-lg border border-zinc-200 bg-zinc-50/70 px-3 py-2.5 text-[12px] leading-relaxed text-zinc-600 dark:border-zinc-800 dark:bg-zinc-800/40 dark:text-zinc-300">
+                  {c.status === "done" ? <Markdown>{c.text ?? ""}</Markdown>
+                    : c.status === "error" ? <span className="text-[10px] text-rose-500">{t("learn.explainError")}</span>
+                    : <span className="flex items-center gap-1.5 text-[10px] text-zinc-400"><IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> {t("learn.explaining")}</span>}
+                </div>
+              ))}
+            </div>
+            {/* 최근 활동 타임라인(꼬리) — 원자료 참고용 */}
+            <div className="border-t border-zinc-100 px-2.5 py-2 dark:border-zinc-800/70">
+              <p className="mb-1 px-1 text-[9px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{t("learn.recent")}</p>
+              <ul className="flex flex-col gap-0.5">
+                {recentEvents.map((e, i) => { const Icon = KIND_ICON[e.kind]; return (
+                  <li key={`${e.ts}-${i}`} className="flex items-center gap-1.5 px-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+                    <Icon size={11} stroke={2} className={`shrink-0 ${e.isError ? "text-rose-400" : "text-zinc-400"}`} aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">{e.target}</span>
+                    <span className="shrink-0 text-zinc-400 dark:text-zinc-600">{e.tool.replace(/^katchup_/, "")} · {ago(e.ts, now || e.ts)}</span>
+                  </li>
+                ); })}
+              </ul>
+            </div>
+          </>
         )}
       </div>
     </div>
