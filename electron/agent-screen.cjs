@@ -103,7 +103,7 @@ function parseAgentScreen(buffer) {
     ["hermes", /hermescli|hermescode|hermesagent|hermes\d/],  // 배너/버전 동반만 — bare "hermes"는 경로(~/.hermes)·대화에 흔해 오매칭(스크레이프=activity, 신원 아님)
     ["cursor", /cursoragent|cursorcli/],  // "Cursor Agent" 배너. grok보다 먼저(스크롤백 grok 오매칭 방지)
     ["grok", /grokcli|grok\d/],           // 배너/버전 동반만(맨 "grok" 단어는 대화·grep에도 흔해 sticky 오고정 방지)
-    ["gemini", /geminicli|gemini\d/],     // "Gemini 2.5/3.x" 등 버전 동반. antigravity가 먼저라 그쪽 배너의 Gemini 표기엔 안 걸림
+    ["gemini", /geminicli|gemini-\d/],    // Gemini CLI 배너 or 하이픈 모델id("gemini-2.5"). antigravity 모델표기 "Gemini 3.1 Pro"(공백→"gemini3.1", 하이픈X)엔 안 걸림 — 배너 스크롤아웃 시 antigravity→gemini flip 방지(#861)
   ];
   const strongWaiting = () => title.toLowerCase().includes("action required") || CLAUDE_WAITING.test(bottom) || CODEX_WAITING.test(bottom);
   // 상태(working)는 라이브 신호만 — 스피너 글리프(현재) 또는 현 입력영역의 esc-to-interrupt. 전사 스크롤백의
