@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import Terminal from "@/components/workspace/Terminal";
 import { AgentLogo, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
 
-interface Tab { id: string; title: string; customTitle?: string } // customTitle=유저 더블클릭 리네임(#861, 최우선)
+interface Tab { id: string; title: string; customTitle?: string; firstPrompt?: string } // customTitle=유저 리네임(최우선), firstPrompt=첫 질문 자동제목(#861)
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
 // 새 탭 번호 = 현재 안 쓰는 가장 낮은 양수(#756). 닫은 자리를 다시 채워 "터미널 4처럼 계속 증가" 방지.
 // 제목 끝 숫자로 판별(모든 로케일 포맷이 "… {n}"이라 안전).
@@ -113,6 +113,16 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
     return () => { alive = false; clearInterval(iv); };
   }, []);
 
+  // 첫 프롬프트 캡처(#861) — 활성 탭서 에이전트 감지된 뒤 유저가 처음 제출한 줄 = 자동 제목(실행명령 "claude"
+  //   등은 에이전트 미감지라 제외). 탭당 1회. refs로 비동기 콜백 stale 회피.
+  const agentByIdRef = useRef(agentById); useEffect(() => { agentByIdRef.current = agentById; }, [agentById]);
+  const activeIdRef = useRef(activeId); useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  const handleSubmitLine = useCallback((line: string) => {
+    const id = activeIdRef.current;
+    if (!agentByIdRef.current[id]) return; // 에이전트 실행 중일 때만(셸/실행명령 제외)
+    setTabs((prev) => prev.map((x) => (x.id === id && !x.firstPrompt && !x.customTitle ? { ...x, firstPrompt: line.slice(0, 120) } : x)));
+  }, []);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 터미널 탭 바 — 에디터 탭 느낌(활성 상단 강조선·구분선·닫기). pr-6 외곽: 우상단 이동 그립 자리 예약(#716). */}
@@ -122,8 +132,8 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
           const on = tab.id === activeId;
           // 실행 중 에이전트면 그 라벨·로고, 아니면(셸/유휴) 기존 "터미널 N"·터미널 아이콘. title은 안 바꿔 종료 시 자동 원복(#803).
           const agent = agentById[tab.id] ?? null;
-          // 제목 우선순위(#861, orca式): 유저 리네임 > OSC 대화 제목(≈첫 질문) > 에이전트 라벨 > 기본(터미널 N).
-          const label = tab.customTitle?.trim() || taskById[tab.id] || (agent ? AGENT_META[agent].label : tab.title);
+          // 제목 우선순위(#861, orca式): 유저 리네임 > 첫 프롬프트(내가 친 질문) > OSC 대화 제목 > 에이전트 라벨 > 기본.
+          const label = tab.customTitle?.trim() || tab.firstPrompt?.trim() || taskById[tab.id] || (agent ? AGENT_META[agent].label : tab.title);
           const editing = editingId === tab.id;
           return (
             <div key={tab.id} ref={on ? scrollTabIntoView : undefined}
@@ -159,7 +169,7 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
       </div>
       {/* 활성 터미널(id로 remount → 그 pty 재생) */}
       <div className="min-h-0 flex-1">
-        {active && <Terminal key={active.id} id={active.id} cwd={cwd} />}
+        {active && <Terminal key={active.id} id={active.id} cwd={cwd} onSubmitLine={handleSubmitLine} />}
       </div>
     </div>
   );

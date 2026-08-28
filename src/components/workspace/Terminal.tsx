@@ -16,11 +16,14 @@ function stripTermQueries(s: string): string {
     .replace(/\x1b\[>[0-9;]*q/g, "");                    // XTVERSION
 }
 
-export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
+export default function Terminal({ id, cwd, onSubmitLine }: { id: string; cwd: string; onSubmitLine?: (line: string) => void }) {
   const t = useT();
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]); // 최신 t 유지 — locale 바뀌어도 터미널 remount 없이 exit 안내 언어 반영
   const hostRef = useRef<HTMLDivElement>(null);
+  const submitRef = useRef(onSubmitLine); // 최신 콜백(effect 재실행 없이)
+  useEffect(() => { submitRef.current = onSubmitLine; }, [onSubmitLine]);
+  const lineRef = useRef(""); // 현재 입력 줄 누적(Enter서 제출 = 프롬프트 후보)
 
   useEffect(() => {
     const nd = window.nunopiDesktop;
@@ -95,7 +98,13 @@ export default function Terminal({ id, cwd }: { id: string; cwd: string }) {
           offData = nd.terminal.onData(({ id: i, data }) => { if (i === id && term) term.write(data); });
           // 셸 종료 시 빈 화면 방치 대신 안내(+로 새 터미널).
           offExit = nd.terminal.onExit(({ id: i }) => { if (i === id && term) term.write(`\r\n\x1b[2m${tRef.current("workspace.terminalExited")}\x1b[0m\r\n`); });
-          term.onData((d) => nd.terminal.input({ id, data: d }));
+          term.onData((d) => {
+            nd.terminal.input({ id, data: d });
+            // 첫 프롬프트 캡처(#861) — 유저가 친 줄을 Enter서 제출. 이스케이프(화살표·CSI-u·붙여넣기 마커)는 무시.
+            if (d === "\r" || d === "\n") { const l = lineRef.current.trim(); lineRef.current = ""; if (l) submitRef.current?.(l); }
+            else if (d === "\x7f" || d === "\b") lineRef.current = lineRef.current.slice(0, -1);
+            else if (!d.startsWith("\x1b") && !d.includes("\x1b")) lineRef.current += d;
+          });
         } catch {
           // 핸들러 미등록(옛 메인) 등 — 크래시 대신 안내.
           if (term && !disposed) term.write("\r\n[터미널 연결 실패 — electron:dev를 완전히 껐다 재시작해 주세요]\r\n");
