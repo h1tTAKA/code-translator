@@ -35,12 +35,13 @@ function parseConcept(raw: string): { expl: string; terms: Term[] } {
   let s = stripCardBlock(raw);
   const cardCut = s.search(/```|nunopi-cards|(^|\n)\s*\[\s*\{\s*"(term|word|title)"/i);
   if (cardCut >= 0) s = s.slice(0, cardCut);
-  const m = s.split(/\n\s*\[\s*용어\s*\]\s*\n?/i);
+  // "[용어]" 마커(앞 개행 없어도) 기준 분리 — 앞=설명, 뒤=용어 목록.
+  const m = s.split(/\[\s*용어\s*\]\s*/i);
   const expl = (m[0] ?? "").trim();
   const terms: Term[] = [];
-  if (m[1]) for (const line of m[1].split("\n")) {
-    const t = line.replace(/^[-*•\s]+/, "").split(/\s*::\s*|\s*[:：]\s*/);
-    if (t.length >= 2 && t[0].trim() && t.slice(1).join(":").trim()) terms.push({ term: t[0].trim(), def: t.slice(1).join(":").trim() });
+  if (m[1]) for (const line of m.slice(1).join("\n").split("\n")) { // 용어는 한 줄에 하나(term :: 뜻)
+    const t = line.replace(/^[-*•\s]+/, "").split(/\s*::\s*/);
+    if (t.length >= 2 && t[0].trim() && t.slice(1).join("::").trim()) terms.push({ term: t[0].trim(), def: t.slice(1).join("::").trim() });
   }
   return { expl: expl || "—", terms };
 }
