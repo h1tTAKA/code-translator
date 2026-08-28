@@ -17,15 +17,16 @@ type StreamEvent = { type: string; message?: string; response?: { summary?: stri
 const KIND_ICON: Record<ConceptKind, typeof IconCode> = { symbol: IconCode, file: IconFile, query: IconSearch, repo: IconSitemap };
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const ago = (ts: number, now: number) => { const s = Math.max(0, Math.round((now - ts) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`; };
-const QUIET_MS = 3000;   // 이만큼 조용하면 그동안 활동을 한 챕터로 해설
-const MAX_BATCH = 14;    // 한 챕터에 담을 최근 툴콜 수 상한
+const QUIET_MS = 1800;   // 이만큼 조용하면 그동안 활동을 한 챕터로 해설(짧고 자주)
+const MAX_BATCH = 8;     // 한 챕터에 담을 최근 툴콜 수 상한
 
-// 활동 묶음 → "흐름 해설" 프롬프트. 사전식 나열 금지, 자연스러운 산문.
+// 활동 묶음 → "흐름 해설" 프롬프트. 첫 줄 굵은 헤드라인 + 짧은 본문(스캔 쉽게, 사전식 금지).
 function narrativePrompt(repo: string, lines: string[]): string {
   return `한 AI 코딩 에이전트가 방금 레포 "${repo}"에서 코드그래프를 아래 순서로 탐색했어:\n${lines.join("\n")}\n\n`
-    + `이 흐름만 보고, 에이전트가 지금 무슨 작업을 파악하려는 중인지 + 등장한 핵심 개념·용어 + 왜 이렇게 접근하는지를 `
-    + `개발 초보가 옆에서 따라 이해하도록 자연스러운 한국어 산문 3~5문장으로 풀어줘. `
-    + `사전식 항목 나열("A는 …, B는 …")이나 소제목·불릿 말고, 실제로 무슨 일이 일어나는지 흐르는 이야기로. 코드는 넣지 마.`;
+    + `이걸 보고 초보가 옆에서 이해하게 아래 형식으로:\n`
+    + `- 첫 줄: 지금 에이전트가 뭐 하는지 한 줄 요약을 굵게(**…**, 10단어 이내).\n`
+    + `- 빈 줄 후: 왜 이렇게 하는지 + 핵심 개념/용어를 2~3문장 자연스러운 한국어 산문으로.\n`
+    + `소제목·불릿·코드 금지. 사전식 나열("A는 …, B는 …") 말고 흐르는 이야기로. 짧게.`;
 }
 
 export default function RepoLearnStream({ root, providerId, providerSettings }: {
@@ -131,6 +132,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
             <div className="flex flex-col gap-2 p-2.5">
               {chapters.map((c) => (
                 <div key={c.id} className="rounded-lg border border-zinc-200 bg-zinc-50/70 px-3 py-2.5 text-[12px] leading-relaxed text-zinc-600 dark:border-zinc-800 dark:bg-zinc-800/40 dark:text-zinc-300">
+                  <div className="mb-1 text-[9px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{ago(c.ts, now || c.ts)} ago</div>
                   {c.status === "done" ? <Markdown>{c.text ?? ""}</Markdown>
                     : c.status === "error" ? <span className="text-[10px] text-rose-500">{t("learn.explainError")}</span>
                     : <span className="flex items-center gap-1.5 text-[10px] text-zinc-400"><IconLoader2 size={11} stroke={2} className="animate-spin" aria-hidden /> {t("learn.explaining")}</span>}
