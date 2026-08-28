@@ -26,7 +26,16 @@ function narrativePrompt(repo: string, lines: string[]): string {
     + `이걸 보고 초보가 옆에서 이해하게 아래 형식으로:\n`
     + `- 첫 줄: 지금 에이전트가 뭐 하는지 한 줄 요약을 굵게(**…**, 10단어 이내).\n`
     + `- 빈 줄 후: 왜 이렇게 하는지 + 핵심 개념/용어를 2~3문장 자연스러운 한국어 산문으로.\n`
-    + `소제목·불릿·코드 금지. 사전식 나열("A는 …, B는 …") 말고 흐르는 이야기로. 짧게.`;
+    + `소제목·불릿·코드 금지. 사전식 나열("A는 …, B는 …") 말고 흐르는 이야기로. 짧게. `
+    + `설명 텍스트만 출력하고, 카드·JSON·"Wait"·다른 메타 발언은 절대 넣지 마.`;
+}
+
+// analyze 응답서 해설만 남기기 — 카드 펜스/raw 카드 JSON([{"term"…])/코드펜스 이후 잘라내고 정리.
+function cleanNarrative(raw: string): string {
+  let s = stripCardBlock(raw);
+  const cut = s.search(/```|nunopi-cards|\[\s*\{\s*"(term|word|title)"/i);
+  if (cut >= 0) s = s.slice(0, cut);
+  return s.trim();
 }
 
 export default function RepoLearnStream({ root, providerId, providerSettings }: {
@@ -78,7 +87,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
         for (const l of ls) { if (!l.trim()) continue; let ev: StreamEvent; try { ev = JSON.parse(l) as StreamEvent; } catch { continue; } if (ev.type === "result") answer = ev.response?.summary ?? ""; else if (ev.type === "error") streamErr = ev.message ?? "error"; }
       }
       if (streamErr) throw new Error(streamErr);
-      const text = stripCardBlock(answer).trim() || "—";
+      const text = cleanNarrative(answer) || "—";
       setChapters((p) => p.map((c) => (c.id === id ? { ...c, status: "done", text } : c)));
     } catch { setChapters((p) => p.map((c) => (c.id === id ? { ...c, status: "error" } : c))); }
     finally { busyRef.current = false; if (eventsRef.current.length > lastIdxRef.current) { timerRef.current = setTimeout(() => void flush(), QUIET_MS); } } // 그새 쌓였으면 이어서
