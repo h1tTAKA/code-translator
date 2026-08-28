@@ -87,7 +87,12 @@ export default function RepoAnalyzeSection({ root, providerId, providerSettings,
       const r = await fetch("/api/repo/mcp/connect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ root, targets, appUrl: window.location.origin }) });
       const d = await r.json().catch(() => null);
       if (!r.ok || !d?.ok) { setMcpErr(d?.error ? String(d.error) : `HTTP ${r.status}`); return; }
-      setMcpDone((d.results as Array<{ target: string; path: string; action: string }>).map((x) => `${x.target}: ${x.action} (${x.path})`).join("\n"));
+      { // MCP 설정 + 룰 파일(사용 지침) 둘 다 표시
+        const row = (x: { target: string; path: string; action: string }) => `${x.target}: ${x.action} (${x.path})`;
+        const mcp = (d.results as Array<{ target: string; path: string; action: string }>).map(row);
+        const rules = ((d.rules ?? []) as Array<{ target: string; path: string; action: string }>).map(row);
+        setMcpDone([...mcp, ...(rules.length ? ["", "사용 지침(룰):", ...rules] : [])].join("\n"));
+      }
     } catch (e) { setMcpErr(e instanceof Error ? e.message : String(e)); }
     finally { setMcpBusy(false); }
   }, [mcpTargets, root, t]);

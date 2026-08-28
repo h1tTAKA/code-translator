@@ -2,7 +2,7 @@
 // GET: 감지 결과(어떤 에이전트 흔적 있나). POST {root, targets[], appUrl?}: 주입.
 import { existsSync, statSync } from "node:fs";
 import { join, isAbsolute, normalize } from "node:path";
-import { detectAgents, connectAgents, type AgentTarget } from "@/lib/repo/mcp/register";
+import { detectAgents, connectAgents, writeRules, type AgentTarget } from "@/lib/repo/mcp/register";
 
 // 설정 파일을 쓰는 엔드포인트라 root를 엄격 검증(임의 경로 쓰기·traversal 방지, cavecrew 🔴).
 // 절대경로 + 정규화 후 `..` 없음 + 실제 디렉토리만.
@@ -37,7 +37,8 @@ export async function POST(request: Request): Promise<Response> {
     const bp = bridgePath();
     if (!existsSync(bp)) return Response.json({ ok: false, error: `bridge not found: ${bp}` }, { status: 500 });
     const results = connectAgents(root, list, bp, url);
-    return Response.json({ ok: true, results, bridge: bp, appUrl: url });
+    const rules = writeRules(root, list); // 룰 파일에 katchup 사용 지침도(#858) — 세션마다 로드돼 자율 사용↑
+    return Response.json({ ok: true, results, rules, bridge: bp, appUrl: url });
   } catch (e) {
     return Response.json({ ok: false, error: String((e as Error)?.message || e) }, { status: 500 });
   }
