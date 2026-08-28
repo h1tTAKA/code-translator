@@ -14,7 +14,13 @@ const DEF: Required<DigestOpts> = { moduleDepth: 3, maxModules: 40, perModuleHub
 const SEP = "\u0000"; // 모듈쌍 키 구분자 — 경로에 절대 없는 NUL(공백 포함 경로도 안전, cavecrew 🔴)
 
 const fileOf = (id: string) => { const h = id.indexOf("#"); return h < 0 ? id : id.slice(0, h); };
-const baseOf = (f: string) => f.split("/").filter(Boolean).pop() ?? f;
+// 일반명(route/page/layout/index/__init__)은 App Router 등서 충돌 → 부모폴더 포함해 구분.
+const GENERIC = /^(route|page|layout|template|loading|error|index|__init__)\.\w+$/;
+const baseOf = (f: string) => {
+  const segs = f.split("/").filter(Boolean);
+  const b = segs[segs.length - 1] ?? f;
+  return GENERIC.test(b) && segs.length > 1 ? `${segs[segs.length - 2]}/${b}` : b;
+};
 function moduleOf(file: string, depth: number): string {
   const segs = file.split("/").filter(Boolean);
   const dir = segs.slice(0, -1);              // 파일명 제외

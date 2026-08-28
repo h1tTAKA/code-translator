@@ -11,6 +11,7 @@ export interface RepoNode {
   kind: RepoNodeKind;
   owner?: string;    // 메서드/멤버가 속한 클래스 이름(#843 scope-aware 해석용, Graft owner 기법)
   signature?: string; // 함수/메서드 시그니처(파라미터+반환타입) — 표시·검색용(#843)
+  line?: number;     // 심볼 정의 시작 줄(1-based) — MCP find_code 등 위치용(#853)
   group?: string;    // 군집(자식3은 최상위 폴더 기준 임시)
   community?: number; // 커뮤니티 id(Louvain, 자식6) — 실제 연결 촘촘한 논리 덩어리
 }

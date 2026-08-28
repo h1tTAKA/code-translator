@@ -173,7 +173,7 @@ export async function extractSymbols(text: string, file: string): Promise<{ symb
 
   parsed.tree.delete(); // heritage 추출까지 끝 — 이제 WASM tree 해제(노드 접근 불가, freed 메모리).
 
-  const nodes: RepoNode[] = symbols.map((s) => ({ id: s.id, label: s.name, file, kind: s.kind, ...(s.owner ? { owner: s.owner } : {}), ...(s.signature ? { signature: s.signature } : {}) }));
+  const nodes: RepoNode[] = symbols.map((s) => ({ id: s.id, label: s.name, file, kind: s.kind, line: s.startRow + 1, ...(s.owner ? { owner: s.owner } : {}), ...(s.signature ? { signature: s.signature } : {}) }));
   const contains: RepoEdge[] = symbols.map((s) => ({ source: file, target: s.id, relation: "contains" }));
   return { symbols, nodes, contains, calls, heritage };
 }
