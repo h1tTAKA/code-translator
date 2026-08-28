@@ -142,6 +142,15 @@ export async function extractSymbols(text: string, file: string): Promise<{ symb
         const key = `${caller}|${callee.name}|${callee.member ? 1 : 0}`;
         if (!seenCall.has(key)) { seenCall.add(key); calls.push({ callerId: caller, calleeName: callee.name, member: callee.member }); }
       }
+    } else if (node.type === "jsx_opening_element" || node.type === "jsx_self_closing_element") {
+      // JSX 컴포넌트 사용(<Logo/>)도 호출로 — React서 컴포넌트는 함수호출과 동등(#857). 대문자 태그만(div 등 html 제외), 점 없는 것만(네임스페이스 오연결 회피).
+      const nameNode = node.childForFieldName("name");
+      const name = nameNode?.text;
+      const caller = containerOf(node.startIndex);
+      if (name && caller && /^[A-Z]/.test(name) && !name.includes(".")) {
+        const key = `${caller}|${name}|0`;
+        if (!seenCall.has(key)) { seenCall.add(key); calls.push({ callerId: caller, calleeName: name, member: false }); }
+      }
     }
     for (let i = 0; i < node.namedChildCount; i++) { const c = node.namedChild(i); if (c) walkCalls(c); }
   };

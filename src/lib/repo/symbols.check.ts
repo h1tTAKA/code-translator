@@ -87,4 +87,12 @@ assert.ok(her.symbols.find((s) => s.name === "m")?.signature?.includes("a: numbe
 const pyc = await extractSymbols(`class Foo(Bar, Baz):\n  def m(self):\n    return 1`, "p.py");
 assert.ok(pyc.heritage.filter((h) => h.relation === "extends").length === 2, "Python bases 2개 extends");
 
+// --- JSX 컴포넌트 사용 = calls(#857) ---
+// <Logo/> 사용을 호출로. 대문자 컴포넌트만, html 소문자 태그(div)는 제외.
+const jsx = await extractSymbols(`import { Logo } from "./logo";\nfunction App(){ return <div><Logo /></div>; }`, "app.tsx");
+const jsxEdges = resolveCalls(jsx.calls, jsx.symbols, new Map([["logo.tsx", (await extractSymbols(`export function Logo(){ return null; }`, "logo.tsx")).symbols]]));
+assert.ok(jsxEdges.some((e) => e.source === "app.tsx#App" && e.target === "logo.tsx#Logo" && e.relation === "calls"), "JSX <Logo/> → 컴포넌트 호출 엣지");
+assert.ok(jsx.calls.some((c) => c.calleeName === "Logo"), "jsx_element name 필드 추출됨");
+assert.ok(!jsx.calls.some((c) => c.calleeName === "div"), "html 소문자 태그(div)는 호출 아님");
+
 console.log("symbols.check OK");

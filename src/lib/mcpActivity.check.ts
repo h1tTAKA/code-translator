@@ -1,6 +1,6 @@
 // mcpActivity 점검 — node --experimental-strip-types src/lib/mcpActivity.check.ts
 import assert from "node:assert";
-import { extractConcept, emitToolCall, subscribe, recent } from "./mcpActivity.ts";
+import { extractConcept, emitToolCall, emitEdit, subscribe, recent, matchesRoot } from "./mcpActivity.ts";
 
 // 개념 추출
 assert.deepEqual(extractConcept("katchup_find_code", { name: "postMessage" }), { kind: "symbol", target: "postMessage" });
@@ -23,5 +23,21 @@ emitToolCall("/repo/A", "katchup_find_code", { name: "after-unsub" }, false, 4);
 assert.deepEqual(got, ["symbol:foo", "file:b.ts"], "fan-out은 개념 있는 것만, 해제 후 미수신");
 const rA = recent("/repo/A", 10).map((e) => e.target);
 assert.ok(rA.includes("foo") && rA.includes("after-unsub") && !rA.includes("b.ts"), "recent는 root A만");
+
+// 편집 신호 + dedup
+const got2: string[] = [];
+const un2 = subscribe((e) => { if (e.kind === "edit") got2.push(`${e.tool}:${e.target}`); });
+emitEdit("/repo/A", "Edit", "app/page.tsx", false, 10);
+emitEdit("/repo/A", "Edit", "app/page.tsx", false, 11); // 직전과 동일 → dedup 스킵
+emitEdit("/repo/A", "Bash", "npm test", false, 12);
+emitEdit("/repo/A", "Edit", "app/page.tsx", false, 13); // 사이에 다른 편집 있었으니 다시 방출
+un2();
+assert.deepEqual(got2, ["Edit:app/page.tsx", "Bash:npm test", "Edit:app/page.tsx"], "편집 dedup(연속 동일만 스킵)");
+
+// root 접두 양방향 매칭
+assert.ok(matchesRoot("/repo/A/sub", "/repo/A"), "cwd 하위 매칭");
+assert.ok(matchesRoot("/repo/A", "/repo/A/sub"), "역방향 매칭");
+assert.ok(!matchesRoot("/repo/AB", "/repo/A"), "형제 접두 아님");
+assert.ok(recent("/repo/A/sub", 20).some((e) => e.target === "app/page.tsx"), "하위 root로도 편집 조회");
 
 console.log("mcpActivity.check OK");
