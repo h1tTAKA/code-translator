@@ -56,8 +56,8 @@ export function emitEdit(root: string, tool: string, target: string, isError: bo
   const t = (target ?? "").trim();
   if (!t) return;
   const r = normPath(root);
-  const sig = `${tool}|${t}`;
-  if (lastEdit.get(r) === sig) return; // dedup
+  const sig = `${tool}|${t}|${isError ? 1 : 0}`; // isError 포함(성공→실패 전환은 새 이벤트, cavecrew 🟡)
+  if (lastEdit.get(r) === sig) return; // dedup(연속 동일만)
   lastEdit.set(r, sig);
   pushEvent({ root: r, tool, kind: "edit", target: t, isError, ts: now });
 }
