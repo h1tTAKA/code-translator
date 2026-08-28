@@ -37,12 +37,13 @@ function codexSection(spec: ServerSpec): string {
   const args = spec.args.map((a) => `"${tomlEscape(a)}"`).join(", ");
   return `[mcp_servers.${MCP_NAME}]\ncommand = "${tomlEscape(spec.command)}"\nargs = [${args}]\n`;
 }
-// 순수 병합 — 기존 우리 섹션 있으면 그 블록만 교체(다음 [테이블] 또는 EOF까지), 없으면 append. 다른 섹션 보존.
+// 순수 병합 — 기존 우리 섹션 있으면 그 블록만 교체(다음 테이블 헤더 \n[ 또는 EOF까지), 없으면 append. 다른 섹션 보존.
+// 경계는 반드시 "줄머리의 ["(테이블 헤더)로 — args 배열값에도 [ 가 있어 [^[]로 자르면 배열이 orphan됨(버그).
 export function mergeCodexToml(existing: string, spec: ServerSpec): string {
   const section = codexSection(spec);
   if (!existing.trim()) return section;
-  const re = new RegExp(`(^|\\n)\\[mcp_servers\\.${MCP_NAME}\\][^\\[]*`, "m");
-  if (re.test(existing)) return existing.replace(re, (m) => (m.startsWith("\n") ? "\n" : "") + section);
+  const re = new RegExp(`(^|\\n)\\[mcp_servers\\.${MCP_NAME}\\][\\s\\S]*?(?=\\n\\[|$)`);
+  if (re.test(existing)) return existing.replace(re, (m) => (m.startsWith("\n") ? "\n" : "") + section.replace(/\n$/, ""));
   return existing.replace(/\n*$/, "\n\n") + section;
 }
 export function writeCodex(spec: ServerSpec): { path: string; action: "created" | "updated" } {

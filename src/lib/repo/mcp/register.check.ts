@@ -28,4 +28,12 @@ assert.ok(t2.includes("[mcp_servers.foo]"), "재실행 후에도 foo 보존");
 // 빈 입력
 assert.ok(mergeCodexToml("", spec).includes(`[mcp_servers.${MCP_NAME}]`), "빈 입력도 생성");
 
+// 핵심: 우리 섹션 뒤에 다른 테이블이 오고, 우리 args가 [배열]일 때 재실행해도 orphan/중복 안 생김.
+const withNext = `[mcp_servers.${MCP_NAME}]\ncommand = "old"\nargs = ["/x", "/y"]\n\n[other.table]\nk = 1\n`;
+const re2 = mergeCodexToml(withNext, spec);
+assert.equal((re2.match(/args = \[/g) || []).length, 1, "args 한 줄만(orphan 배열 없음)");
+assert.ok(re2.includes("[other.table]") && re2.includes("k = 1"), "뒤 테이블 보존");
+assert.ok(!re2.includes('"old"'), "옛 command 교체됨");
+assert.ok(re2.includes('"/repo"'), "새 args 반영");
+
 console.log("register.check OK");
