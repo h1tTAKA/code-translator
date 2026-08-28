@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import Terminal from "@/components/workspace/Terminal";
 import { AgentLogo, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
 
-interface Tab { id: string; title: string }
+interface Tab { id: string; title: string; customTitle?: string } // customTitle=유저 더블클릭 리네임(#861, 최우선)
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
 // 새 탭 번호 = 현재 안 쓰는 가장 낮은 양수(#756). 닫은 자리를 다시 채워 "터미널 4처럼 계속 증가" 방지.
 // 제목 끝 숫자로 판별(모든 로케일 포맷이 "… {n}"이라 안전).
@@ -74,6 +74,15 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
     if (activeId === id) setActiveId(next[next.length - 1].id); // 활성 닫으면 마지막으로
   }
 
+  // 리네임 시작/커밋(#861) — 빈 값이면 customTitle 해제(자동 제목 복귀).
+  const startRename = (tab: Tab, shown: string) => { setEditingId(tab.id); setDraft(tab.customTitle ?? shown); };
+  const commitRename = () => {
+    const id = editingId; if (!id) return;
+    const v = draft.trim();
+    setTabs((prev) => prev.map((x) => (x.id === id ? { ...x, customTitle: v || undefined } : x)));
+    setEditingId(null);
+  };
+
   const active = tabs.find((x) => x.id === activeId) ?? tabs[0];
   // 활성 터미널 탭이 오버플로로 스크롤 밖이면 안 보임(#801) — 활성 탭에 콜백 ref로 스크롤 인투 뷰.
   // (터미널 자동 펴기는 N/A: 접히면 pane·+버튼이 dock에서 제거돼 외부 "열기" 트리거가 없고, 재표시는 헤더 토글=이미 펴짐.)
@@ -82,6 +91,9 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   // 탭별 실행 중 에이전트(#803) — main이 버퍼 파싱으로 판정한 agent id(node 래퍼 CLI도 잡음). 탭 이름·아이콘용.
   // pty는 push 이벤트가 없어(에이전트 실행/종료=프로세스 교체) 2s 폴링. list()는 전 세션 반환 → tab.id로 조회.
   const [agentById, setAgentById] = useState<Record<string, AgentId>>({});
+  const [taskById, setTaskById] = useState<Record<string, string>>({}); // OSC 대화 제목(#861) — 탭 제목 소스
+  const [editingId, setEditingId] = useState<string | null>(null);       // 리네임 편집 중 탭
+  const [draft, setDraft] = useState("");
   useEffect(() => {
     const api = window.nunopiDesktop?.terminal;
     if (!api?.list) return;
@@ -90,7 +102,10 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
       try {
         const ls = await api.list();
         // s.agent는 string|null(.cjs 경계라 타입 강제 불가) — AGENT_META 키로 검증한 값만 수용(미지 문자열→라벨/로고 조회 크래시 방지).
-        if (alive) setAgentById(Object.fromEntries(ls.filter((s) => s.agent && s.agent in AGENT_META).map((s) => [s.id, s.agent as AgentId])));
+        if (alive) {
+          setAgentById(Object.fromEntries(ls.filter((s) => s.agent && s.agent in AGENT_META).map((s) => [s.id, s.agent as AgentId])));
+          setTaskById(Object.fromEntries(ls.filter((s) => s.task && s.task.trim()).map((s) => [s.id, s.task!.trim()])));
+        }
       } catch { /* ignore */ }
     };
     void tick();
@@ -107,16 +122,26 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
           const on = tab.id === activeId;
           // 실행 중 에이전트면 그 라벨·로고, 아니면(셸/유휴) 기존 "터미널 N"·터미널 아이콘. title은 안 바꿔 종료 시 자동 원복(#803).
           const agent = agentById[tab.id] ?? null;
-          const label = agent ? AGENT_META[agent].label : tab.title;
+          // 제목 우선순위(#861, orca式): 유저 리네임 > OSC 대화 제목(≈첫 질문) > 에이전트 라벨 > 기본(터미널 N).
+          const label = tab.customTitle?.trim() || taskById[tab.id] || (agent ? AGENT_META[agent].label : tab.title);
+          const editing = editingId === tab.id;
           return (
             <div key={tab.id} ref={on ? scrollTabIntoView : undefined}
               className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}
-              onClick={() => setActiveId(tab.id)}>
+              onClick={() => setActiveId(tab.id)}
+              onDoubleClick={() => startRename(tab, label)}
+              title={editing ? undefined : label}>
               {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-mustard-500" aria-hidden />}
               {agent
                 ? <span className="shrink-0"><AgentLogo agent={agent} size={13} /></span>
                 : <IconTerminal2 size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />}
-              <span className="whitespace-nowrap">{label}</span>
+              {editing
+                ? <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitRename(); else if (e.key === "Escape") setEditingId(null); }}
+                    onBlur={commitRename}
+                    className="w-28 rounded border border-mustard-500/50 bg-white px-1 py-0 text-[12px] text-zinc-800 outline-none dark:bg-zinc-900 dark:text-zinc-100" />
+                : <span className="max-w-[160px] truncate whitespace-nowrap">{label}</span>}
               {tabs.length > 1 && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
                   className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`} aria-label={t("workspace.terminalClose")}>
