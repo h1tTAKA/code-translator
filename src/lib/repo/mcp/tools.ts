@@ -1,0 +1,125 @@
+// 코드그래프 MCP 툴셋(#853) — 에이전트가 그래프로 코드베이스 즉시 탐색(READ). Graft 6툴 + search(PageRank).
+// lib 재사용(loadOrBuildGraph/graphDigest/graphRank). 결과는 텍스트(MCP content).
+import { loadOrBuildGraph, currentFingerprint } from "../loadGraph";
+import { readCachedGraph } from "../graphStore";
+import { graphDigest } from "../graphDigest";
+import { graphRank } from "../graphrank";
+import type { RepoGraph, RepoNode } from "../types";
+
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
+  handler: (root: string, args: Record<string, unknown>) => Promise<{ text: string; isError?: boolean }>;
+}
+
+const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const fileOf = (id: string) => { const h = id.indexOf("#"); return h < 0 ? id : id.slice(0, h); };
+const loc = (n: RepoNode | undefined) => (n ? `${n.file}${n.line ? `:${n.line}` : ""}` : "?");
+const byId = (g: RepoGraph) => new Map(g.nodes.map((n) => [n.id, n]));
+
+export const TOOLS: McpTool[] = [
+  {
+    name: "nunopi_find_code",
+    description: "심볼 이름으로 정의 위치 찾기(file:line, 종류, 시그니처). '이 함수/클래스 어디 정의됨?'",
+    inputSchema: { type: "object", properties: { name: { type: "string", description: "심볼 이름(함수/클래스/타입)" } }, required: ["name"] },
+    handler: async (root, args) => {
+      const q = str(args.name); if (!q) return { text: "name required", isError: true };
+      const { graph } = await loadOrBuildGraph(root);
+      const ql = q.toLowerCase();
+      const hits = graph.nodes.filter((n) => n.kind !== "file" && n.label.toLowerCase() === ql);
+      if (!hits.length) return { text: `no symbol named "${q}"` };
+      return { text: hits.slice(0, 30).map((n) => `${n.kind} ${loc(n)}${n.owner ? ` (in ${n.owner})` : ""}${n.signature ? `  ${n.signature}` : ""}`).join("\n") };
+    },
+  },
+  {
+    name: "nunopi_trace_calls",
+    description: "호출 관계 추적. direction=callers(누가 이 심볼 부름)/callees(이 심볼이 뭘 부름)/both.",
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, direction: { type: "string", enum: ["callers", "callees", "both"] } }, required: ["symbol"] },
+    handler: async (root, args) => {
+      const sym = str(args.symbol); if (!sym) return { text: "symbol required", isError: true };
+      const dir = str(args.direction) || "both";
+      const { graph } = await loadOrBuildGraph(root); const m = byId(graph); const sl = sym.toLowerCase();
+      const out: string[] = [];
+      if (dir === "callers" || dir === "both") {
+        const cs = graph.edges.filter((e) => e.relation === "calls" && m.get(e.target)?.label.toLowerCase() === sl);
+        out.push(`[callers] ${cs.length}`, ...cs.slice(0, 40).map((e) => { const s = m.get(e.source); return `  ${s?.label ?? e.source} @ ${loc(s)}`; }));
+      }
+      if (dir === "callees" || dir === "both") {
+        const cs = graph.edges.filter((e) => e.relation === "calls" && m.get(e.source)?.label.toLowerCase() === sl);
+        out.push(`[callees] ${cs.length}`, ...cs.slice(0, 40).map((e) => { const t = m.get(e.target); return `  ${t?.label ?? e.target} @ ${loc(t)}`; }));
+      }
+      return { text: out.join("\n") || `no calls for "${sym}"` };
+    },
+  },
+  {
+    name: "nunopi_find_all",
+    description: "심볼/파일 이름의 모든 그래프 참조(imports/calls/contains/extends/implements) 나열.",
+    inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+    handler: async (root, args) => {
+      const q = str(args.name); if (!q) return { text: "name required", isError: true };
+      const { graph } = await loadOrBuildGraph(root); const m = byId(graph); const ql = q.toLowerCase();
+      const hit = (id: string) => { const n = m.get(id); return n?.label.toLowerCase() === ql || fileOf(id).toLowerCase().endsWith(ql); };
+      const refs = graph.edges.filter((e) => hit(e.source) || hit(e.target));
+      if (!refs.length) return { text: `no references to "${q}"` };
+      return { text: refs.slice(0, 60).map((e) => `${e.relation}: ${m.get(e.source)?.label ?? fileOf(e.source)} → ${m.get(e.target)?.label ?? fileOf(e.target)}`).join("\n") };
+    },
+  },
+  {
+    name: "nunopi_file_api",
+    description: "한 파일의 심볼 스켈레톤(함수/클래스/타입 + 줄 + 시그니처). 파일 열지 않고 API 파악.",
+    inputSchema: { type: "object", properties: { file: { type: "string", description: "레포 상대경로(끝부분만도 매칭)" } }, required: ["file"] },
+    handler: async (root, args) => {
+      const f = str(args.file); if (!f) return { text: "file required", isError: true };
+      const { graph } = await loadOrBuildGraph(root);
+      const syms = graph.nodes.filter((n) => n.kind !== "file" && (n.file === f || n.file.endsWith(f)));
+      if (!syms.length) return { text: `no symbols in "${f}"` };
+      const file = syms[0].file;
+      return { text: `${file}\n` + syms.sort((a, b) => (a.line ?? 0) - (b.line ?? 0)).map((n) => `  ${n.line ?? "?"}: ${n.kind} ${n.label}${n.signature ? ` ${n.signature}` : ""}`).join("\n") };
+    },
+  },
+  {
+    name: "nunopi_repo_map",
+    description: "레포 구조 요약(모듈 맵 + 모듈간 의존 + 핵심 허브 파일). 코드베이스 첫 파악용.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async (root) => {
+      const { graph } = await loadOrBuildGraph(root);
+      return { text: graphDigest(graph) };
+    },
+  },
+  {
+    name: "nunopi_search",
+    description: "그래프 기반 관련 코드 검색(PageRank, 임베딩 없음). 'how does X work / X 관련 코드' 자연어 쿼리.",
+    inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] },
+    handler: async (root, args) => {
+      const q = str(args.query); if (!q) return { text: "query required", isError: true };
+      const lim = typeof args.limit === "number" && args.limit > 0 ? Math.min(50, args.limit) : 20;
+      const { graph } = await loadOrBuildGraph(root); const m = byId(graph);
+      const hits = graphRank(graph, q, lim);
+      if (!hits.length) return { text: `no results for "${q}"` };
+      return { text: hits.map((h, i) => { const n = m.get(h.id); return `${i + 1}. ${n?.label ?? h.id} [${n?.kind ?? "?"}] ${loc(n)}`; }).join("\n") };
+    },
+  },
+  {
+    name: "nunopi_check_freshness",
+    description: "코드그래프가 현재 소스와 최신인지 확인(파일 변경 시 다음 조회에서 재빌드됨).",
+    inputSchema: { type: "object", properties: {} },
+    handler: async (root) => {
+      const cur = currentFingerprint(root);
+      const cached = readCachedGraph(root);
+      if (!cached) return { text: "no cached graph yet — first query will build it" };
+      const fresh = cached.fingerprint === cur;
+      return { text: `${fresh ? "fresh" : "stale (will rebuild on next query)"} · builtAt ${new Date(cached.builtAt).toISOString()} · nodes ${cached.graph.nodes.length} edges ${cached.graph.edges.length}` };
+    },
+  },
+];
+
+const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
+
+/** 서버가 부르는 진입 — 툴 실행. 에러는 흡수해 {isError:true}로(서버 죽이지 않음). */
+export async function callTool(root: string, name: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
+  const tool = BY_NAME.get(name);
+  if (!tool) return { text: `unknown tool: ${name}`, isError: true };
+  try { return await tool.handler(root, args); }
+  catch (e) { return { text: String((e as Error)?.message || e), isError: true }; }
+}
