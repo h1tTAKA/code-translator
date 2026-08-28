@@ -2,13 +2,14 @@
 // 워크스페이스 모드(#647) — 누노피 안에서 화면전환 없이 에이전트 코딩+즉시 학습.
 // 골격(커밋1): 4존 셸 [파일트리 | 터미널 | 코드 | 챗]. 각 존은 후속 커밋서 채움(트리·코드·챗·pty터미널).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMessages, IconCards, IconSettings, IconSitemap, IconTerminal2, IconBrandGithub, IconMessageCircle } from "@tabler/icons-react";
+import { IconFolderOpen, IconFiles, IconFileCode, IconFileText, IconLoader2, IconGitBranch, IconGitCommit, IconX, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMessages, IconCards, IconSettings, IconSitemap, IconTerminal2, IconBrandGithub, IconMessageCircle, IconActivity } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { useFullscreen } from "@/hooks/useFullscreen";
 import FileTree from "@/components/workspace/FileTree";
 import CodePane from "@/components/workspace/CodePane";
 import WorkspaceChat, { type ChatFocus } from "@/components/workspace/WorkspaceChat";
 import GithubPanel from "@/components/workspace/GithubPanel";
+import RepoLearnStream from "@/components/workspace/RepoLearnStream";
 import { useBranchCi } from "@/components/workspace/github/useBranchCi";
 import TerminalPane from "@/components/workspace/TerminalPane";
 import UsageMonitor from "@/components/workspace/UsageMonitor";
@@ -73,7 +74,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const [treeW, setTreeW] = useState(240);
   const [chatW, setChatW] = useState(320);
   const [chatOpen, setChatOpen] = useState(true);  // 우측 챗 패널 열림(#695)
-  const [rightMode, setRightMode] = useState<"chat" | "github">("chat"); // 우측 패널 모드(#811) — 질문(Chat) ↔ GitHub
+  const [rightMode, setRightMode] = useState<"chat" | "github" | "learn">("chat"); // 우측 패널 모드(#811·#855) — 질문 ↔ GitHub ↔ 학습 스트림
   const [leftOpen, setLeftOpen] = useState(true);  // 좌측 사이드바(폴더/아키텍처/깃/문서트리) 펼침(#758)
   const [collapsed, setCollapsed] = useState<Set<PanelId>>(new Set()); // 접힌 중앙 패널(내용 유지·숨김만, #758)
   const [gitOpen, setGitOpen] = useState(false);   // 좌 하단 깃 그래프 열림
@@ -109,7 +110,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
       setTreeOpen(localStorage.getItem("nunopi:ws-tree-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#733)
       setAnalyzeOpen(localStorage.getItem("nunopi:ws-analyze-open") === "1"); // 기본 닫힘(#743)
       setChatOpen(localStorage.getItem("nunopi:ws-chat-open") !== "0"); // 기본 열림, "0"일 때만 닫힘(#695)
-      setRightMode(localStorage.getItem("nunopi:ws-right-mode") === "github" ? "github" : "chat"); // 우측 모드 복원(#811)
+      { const m = localStorage.getItem("nunopi:ws-right-mode"); setRightMode(m === "github" ? "github" : m === "learn" ? "learn" : "chat"); } // 우측 모드 복원(#811·#855)
       setLeftOpen(localStorage.getItem("nunopi:ws-left-open") !== "0"); // 기본 열림(#758)
       try { const c = JSON.parse(localStorage.getItem("nunopi:ws-collapsed") || "[]"); if (Array.isArray(c)) setCollapsed(new Set(c.filter((x): x is PanelId => x === "terminal" || x === "code" || x === "doc" || x === "flow"))); } catch { /* ignore */ } // 접힘 복원(#758)
     } catch { /* ignore */ }
@@ -255,7 +256,7 @@ export default function WorkspaceView({ path, active = true, providerId, provide
   const toggleDocs = () => { if (docsOpen && leftOpenCount === 1) return; setDocsOpen((v) => !v); };
   const toggleAnalyze = () => { if (analyzeOpen && leftOpenCount === 1) return; setAnalyzeOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-analyze-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); };
   const toggleChat = () => setChatOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-chat-open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
-  const pickRightMode = (m: "chat" | "github") => setRightMode(() => { try { localStorage.setItem("nunopi:ws-right-mode", m); } catch { /* ignore */ } return m; }); // 우측 모드 전환(#811)
+  const pickRightMode = (m: "chat" | "github" | "learn") => setRightMode(() => { try { localStorage.setItem("nunopi:ws-right-mode", m); } catch { /* ignore */ } return m; }); // 우측 모드 전환(#811·#855)
   const ciDot = useBranchCi(path); // 현재 브랜치 CI 상태 도트(#812) — GitHub 토글 아이콘 배지
   const toggleLeft = () => setLeftOpen((v) => { const n = !v; try { localStorage.setItem("nunopi:ws-left-open", n ? "1" : "0"); } catch { /* ignore */ } return n; }); // 좌측 사이드바 접기/펴기(#758)
   // 중앙 패널 접기/펴기(#758) — 콘텐츠는 유지하고 dock 표시만. 존재하는 패널만 대상.
@@ -550,6 +551,11 @@ export default function WorkspaceView({ path, active = true, providerId, provide
               {/* CI 상태 도트(#812) — 진행(노랑,깜빡)/통과(초록)/실패(빨강). PR 없음·끝남이면 숨김. */}
               {ciDot && <span aria-hidden className={`absolute right-0.5 top-0.5 h-2 w-2 rounded-full ring-2 ring-white dark:ring-[#0b0c12] ${ciDot === "running" ? "animate-pulse bg-amber-400" : ciDot === "failure" ? "bg-rose-500" : "bg-emerald-500"}`} />}
             </button>
+            {/* 학습 스트림(#855) — MCP 에이전트 활동 실시간 개념 학습. */}
+            <button type="button" onClick={() => pickRightMode("learn")} aria-pressed={rightMode === "learn"} title={t("learn.mode")} aria-label={t("learn.mode")}
+              className={`shrink-0 rounded-lg p-1.5 transition ${rightMode === "learn" ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"}`}>
+              <IconActivity size={16} stroke={2} aria-hidden />
+            </button>
             <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
           </>
         )}
@@ -656,9 +662,11 @@ export default function WorkspaceView({ path, active = true, providerId, provide
           <>
             <div onMouseDown={startDrag("chat", chatW)} className="w-1 shrink-0 cursor-col-resize transition hover:bg-mustard-500/40 dark:hover:bg-mustard-400/40" />
             <aside style={{ width: chatW }} className="flex shrink-0 flex-col border-l border-zinc-200 dark:border-zinc-800">
-              {/* 우측 패널 모드(#811) — 질문(Chat) ↔ GitHub 배타 렌더. 토글은 상단 헤더에 있음. */}
+              {/* 우측 패널 모드(#811·#855) — 질문(Chat) ↔ GitHub ↔ 학습 스트림 배타 렌더. 토글은 상단 헤더. */}
               {rightMode === "github" ? (
                 <GithubPanel root={path} ciDot={ciDot} />
+              ) : rightMode === "learn" ? (
+                <RepoLearnStream root={path} providerId={providerId} providerSettings={providerSettings} />
               ) : (
                 /* FlyCardProvider(#750) — 세션 카드 목록에서 카드 클릭 시 확대·상세(throwCard). 워크스페이스 카드는 출처이동 없음(빈 sourceIds). */
                 <FlyCardProvider active={active} providerId={providerId} providerSettings={providerSettings} sourceIds={flyNoSources} onGoToSource={() => {}}>
