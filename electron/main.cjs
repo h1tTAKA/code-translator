@@ -614,19 +614,21 @@ const agentSticky = new Map(); // id → agent id
 // 신원 판정은 pushScreenState(카드)와 동일 우선순위(#841): 현재 화면 파싱 > 프로세스명 > sticky(폴백).
 // 예전엔 sticky를 파싱보다 먼저 return해서, 이전 세션(예: claude) 신원이 고정되면 새 에이전트(codex)를 켜도
 // 탭이 claude로 남았다(카드는 파싱 우선이라 codex로 바뀌어 표면 불일치). 현재 파싱을 우선해 신선한 배너가 stale sticky를 덮게.
+// {agent, task} 반환(#861). task=OSC 대화 제목(탭 제목용). 신원은 파싱>프로세스>sticky 우선(기존).
 function agentForId(id, proc, screen) {
-  if (proc !== undefined && isShellProc(proc)) { agentSticky.delete(id); return null; }
+  if (proc !== undefined && isShellProc(proc)) { agentSticky.delete(id); return { agent: null, task: "" }; }
   const parsed = parseAgentScreen(liveBuffers.get(id) ?? screen);
-  if (parsed && parsed.agent) { agentSticky.set(id, parsed.agent); return parsed.agent; } // 현재 화면이 잡은 에이전트 우선
+  const task = (parsed && parsed.task) || ""; // 현재 화면의 OSC 제목(신원과 별개로 항상 최신)
+  if (parsed && parsed.agent) { agentSticky.set(id, parsed.agent); return { agent: parsed.agent, task }; } // 현재 화면이 잡은 에이전트 우선
   const procAgent = agentFromProcess(proc);
-  if (procAgent) { agentSticky.set(id, procAgent); return procAgent; }
-  if (agentSticky.has(id)) return agentSticky.get(id); // 배너 스크롤아웃 등 transient null → 마지막 신원 유지
-  return null;
+  if (procAgent) { agentSticky.set(id, procAgent); return { agent: procAgent, task }; }
+  if (agentSticky.has(id)) return { agent: agentSticky.get(id), task }; // 배너 스크롤아웃 등 transient null → 마지막 신원 유지
+  return { agent: null, task };
 }
 ipcMain.handle("terminal:list", async () => {
-  const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름(#803)
+  const ss = await termClient.list(); // 세션 목록(#764) — 레포탭 호버 카드 + 탭 이름·제목(#803/#861)
   // 비활성 탭도 검출: 데몬 screen(buffer tail)을 힌트로 agentForId에 전달(#836/#840). screen은 검출용, 렌더러 미전송(누출 방지).
-  return ss.map(({ screen, ...s }) => ({ ...s, agent: agentForId(s.id, s.process, screen) }));
+  return ss.map(({ screen, ...s }) => { const r = agentForId(s.id, s.process, screen); return { ...s, agent: r.agent, task: r.task }; });
 });
 
 // 단일 인스턴스.
