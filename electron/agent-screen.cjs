@@ -97,7 +97,7 @@ function parseAgentScreen(buffer) {
   const STRONG = [
     ["antigravity", /antigravity/],
     ["codex", /openaicodex|codex(session|resume)/],
-    ["hermes", /hermes/],
+    ["hermes", /hermescli|hermescode|hermesagent|hermes\d/],  // 배너/버전 동반만 — bare "hermes"는 경로(~/.hermes)·대화에 흔해 오매칭(스크레이프=activity, 신원 아님)
     ["cursor", /cursoragent|cursorcli/],  // "Cursor Agent" 배너. grok보다 먼저(스크롤백 grok 오매칭 방지)
     ["grok", /grokcli|grok\d/],           // 배너/버전 동반만(맨 "grok" 단어는 대화·grep에도 흔해 sticky 오고정 방지)
     ["gemini", /geminicli|gemini\d/],     // "Gemini 2.5/3.x" 등 버전 동반. antigravity가 먼저라 그쪽 배너의 Gemini 표기엔 안 걸림
