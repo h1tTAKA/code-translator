@@ -59,8 +59,10 @@ export function loadAliases(root: string): AliasConf | null {
     const baseDir = posix.normalize(co.baseUrl ?? ".").replace(/^\.\/?$/, "").replace(/^\.\//, "");
     const rules: AliasConf["rules"] = [];
     for (const [pattern, targets] of Object.entries(co.paths ?? {})) {
-      const wildcard = pattern.includes("*");
-      const [prefix, suffix = ""] = pattern.split("*");
+      const star = pattern.indexOf("*");
+      const wildcard = star >= 0 && star === pattern.lastIndexOf("*"); // 정확히 1개만 와일드카드 취급(다중 *는 exact로, 오해석 방지)
+      const prefix = wildcard ? pattern.slice(0, star) : "";
+      const suffix = wildcard ? pattern.slice(star + 1) : "";
       rules.push({ prefix, suffix, wildcard, pattern, targets: (targets ?? []).map((t) => t.replace(/^\.\//, "")) });
     }
     if (rules.length || co.baseUrl) return { baseDir, rules };
