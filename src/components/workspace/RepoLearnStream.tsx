@@ -3,18 +3,22 @@
 // 그 "작업 흐름"을 자연스러운 산문으로 해설(개념·용어·왜). 툴콜 하나씩 사전식이 아니라, 잠깐 조용해지면
 // 그동안의 툴콜 묶음을 한 문단으로 해설해 라이브 코멘터리처럼 쌓임.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconCode, IconFile, IconSearch, IconSitemap, IconActivity, IconPointFilled, IconLoader2 } from "@tabler/icons-react";
+import { IconCode, IconFile, IconSearch, IconSitemap, IconActivity, IconPointFilled, IconLoader2, IconPencil } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 import Markdown from "@/components/learning/Markdown";
 import { stripCardBlock } from "@/lib/cardSuggestion";
 
-type ConceptKind = "symbol" | "file" | "query" | "repo";
+type ConceptKind = "symbol" | "file" | "query" | "repo" | "edit";
 interface ActivityEvent { root: string; tool: string; kind: ConceptKind; target: string; isError: boolean; ts: number }
 interface Chapter { id: number; status: "loading" | "done" | "error"; text?: string; ts: number }
 type StreamEvent = { type: string; message?: string; response?: { summary?: string } };
 
-const KIND_ICON: Record<ConceptKind, typeof IconCode> = { symbol: IconCode, file: IconFile, query: IconSearch, repo: IconSitemap };
+const KIND_ICON: Record<ConceptKind, typeof IconCode> = { symbol: IconCode, file: IconFile, query: IconSearch, repo: IconSitemap, edit: IconPencil };
+const storeKey = (root: string) => `nunopi:ws:${root}:learn-chapters`; // 챕터 영구보존(#857)
+function loadChapters(root: string): Chapter[] {
+  try { const raw = typeof localStorage !== "undefined" && localStorage.getItem(storeKey(root)); if (!raw) return []; const j = JSON.parse(raw); return Array.isArray(j) ? (j as Chapter[]).filter((c) => c?.status === "done").slice(0, 40) : []; } catch { return []; }
+}
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const ago = (ts: number, now: number) => { const s = Math.max(0, Math.round((now - ts) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`; };
 const QUIET_MS = 1800;   // 이만큼 조용하면 그동안 활동을 한 챕터로 해설(짧고 자주)
@@ -22,7 +26,7 @@ const MAX_BATCH = 8;     // 한 챕터에 담을 최근 툴콜 수 상한
 
 // 활동 묶음 → "흐름 해설" 프롬프트. 첫 줄 굵은 헤드라인 + 짧은 본문(스캔 쉽게, 사전식 금지).
 function narrativePrompt(repo: string, lines: string[]): string {
-  return `한 AI 코딩 에이전트가 방금 레포 "${repo}"에서 코드그래프를 아래 순서로 탐색했어:\n${lines.join("\n")}\n\n`
+  return `한 AI 코딩 에이전트가 방금 레포 "${repo}"에서 아래 순서로 코드베이스를 탐색·편집했어(그래프 조회 + 파일 편집·명령):\n${lines.join("\n")}\n\n`
     + `이걸 보고 초보가 옆에서 이해하게 아래 형식으로:\n`
     + `- 첫 줄: 지금 에이전트가 뭐 하는지 한 줄 요약을 굵게(**…**, 10단어 이내).\n`
     + `- 빈 줄 후: 왜 이렇게 하는지 + 핵심 개념/용어를 2~3문장 자연스러운 한국어 산문으로.\n`
@@ -47,7 +51,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
   const t = useT();
   const { locale } = useLocale();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>(() => loadChapters(root)); // 재기동/새로고침 생존
   const [live, setLive] = useState(false);
   const [now, setNow] = useState(() => 0);
   const [autoExplain, setAutoExplain] = useState(true);
@@ -56,7 +60,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
   const lastIdxRef = useRef(0);                      // 마지막 해설한 이벤트 인덱스
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(false);
-  const chapIdRef = useRef(0);
+  const chapIdRef = useRef(chapters.reduce((m, c) => Math.max(m, c.id), 0)); // 복원분과 id 충돌 방지
   const cfgRef = useRef({ providerId, providerSettings, locale, autoExplain });
   useEffect(() => { cfgRef.current = { providerId, providerSettings, locale, autoExplain }; }, [providerId, providerSettings, locale, autoExplain]);
 
@@ -116,6 +120,11 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
     return () => { es.close(); if (timerRef.current) clearTimeout(timerRef.current); };
   }, [root, flush, schedule]);
 
+  // 챕터 영구보존 — done 챕터만 localStorage에(#857). 재기동/새로고침 시 loadChapters로 복원.
+  useEffect(() => {
+    try { const done = chapters.filter((c) => c.status === "done").slice(0, 40); if (typeof localStorage !== "undefined") localStorage.setItem(storeKey(root), JSON.stringify(done)); } catch { /* 용량 초과 등 무시 */ }
+  }, [chapters, root]);
+
   useEffect(() => {
     if (!events.length && !chapters.length) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 상대시간 초기 스냅(이후 1s 틱)
@@ -139,7 +148,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
         </span>
       </div>
       <div className="nunopi-scroll min-h-0 flex-1 overflow-y-auto">
-        {!events.length ? (
+        {!events.length && !chapters.length ? (
           <p className="px-4 py-6 text-center text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">{t("learn.empty")}</p>
         ) : (
           <>
@@ -154,8 +163,8 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
                 </div>
               ))}
             </div>
-            {/* 최근 활동 타임라인(꼬리) — 원자료 참고용 */}
-            <div className="border-t border-zinc-100 px-2.5 py-2 dark:border-zinc-800/70">
+            {/* 최근 활동 타임라인(꼬리) — 원자료 참고용. 이벤트 있을 때만. */}
+            {recentEvents.length > 0 && <div className="border-t border-zinc-100 px-2.5 py-2 dark:border-zinc-800/70">
               <p className="mb-1 px-1 text-[9px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">{t("learn.recent")}</p>
               <ul className="flex flex-col gap-0.5">
                 {recentEvents.map((e, i) => { const Icon = KIND_ICON[e.kind]; return (
@@ -166,7 +175,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
                   </li>
                 ); })}
               </ul>
-            </div>
+            </div>}
           </>
         )}
       </div>
