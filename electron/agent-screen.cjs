@@ -103,7 +103,10 @@ function parseAgentScreen(buffer) {
     ["gemini", /geminicli|gemini\d/],     // "Gemini 2.5/3.x" 등 버전 동반. antigravity가 먼저라 그쪽 배너의 Gemini 표기엔 안 걸림
   ];
   const strongWaiting = () => title.toLowerCase().includes("action required") || CLAUDE_WAITING.test(bottom) || CODEX_WAITING.test(bottom);
-  const strongWorking = () => isSpinnerGlyph(tc) || CLAUDE_WORKING.test(compact) || CODEX_WORKING.test(compact);
+  // 상태(working)는 라이브 신호만 — 스피너 글리프(현재) 또는 현 입력영역의 esc-to-interrupt. 전사 스크롤백의
+  // 토큰수(예 "302 tokens")로 working 추론 금지(끝난 턴을 작업중으로 오판, orca 원칙: infer 말고 라이브만).
+  const workingLive = () => isSpinnerGlyph(tc) || /esctointerrupt/.test(bottom);
+  const strongWorking = workingLive;
   for (const [id, re] of STRONG) {
     if (re.test(wide)) return { agent: id, state: strongWaiting() ? "waiting" : strongWorking() ? "working" : "idle", task };
   }
@@ -115,7 +118,7 @@ function parseAgentScreen(buffer) {
     if (isSpinnerGlyph(tc)) return { agent: "claude", state: "working", task };             // 스피너 타이틀 = 지금 작업 중(최우선)
     if (CLAUDE_WAITING.test(bottom)) return { agent: "claude", state: "waiting", task };     // 권한/선택/인터럽트(바닥에서만)
     if (isClaudeIdleGlyph(tc)) return { agent: "claude", state: "idle", task };              // ✳ 타이틀 = 유휴(최신)
-    if (CLAUDE_WORKING.test(compact)) return { agent: "claude", state: "working", task };    // 타이틀 없는 폴백(tokens)
+    if (workingLive()) return { agent: "claude", state: "working", task };                   // 라이브 신호(스피너/현 입력 esc)만 — 전사 토큰 아님
     return { agent: "claude", state: "idle", task };
   }
 
@@ -124,7 +127,7 @@ function parseAgentScreen(buffer) {
   const isCodex = codexTitle || CODEX_CHROME.test(compact) || CODEX_WAITING.test(bottom) || CODEX_WORKING.test(compact);
   if (isCodex) {
     if (title.toLowerCase().includes("action required") || CODEX_WAITING.test(bottom)) return { agent: "codex", state: "waiting", task };
-    if (isSpinnerGlyph(tc) || CODEX_WORKING.test(compact)) return { agent: "codex", state: "working", task };
+    if (workingLive()) return { agent: "codex", state: "working", task };                    // 라이브 신호만(전사 토큰 아님)
     return { agent: "codex", state: "idle", task };
   }
 

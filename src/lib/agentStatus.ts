@@ -55,7 +55,9 @@ export function query(root: string, now: number): Array<{ sessionId: string; age
   prune(now);
   const r = normPath(root);
   if (!r) return [];
-  const inRepo = (cwd: string) => cwd === r || cwd.startsWith(r + "/");
+  // 레포별 정확 스코핑(#861) — 에이전트 cwd는 워크스페이스 레포 루트. 접두 매칭이면 홈(~/)이 하위 레포
+  //   (~/projects/*)의 에이전트를 전부 빨아들여 딴 레포 것까지 카드에 뜬다. 정확 일치로 각 탭=자기 레포만.
+  const inRepo = (cwd: string) => cwd === r;
   const latest = new Map<string, Entry>();
   for (const e of store.values()) {
     if (!inRepo(e.cwd)) continue;
