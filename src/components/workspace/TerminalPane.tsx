@@ -120,7 +120,10 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   const handleSubmitLine = useCallback((line: string) => {
     const id = activeIdRef.current;
     if (!agentByIdRef.current[id]) return; // 에이전트 실행 중일 때만(셸/실행명령 제외)
-    setTabs((prev) => prev.map((x) => (x.id === id && !x.firstPrompt && !x.customTitle ? { ...x, firstPrompt: line.slice(0, 120) } : x)));
+    const l = line.trim();
+    // 확인 응답·명령은 첫 프롬프트 아님 — y/n/yes/no/숫자(권한·trust 프롬프트 응답), 슬래시 명령, 단일 문자 제외.
+    if (l.length < 2 || /^(y|n|yes|no|\d+)$/i.test(l) || l.startsWith("/")) return;
+    setTabs((prev) => prev.map((x) => (x.id === id && !x.firstPrompt && !x.customTitle ? { ...x, firstPrompt: l.slice(0, 120) } : x)));
   }, []);
 
   return (

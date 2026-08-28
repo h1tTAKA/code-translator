@@ -63,6 +63,9 @@ const isClaudeIdleGlyph = (c) => c === 0x2733; // ✳
 const CLAUDE_WAITING = /doyouwantto|wouldyouliketo|esctocancel|tabtoamend|ctrl\+etoexplain|waitingforpermission|❯\d+\.(yes|no)|\b\d+\.(yes|no)\b|whatshouldclaudedoinstead|interrupted·|reviewyouranswers/i;
 const CLAUDE_WORKING = /esctointerrupt|[\d.]+[km]?tokens|\(\d+m?\d*s[·)]/i; // (18s·thinking / (55s·↓1.4ktokens)
 const CLAUDE_CHROME = /esctointerrupt|\?forshortcuts|claudecode|bypasspermissions|manualmodeon|foragents|tokens\)/i;
+// claude 전용 신원 신호(#861) — 공유 chrome(?forshortcuts·esctointerrupt·tokens: codex/antigravity도 씀) 제외.
+// claude만 쓰는 지속 마커. 배너 스크롤아웃돼도 하단 "manual mode on · ← for agents"가 남아 claude 신원 유지.
+const CLAUDE_ID = /claudecode|bypasspermissions|manualmodeon|foragents/i;
 
 // codex(보조 — 유저 주력은 claude). 출처: herdr codex.toml.
 const CODEX_WAITING = /actionrequired|allowcommand\?|pressentertoconfirmoresctocancel|doyoutrustthecontentsofthisdirectory|\[y\/n\]|yes\(y\)/i;
@@ -112,8 +115,9 @@ function parseAgentScreen(buffer) {
   }
 
   // ── Claude ──────────────────────────────
-  const claudeTitle = isSpinnerGlyph(tc) || isClaudeIdleGlyph(tc); // claude가 세팅한 상태 글리프 타이틀
-  const isClaude = claudeTitle || CLAUDE_CHROME.test(wide) || CLAUDE_WORKING.test(compact) || CLAUDE_WAITING.test(bottom);
+  // 신원은 claude 전용 신호로만(#861) — ✳ 유휴 글리프 or claude 전용 chrome(CLAUDE_ID). 공유 신호(스피너·
+  // ?forshortcuts·esctointerrupt·tokens)는 codex/antigravity도 써서, 그들 배너가 스크롤아웃되면 claude로 오판.
+  const isClaude = isClaudeIdleGlyph(tc) || CLAUDE_ID.test(wide);
   if (isClaude) {
     if (isSpinnerGlyph(tc)) return { agent: "claude", state: "working", task };             // 스피너 타이틀 = 지금 작업 중(최우선)
     if (CLAUDE_WAITING.test(bottom)) return { agent: "claude", state: "waiting", task };     // 권한/선택/인터럽트(바닥에서만)
