@@ -231,6 +231,7 @@ function releaseMode(kind) {
 }
 
 async function boot() {
+  try { loadRegistry(); } catch { /* #864 재시작 생존 세션 신원 복원 */ }
   if (DEV_URL) {
     // dev: next dev가 자체 임베드(간섭 방지) → main은 SNA 안 띄움.
     appBase = DEV_URL; // #765 버퍼 드라이버 POST 대상
@@ -515,6 +516,20 @@ function agentCommand(agent) {
   if (agent === "opencode") return rp.opencode || "opencode";
   return AGENT_DEFAULT_CMD[agent] || null;
 }
+// launchRegistry 디스크 영속(#864) — pty는 앱 재시작에도 생존(#682)하는데 registry는 메모리라 재시작 시 날아가
+// 살아남은 세션이 스크레이프 fallback으로 오판된다(codex→claude). {id:agent}를 파일에 저장하고 부팅 시 복원.
+const registryFile = () => join(app.getPath("userData"), "agent-registry.json");
+function saveRegistry() {
+  try { const out = {}; for (const [id, reg] of launchRegistry) out[id] = reg.agent; writeFileSync(registryFile(), JSON.stringify(out)); }
+  catch { /* 영속 실패 무시 */ }
+}
+function loadRegistry() {
+  try {
+    const o = JSON.parse(readFileSync(registryFile(), "utf8"));
+    for (const [id, agent] of Object.entries(o)) if (typeof agent === "string" && agent) launchRegistry.set(id, { agent, confirmed: true, at: Date.now() }); // 재시작 전 실행 중이었으니 confirmed
+  } catch { /* 파일 없음 등 무시 */ }
+}
+
 // 실행 기록 신원 해석 + confirm/clear 관리. reg={agent,confirmed,at}.
 // 핵심: 실행 직후엔 foreground가 아직 셸(에이전트 부팅 전)이라, 그때 셸이라고 registry를 지우면 codex가
 // 막 떠서 스크레이프 fallback→claude로 오판됨. 그래서 "에이전트가 실제 foreground 점유(non-shell)"를
@@ -636,6 +651,7 @@ function persistBuffers() {
   try { mkdirSync(app.getPath("userData"), { recursive: true }); writeFileSync(bufFile(), JSON.stringify(out)); } catch { /* ignore */ }
 }
 setInterval(persistBuffers, 5000); // 크래시 대비 주기 저장(before-quit은 아래 quit 훅서)
+setInterval(saveRegistry, 3000);   // #864 실행 기록 영속(재시작 생존 세션 신원 복원용)
 
 ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
   cwdById.set(id, cwd); // #765 버퍼 파서 상태를 이 레포에 매핑
