@@ -124,7 +124,16 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   };
 
   // ＋ 메뉴(#864) — orca식. 새 터미널 또는 에이전트 선택. 에이전트는 새 탭 생성 후 그 탭에 직접 실행(신원 확정).
+  // ＋는 탭 옆(스크롤 안)에 두되, 드롭다운은 position:fixed로 띄워 overflow-x-auto 클리핑을 피한다(버튼 rect 기준 좌표).
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const plusRef = useRef<HTMLButtonElement>(null);
+  const toggleMenu = () => {
+    if (menuOpen) { setMenuOpen(false); return; }
+    const r = plusRef.current?.getBoundingClientRect();
+    if (r) setMenuPos({ x: Math.min(r.left, window.innerWidth - 200), y: r.bottom + 4 });
+    setMenuOpen(true);
+  };
   const LAUNCHABLE: AgentId[] = ["claude", "codex", "grok", "opencode", "omp", "antigravity", "cursor", "hermes"]; // gemini 제외(구글=antigravity)
   const newTerminal = () => { setMenuOpen(false); addTab(); };
   const launchInNewTab = (agent: AgentId) => {
@@ -181,34 +190,34 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
             </div>
           );
         })}
-      </div>
-      {/* ＋ 메뉴(#864) — 스크롤 컨테이너 밖(외곽 바)에 둬야 드롭다운이 overflow-x-auto에 안 잘림. */}
-      <div className="relative flex shrink-0 items-center">
-        <button type="button" onClick={() => setMenuOpen((o) => !o)} aria-label={t("workspace.terminalNew")}
-          className="flex h-full items-center px-2.5 text-zinc-400 transition hover:text-mustard-600 dark:hover:text-mustard-400">
+        {/* ＋ 버튼 — 탭 옆(스크롤 안). 드롭다운은 아래 fixed로(클리핑 회피). */}
+        <button ref={plusRef} type="button" onClick={toggleMenu} aria-label={t("workspace.terminalNew")}
+          className="flex shrink-0 items-center px-2.5 text-zinc-400 transition hover:bg-white hover:text-mustard-600 dark:hover:bg-zinc-800 dark:hover:text-mustard-400">
           <IconPlus size={15} stroke={2.5} aria-hidden />
         </button>
-        {menuOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-            <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-[#0b0c12]">
-              <button type="button" onClick={newTerminal}
+      </div>
+      </div>
+      {/* ＋ 드롭다운(#864) — position:fixed라 overflow-x-auto에 안 잘림. 버튼 rect 기준 좌표. */}
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
+          <div style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}
+            className="z-50 min-w-[180px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-[#0b0c12]">
+            <button type="button" onClick={newTerminal}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
+              <IconTerminal2 size={14} stroke={2} aria-hidden /><span className="whitespace-nowrap">{t("workspace.terminalNew")}</span>
+            </button>
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+            {LAUNCHABLE.map((a) => (
+              <button key={a} type="button" onClick={() => launchInNewTab(a)}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
-                <IconTerminal2 size={14} stroke={2} aria-hidden /><span className="whitespace-nowrap">{t("workspace.terminalNew")}</span>
+                <AgentLogo agent={a} size={14} />
+                <span className="whitespace-nowrap">{AGENT_META[a].label}</span>
               </button>
-              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
-              {LAUNCHABLE.map((a) => (
-                <button key={a} type="button" onClick={() => launchInNewTab(a)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
-                  <AgentLogo agent={a} size={14} />
-                  <span className="whitespace-nowrap">{AGENT_META[a].label}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      </div>
+            ))}
+          </div>
+        </>
+      )}
       {/* 활성 터미널(id로 remount → 그 pty 재생) */}
       <div className="min-h-0 flex-1">
         {active && <Terminal key={active.id} id={active.id} cwd={cwd} />}
