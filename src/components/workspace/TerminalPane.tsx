@@ -2,7 +2,7 @@
 // 워크스페이스 터미널 멀티탭(#678) — 탭 바 + 활성 터미널. pty는 메인서 id별로 생존(#647 A안).
 // 활성 탭만 렌더(전환 시 remount → scrollback 재생). 탭 목록은 레포별 localStorage 영속.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconPlus, IconX, IconTerminal2, IconSparkles, IconChevronDown } from "@tabler/icons-react";
+import { IconPlus, IconX, IconTerminal2 } from "@tabler/icons-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import Terminal from "@/components/workspace/Terminal";
 import { AgentLogo, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
@@ -123,12 +123,16 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
     setEditingId(null);
   };
 
-  // 에이전트 실행 피커(#864) — 선택 시 활성 탭 pty에 직접 실행 + 신원 확정(오판 없음).
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const LAUNCHABLE: AgentId[] = ["claude", "codex", "antigravity", "gemini", "opencode", "grok"];
-  const launchAgent = (agent: AgentId) => {
-    setPickerOpen(false);
-    void window.nunopiDesktop?.terminal?.launchAgent?.({ id: activeId, agent });
+  // ＋ 메뉴(#864) — orca식. 새 터미널 또는 에이전트 선택. 에이전트는 새 탭 생성 후 그 탭에 직접 실행(신원 확정).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const LAUNCHABLE: AgentId[] = ["claude", "codex", "grok", "opencode", "omp", "antigravity", "cursor", "hermes"]; // gemini 제외(구글=antigravity)
+  const newTerminal = () => { setMenuOpen(false); addTab(); };
+  const launchInNewTab = (agent: AgentId) => {
+    setMenuOpen(false);
+    const id = genId();
+    setTabs((prev) => [...prev, { id, title: t("workspace.terminalTab", { n: nextNum(prev) }) }]);
+    setActiveId(id);
+    void window.nunopiDesktop?.terminal?.launchAgent?.({ id, agent }); // main이 pty ensure 대기 후 커맨드 주입
   };
 
   return (
@@ -177,32 +181,32 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
             </div>
           );
         })}
-        <button type="button" onClick={addTab} title={t("workspace.terminalNew")} aria-label={t("workspace.terminalNew")}
-          className="flex shrink-0 items-center px-2.5 text-zinc-400 transition hover:bg-white hover:text-mustard-600 dark:hover:bg-zinc-800 dark:hover:text-mustard-400">
-          <IconPlus size={15} stroke={2.5} aria-hidden />
-        </button>
-      </div>
-      {/* 에이전트 실행 피커(#864) — 활성 탭에 에이전트를 직접 실행해 신원 확정. */}
-      <div className="relative flex shrink-0 items-center border-l border-zinc-200 dark:border-zinc-800">
-        <button type="button" onClick={() => setPickerOpen((o) => !o)} title="에이전트 실행"
-          className="flex items-center gap-0.5 px-2.5 text-zinc-400 transition hover:bg-white hover:text-mustard-600 dark:hover:bg-zinc-800 dark:hover:text-mustard-400">
-          <IconSparkles size={14} stroke={2} aria-hidden />
-          <IconChevronDown size={11} stroke={2.5} aria-hidden />
-        </button>
-        {pickerOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} aria-hidden />
-            <div className="absolute right-0 top-full z-50 mt-1 min-w-[150px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-[#0b0c12]">
-              {LAUNCHABLE.map((a) => (
-                <button key={a} type="button" onClick={() => launchAgent(a)}
+        {/* ＋ 메뉴(#864) — 새 터미널 또는 에이전트 선택(orca식). */}
+        <div className="relative flex shrink-0 items-center">
+          <button type="button" onClick={() => setMenuOpen((o) => !o)} title={t("workspace.terminalNew")} aria-label={t("workspace.terminalNew")}
+            className="flex items-center px-2.5 text-zinc-400 transition hover:bg-white hover:text-mustard-600 dark:hover:bg-zinc-800 dark:hover:text-mustard-400">
+            <IconPlus size={15} stroke={2.5} aria-hidden />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
+              <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-[#0b0c12]">
+                <button type="button" onClick={newTerminal}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
-                  <AgentLogo agent={a} size={14} />
-                  <span className="whitespace-nowrap">{AGENT_META[a].label}</span>
+                  <IconTerminal2 size={14} stroke={2} aria-hidden /><span className="whitespace-nowrap">{t("workspace.terminalNew")}</span>
                 </button>
-              ))}
-            </div>
-          </>
-        )}
+                <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                {LAUNCHABLE.map((a) => (
+                  <button key={a} type="button" onClick={() => launchInNewTab(a)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                    <AgentLogo agent={a} size={14} />
+                    <span className="whitespace-nowrap">{AGENT_META[a].label}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
       </div>
       {/* 활성 터미널(id로 remount → 그 pty 재생) */}
