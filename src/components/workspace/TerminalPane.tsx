@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import Terminal from "@/components/workspace/Terminal";
 import { AgentLogo, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
 
-interface Tab { id: string; title: string }
+interface Tab { id: string; title: string; customTitle?: string } // customTitle=유저 더블클릭 리네임(최우선, 영속)
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
 // 새 탭 번호 = 현재 안 쓰는 가장 낮은 양수(#756). 닫은 자리를 다시 채워 "터미널 4처럼 계속 증가" 방지.
 // 제목 끝 숫자로 판별(모든 로케일 포맷이 "… {n}"이라 안전).
@@ -98,6 +98,15 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
     return () => { alive = false; clearInterval(iv); };
   }, []);
 
+  // 더블클릭 리네임(#864) — 편집 중 탭 id + 입력값. 빈 값 확정 시 customTitle 해제(자동 이름 복귀).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const commitRename = (id: string) => {
+    const v = editValue.trim();
+    setTabs((prev) => prev.map((tb) => (tb.id === id ? { ...tb, customTitle: v || undefined } : tb)));
+    setEditingId(null);
+  };
+
   // 에이전트 실행 피커(#864) — 선택 시 활성 탭 pty에 직접 실행 + 신원 확정(오판 없음).
   const [pickerOpen, setPickerOpen] = useState(false);
   const LAUNCHABLE: AgentId[] = ["claude", "codex", "antigravity", "gemini", "opencode", "grok"];
@@ -113,9 +122,10 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
       <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
         {tabs.map((tab) => {
           const on = tab.id === activeId;
-          // 실행 중 에이전트면 그 라벨·로고, 아니면(셸/유휴) 기존 "터미널 N"·터미널 아이콘. title은 안 바꿔 종료 시 자동 원복(#803).
+          // 아이콘=에이전트 로고(실행 중)/터미널. 제목 우선순위(#864): 유저 리네임 > 에이전트 라벨 > "터미널 N".
           const agent = agentById[tab.id] ?? null;
-          const label = agent ? AGENT_META[agent].label : tab.title;
+          const label = tab.customTitle || (agent ? AGENT_META[agent].label : tab.title);
+          const editing = editingId === tab.id;
           return (
             <div key={tab.id} ref={on ? scrollTabIntoView : undefined}
               className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}
@@ -124,7 +134,17 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
               {agent
                 ? <span className="shrink-0"><AgentLogo agent={agent} size={13} /></span>
                 : <IconTerminal2 size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />}
-              <span className="whitespace-nowrap">{label}</span>
+              {editing ? (
+                <input autoFocus value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => { if (e.key === "Enter") commitRename(tab.id); else if (e.key === "Escape") setEditingId(null); }}
+                  onBlur={() => commitRename(tab.id)}
+                  className="w-[130px] rounded border border-mustard-400 bg-white px-1 py-0 text-[12px] text-zinc-800 outline-none dark:bg-zinc-900 dark:text-zinc-100" />
+              ) : (
+                <span className="max-w-[200px] truncate whitespace-nowrap" title={label}
+                  onDoubleClick={(e) => { e.stopPropagation(); setEditValue(tab.customTitle || (agent ? AGENT_META[agent].label : "")); setEditingId(tab.id); }}>{label}</span>
+              )}
               {tabs.length > 1 && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
                   className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`} aria-label={t("workspace.terminalClose")}>
