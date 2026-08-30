@@ -98,6 +98,22 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
     return () => { alive = false; clearInterval(iv); };
   }, []);
 
+  // 탭 드래그 재정렬(#864) — 레포 탭처럼 순서 변경. 배열 순서=화면 순서, setTabs가 localStorage 영속.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const reorderTabs = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setTabs((prev) => {
+      const from = prev.findIndex((x) => x.id === fromId);
+      if (from < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      const insertAt = next.findIndex((x) => x.id === toId); // 제거 후 재계산
+      next.splice(insertAt < 0 ? next.length : insertAt, 0, moved); // 대상 앞에 삽입
+      return next;
+    });
+  };
+
   // 더블클릭 리네임(#864) — 편집 중 탭 id + 입력값. 빈 값 확정 시 customTitle 해제(자동 이름 복귀).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -128,9 +144,16 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
           const editing = editingId === tab.id;
           return (
             <div key={tab.id} ref={on ? scrollTabIntoView : undefined}
-              className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}
+              draggable={!editing}
+              onDragStart={(e) => { setDragId(tab.id); e.dataTransfer.effectAllowed = "move"; }}
+              onDragOver={(e) => { if (dragId && dragId !== tab.id) { e.preventDefault(); setOverId(tab.id); } }}
+              onDragLeave={() => setOverId((o) => (o === tab.id ? null : o))}
+              onDrop={(e) => { e.preventDefault(); if (dragId) reorderTabs(dragId, tab.id); setDragId(null); setOverId(null); }}
+              onDragEnd={() => { setDragId(null); setOverId(null); }}
+              className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"} ${dragId === tab.id ? "opacity-40" : ""}`}
               onClick={() => setActiveId(tab.id)}>
               {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-mustard-500" aria-hidden />}
+              {overId === tab.id && <span className="absolute inset-y-0 left-0 w-0.5 bg-mustard-500" aria-hidden />}
               {agent
                 ? <span className="shrink-0"><AgentLogo agent={agent} size={13} /></span>
                 : <IconTerminal2 size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />}
