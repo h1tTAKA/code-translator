@@ -515,6 +515,27 @@ function agentCommand(agent) {
   if (agent === "opencode") return rp.opencode || "opencode";
   return AGENT_DEFAULT_CMD[agent] || null;
 }
+// 커맨드 basename → agent id. 유저가 셸에 직접 친 실행 커맨드도 잡아 신원 확정(피커 안 써도 정확).
+const CMD_TO_AGENT = { claude: "claude", codex: "codex", gemini: "gemini", agy: "antigravity", antigravity: "antigravity", opencode: "opencode", grok: "grok", aider: "aider", amp: "amp", copilot: "copilot", hermes: "hermes", "cursor-agent": "cursor", cursor: "cursor" };
+const inputBuf = new Map(); // id → 현재 타이핑 중인 라인(개행 전까지 누적)
+// pty 입력 스트림을 감시해 "에이전트 실행 커맨드 + Enter"를 감지 → launchRegistry 갱신. 수동 실행도 신원 확정(#864).
+// (셸 복귀 시 registry는 이미 해제되므로, 이전 stale 신원이 남아도 새 커맨드가 덮어씀 → codex→claude 오판 소멸.)
+function detectLaunchFromInput(id, data) {
+  let s = inputBuf.get(id) || "";
+  for (const ch of data) {
+    const code = ch.charCodeAt(0);
+    if (ch === "\r" || ch === "\n") {
+      const line = s.trim(); s = "";
+      const tok = line.split(/\s+/).filter((tk) => !/^\w+=/.test(tk))[0] || ""; // FOO=bar 같은 env 할당 스킵
+      const base = tok.split("/").pop().toLowerCase();
+      const agent = CMD_TO_AGENT[base];
+      if (agent) launchRegistry.set(id, agent);
+    } else if (code === 0x7f || code === 0x08) { s = s.slice(0, -1); } // backspace
+    else if (code === 0x03 || code === 0x15) { s = ""; }               // Ctrl-C / Ctrl-U → 라인 취소
+    else if (code >= 0x20) { s += ch; }
+  }
+  inputBuf.set(id, s.slice(-500)); // 상한(장문 붙여넣기 대비)
+}
 
 async function postStatus(body) {
   if (!appBase) return;
@@ -588,7 +609,7 @@ const termClient = createDaemonClient({
   },
   onExit: (id) => {
     liveBuffers.delete(id); delete savedBuffers[id];
-    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); // #765·#803·#864 정리
+    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); // #765·#803·#864 정리
     const tm = screenTimers.get(id); if (tm) { clearTimeout(tm); screenTimers.delete(id); }
     broadcast("terminal:exit", { id });
   },
@@ -613,7 +634,7 @@ ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
   liveBuffers.set(id, buffer);
   return { ok: true, buffer };
 });
-ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
+ipcMain.on("terminal:input", (_e, { id, data }) => { termClient.input({ id, data }); try { detectLaunchFromInput(id, data); } catch { /* 감지 실패가 입력 막지 않게 */ } });
 // #864 에이전트 직접 실행 — 신원을 실행 기록에 확정하고 pty 셸에 실행 커맨드 주입. 반환 후 탭 아이콘/이름=이 에이전트.
 ipcMain.handle("terminal:launchAgent", async (_e, { id, agent }) => {
   if (!id || typeof agent !== "string") return { ok: false, reason: "bad args" };
@@ -624,7 +645,7 @@ ipcMain.handle("terminal:launchAgent", async (_e, { id, agent }) => {
   return { ok: true };
 });
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
-ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태·실행기록 정리
+ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태·실행기록 정리
 // 세션의 실행 중 에이전트 id | null(#803) — 터미널 탭 자동 이름·아이콘용.
 // 프로세스명만으론 node 래퍼 CLI(codex 등: 네이티브 자식을 spawn해 foreground pgrp 리더가 "node")를 못 잡아,
 // 버퍼 스크레이핑(parseAgentScreen)을 1순위로. 셸이면 종료로 간주(null). 버퍼 미판정이면 프로세스명 폴백.
