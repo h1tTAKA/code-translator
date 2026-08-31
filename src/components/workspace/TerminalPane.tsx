@@ -128,10 +128,15 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const plusRef = useRef<HTMLButtonElement>(null);
+  const MENU_W = 190, MENU_H = 340; // 드롭다운 대략 크기(양축 화면밖 방지용 추정)
   const toggleMenu = () => {
     if (menuOpen) { setMenuOpen(false); return; }
     const r = plusRef.current?.getBoundingClientRect();
-    if (r) setMenuPos({ x: Math.min(r.left, window.innerWidth - 200), y: r.bottom + 4 });
+    if (r) {
+      const x = Math.max(4, Math.min(r.left, window.innerWidth - MENU_W - 4));
+      const y = r.bottom + 4 + MENU_H > window.innerHeight ? Math.max(4, r.top - MENU_H - 4) : r.bottom + 4; // 아래 넘치면 위로
+      setMenuPos({ x, y });
+    }
     setMenuOpen(true);
   };
   const LAUNCHABLE: AgentId[] = ["claude", "codex", "grok", "opencode", "omp", "antigravity", "cursor", "hermes"]; // gemini 제외(구글=antigravity)

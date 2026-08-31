@@ -581,7 +581,7 @@ async function pushScreenState(id, screen) {
   const parsed = shell ? null : parseAgentScreen(liveBuffers.get(id) ?? screen); // {agent,state}|null
   const procAgent = shell ? null : agentFromProcess(proc);      // 프로세스명으로 "존재" 판정(버퍼 미판정 대비)
   let agent, state;
-  if (ra) { agent = ra; state = parsed ? mapScreenState(parsed.state) : "done"; } // #864 신원=실행기록, 상태만 스크레이프(부팅 중 셸도 유지)
+  if (ra) { agent = ra; agentSticky.set(id, ra); state = parsed ? mapScreenState(parsed.state) : "done"; } // #864 신원=실행기록(sticky도 동기화 — agentForId와 일관), 상태만 스크레이프
   else if (parsed) { agent = parsed.agent; state = mapScreenState(parsed.state); agentSticky.set(id, agent); } // 버퍼가 상태 잡음(working/waiting/유휴→done)
   else if (procAgent) { agent = procAgent; state = "done"; agentSticky.set(id, agent); }    // 프로세스는 에이전트인데 버퍼 미판정 → 존재
   // 배너 스크롤아웃 등으로 버퍼 미판정이어도, 셸이 아니고 이미 신원이 있으면 유지(#805) — 탭(agentForId)과 동일 sticky.
@@ -675,8 +675,11 @@ ipcMain.handle("terminal:launchAgent", async (_e, { id, agent }) => {
   const cmd = agentCommand(agent);
   if (!cmd) return { ok: false, reason: "unknown agent" };
   launchRegistry.set(id, { agent, confirmed: false, at: Date.now() }); // 즉시 신원(아이콘). 부팅 중 셸이어도 유지.
-  for (let i = 0; i < 60 && !ensuredIds.has(id); i++) await new Promise((r) => setTimeout(r, 50)); // 최대 3s pty 대기
-  try { termClient.input({ id, data: cmd + "\r" }); } catch { /* 데몬 미가용 */ }
+  let ready = false;
+  for (let i = 0; i < 60; i++) { if (ensuredIds.has(id)) { ready = true; break; } await new Promise((r) => setTimeout(r, 50)); } // 최대 3s pty 대기
+  if (!ready) { launchRegistry.delete(id); return { ok: false, reason: "pty not ready" }; } // 준비 실패 → 신원 취소(오아이콘 방지)
+  try { termClient.input({ id, data: cmd + "\r" }); }
+  catch (e) { launchRegistry.delete(id); return { ok: false, reason: String((e && e.message) || e) }; }
   return { ok: true };
 });
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
