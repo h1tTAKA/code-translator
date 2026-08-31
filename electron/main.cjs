@@ -231,6 +231,7 @@ function releaseMode(kind) {
 }
 
 async function boot() {
+  try { loadRegistry(); } catch { /* #864 재시작 생존 세션 신원 복원 */ }
   if (DEV_URL) {
     // dev: next dev가 자체 임베드(간섭 방지) → main은 SNA 안 띄움.
     appBase = DEV_URL; // #765 버퍼 드라이버 POST 대상
@@ -502,6 +503,69 @@ const mapScreenState = (s) => (s === "idle" ? "done" : s); // 파서 idle → �
 // 포그라운드가 셸이면 에이전트 종료로 간주(버퍼에 옛 화면이 남아도 무시). herdr도 포그라운드 프로세스로 게이트.
 const SHELLS = new Set(["zsh", "bash", "sh", "fish", "dash", "ksh", "pwsh", "powershell", "cmd", "login", "screen", "tmux"]);
 const isShellProc = (p) => SHELLS.has(String(p || "").trim().toLowerCase().replace(/^-+/, ""));
+
+// #864 orca식 신원 확정 — 우리가 탭에서 직접 실행한 에이전트를 기록(tabId→agent). 스크레이프 추측 대신
+// 이 기록이 신원의 진실(오판 원천 소멸). 셸 복귀(종료) 시 해제. 유저가 손으로 실행하면 기록 없음 → 스크레이프 fallback.
+const launchRegistry = new Map(); // id → agent id
+// 에이전트 id → 실행 셸 커맨드. runtime 경로 설정 있으면 그걸, 없으면 기본 커맨드명.
+const AGENT_DEFAULT_CMD = { claude: "claude", codex: "codex", gemini: "gemini", antigravity: "agy", opencode: "opencode", aider: "aider", cursor: "cursor-agent", copilot: "copilot", amp: "amp", grok: "grok", hermes: "hermes", omp: "omp" };
+function agentCommand(agent) {
+  const rp = loadSavedRuntimePaths();
+  if (agent === "claude") return rp.claudeCode || "claude";
+  if (agent === "codex") return rp.codex || "codex";
+  if (agent === "opencode") return rp.opencode || "opencode";
+  return AGENT_DEFAULT_CMD[agent] || null;
+}
+// launchRegistry 디스크 영속(#864) — pty는 앱 재시작에도 생존(#682)하는데 registry는 메모리라 재시작 시 날아가
+// 살아남은 세션이 스크레이프 fallback으로 오판된다(codex→claude). {id:agent}를 파일에 저장하고 부팅 시 복원.
+const registryFile = () => join(app.getPath("userData"), "agent-registry.json");
+function saveRegistry() {
+  try { const out = {}; for (const [id, reg] of launchRegistry) out[id] = reg.agent; writeFileSync(registryFile(), JSON.stringify(out)); }
+  catch { /* 영속 실패 무시 */ }
+}
+function loadRegistry() {
+  try {
+    const o = JSON.parse(readFileSync(registryFile(), "utf8"));
+    for (const [id, agent] of Object.entries(o)) if (typeof agent === "string" && agent) launchRegistry.set(id, { agent, confirmed: true, at: Date.now() }); // 재시작 전 실행 중이었으니 confirmed
+  } catch { /* 파일 없음 등 무시 */ }
+}
+
+// 실행 기록 신원 해석 + confirm/clear 관리. reg={agent,confirmed,at}.
+// 핵심: 실행 직후엔 foreground가 아직 셸(에이전트 부팅 전)이라, 그때 셸이라고 registry를 지우면 codex가
+// 막 떠서 스크레이프 fallback→claude로 오판됨. 그래서 "에이전트가 실제 foreground 점유(non-shell)"를
+// 본 뒤에만 confirmed=true, 확정 후 셸 복귀만 종료로 간주(삭제). 미확정+셸=부팅 중이라 신원 유지.
+function registryAgent(id, proc) {
+  const reg = launchRegistry.get(id);
+  if (!reg) return null;
+  const shell = proc !== undefined && isShellProc(proc);
+  if (!shell) { reg.confirmed = true; return reg.agent; }        // 에이전트 실행 중(확정)
+  if (reg.confirmed) { launchRegistry.delete(id); return null; } // 확정 후 셸 = 종료
+  if (Date.now() - reg.at > 20000) { launchRegistry.delete(id); return null; } // 20s 내 안 뜨면 포기(오실행)
+  return reg.agent;                                              // 부팅 중(미확정 셸) — 신원 유지
+}
+// 커맨드 basename → agent id. 유저가 셸에 직접 친 실행 커맨드도 잡아 신원 확정(피커 안 써도 정확).
+// gemini 제외 — 구글 에이전트는 antigravity(agy)로 통일(#864). agy 커맨드가 antigravity로 매핑.
+const CMD_TO_AGENT = { claude: "claude", codex: "codex", agy: "antigravity", antigravity: "antigravity", opencode: "opencode", grok: "grok", omp: "omp", aider: "aider", amp: "amp", copilot: "copilot", hermes: "hermes", "cursor-agent": "cursor", cursor: "cursor" };
+const inputBuf = new Map(); // id → 현재 타이핑 중인 라인(개행 전까지 누적)
+// pty 입력 스트림을 감시해 "에이전트 실행 커맨드 + Enter"를 감지 → launchRegistry 갱신. 수동 실행도 신원 확정(#864).
+// (셸 복귀 시 registry는 이미 해제되므로, 이전 stale 신원이 남아도 새 커맨드가 덮어씀 → codex→claude 오판 소멸.)
+function detectLaunchFromInput(id, data) {
+  let s = inputBuf.get(id) || "";
+  for (const ch of data) {
+    const code = ch.charCodeAt(0);
+    if (ch === "\r" || ch === "\n") {
+      const line = s.trim(); s = "";
+      const tok = line.split(/\s+/).filter((tk) => !/^\w+=/.test(tk))[0] || ""; // FOO=bar 같은 env 할당 스킵
+      const base = tok.split("/").pop().toLowerCase();
+      const agent = CMD_TO_AGENT[base];
+      if (agent) launchRegistry.set(id, { agent, confirmed: false, at: Date.now() });
+    } else if (code === 0x7f || code === 0x08) { s = s.slice(0, -1); } // backspace
+    else if (code === 0x03 || code === 0x15) { s = ""; }               // Ctrl-C / Ctrl-U → 라인 취소
+    else if (code >= 0x20) { s += ch; }
+  }
+  inputBuf.set(id, s.slice(-500)); // 상한(장문 붙여넣기 대비)
+}
+
 async function postStatus(body) {
   if (!appBase) return;
   try { await fetch(`${appBase}/api/agent/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
@@ -511,19 +575,21 @@ async function pushScreenState(id, screen) {
   const cwd = cwdById.get(id);
   if (!cwd || !appBase) return;
   const proc = procById.get(id);
-  const gone = proc !== undefined && isShellProc(proc);         // 포그라운드가 셸 = 에이전트 종료
-  if (gone) agentSticky.delete(id);                             // 종료 시 신원 해제(#805)
+  const ra = registryAgent(id, proc);                           // #864 실행 기록 신원(부팅 중 셸 유지, 확정 후 종료 해제)
+  const shell = proc !== undefined && isShellProc(proc);
   // 활성=liveBuffers(full/fresh), 비활성=데몬 screen 힌트(#840). liveBuffers는 안 건드림(영속 안전).
-  const parsed = gone ? null : parseAgentScreen(liveBuffers.get(id) ?? screen); // {agent,state}|null
-  const procAgent = gone ? null : agentFromProcess(proc);       // 프로세스명으로 "존재" 판정(버퍼 미판정 대비)
+  const parsed = shell ? null : parseAgentScreen(liveBuffers.get(id) ?? screen); // {agent,state}|null
+  const procAgent = shell ? null : agentFromProcess(proc);      // 프로세스명으로 "존재" 판정(버퍼 미판정 대비)
   let agent, state;
-  if (parsed) { agent = parsed.agent; state = mapScreenState(parsed.state); agentSticky.set(id, agent); } // 버퍼가 상태 잡음(working/waiting/유휴→done)
+  if (ra) { agent = ra; agentSticky.set(id, ra); state = parsed ? mapScreenState(parsed.state) : "done"; } // #864 신원=실행기록(sticky도 동기화 — agentForId와 일관), 상태만 스크레이프
+  else if (parsed) { agent = parsed.agent; state = mapScreenState(parsed.state); agentSticky.set(id, agent); } // 버퍼가 상태 잡음(working/waiting/유휴→done)
   else if (procAgent) { agent = procAgent; state = "done"; agentSticky.set(id, agent); }    // 프로세스는 에이전트인데 버퍼 미판정 → 존재
   // 배너 스크롤아웃 등으로 버퍼 미판정이어도, 셸이 아니고 이미 신원이 있으면 유지(#805) — 탭(agentForId)과 동일 sticky.
   // hermes처럼 프로세스명이 python(래퍼 exec)이라 폴백도 안 되는 에이전트가 카드서 사라지던 문제.
-  else if (!gone && agentSticky.has(id)) { agent = agentSticky.get(id); state = "done"; }
+  else if (!shell && agentSticky.has(id)) { agent = agentSticky.get(id); state = "done"; }
   else {
     // 에이전트 없음(종료/셸/미인식) — 이전에 보고했으면 스토어에서 제거해 카드서 사라지게.
+    agentSticky.delete(id);
     if (lastScreen.has(id)) { lastScreen.delete(id); await postStatus({ cwd, sessionId: id, clear: true }); }
     return;
   }
@@ -573,7 +639,7 @@ const termClient = createDaemonClient({
   },
   onExit: (id) => {
     liveBuffers.delete(id); delete savedBuffers[id];
-    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); // #765·#803 정리
+    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); // #765·#803·#864 정리
     const tm = screenTimers.get(id); if (tm) { clearTimeout(tm); screenTimers.delete(id); }
     broadcast("terminal:exit", { id });
   },
@@ -585,6 +651,7 @@ function persistBuffers() {
   try { mkdirSync(app.getPath("userData"), { recursive: true }); writeFileSync(bufFile(), JSON.stringify(out)); } catch { /* ignore */ }
 }
 setInterval(persistBuffers, 5000); // 크래시 대비 주기 저장(before-quit은 아래 quit 훅서)
+setInterval(saveRegistry, 3000);   // #864 실행 기록 영속(재시작 생존 세션 신원 복원용)
 
 ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
   cwdById.set(id, cwd); // #765 버퍼 파서 상태를 이 레포에 매핑
@@ -596,11 +663,27 @@ ipcMain.handle("terminal:ensure", async (_e, { id, cwd, cols, rows }) => {
   if (!buffer && savedBuffers[id]) buffer = savedBuffers[id] + "\r\n\x1b[2m── 이전 세션 내용(재시작 전) ──\x1b[0m\r\n";
   delete savedBuffers[id]; // 재생 1회 소비(중복 방지)
   liveBuffers.set(id, buffer);
+  ensuredIds.add(id); // #864 pty 준비 완료 — launchAgent가 새 탭에 커맨드 주입 전 이걸 대기
   return { ok: true, buffer };
 });
-ipcMain.on("terminal:input", (_e, { id, data }) => termClient.input({ id, data }));
+ipcMain.on("terminal:input", (_e, { id, data }) => { termClient.input({ id, data }); try { detectLaunchFromInput(id, data); } catch { /* 감지 실패가 입력 막지 않게 */ } });
+// #864 에이전트 직접 실행 — 신원을 실행 기록에 확정하고 pty 셸에 실행 커맨드 주입. 반환 후 탭 아이콘/이름=이 에이전트.
+// 새 탭은 렌더러가 Terminal 마운트→ensure까지 시간차가 있어, pty 준비(ensuredIds)를 최대 3s 대기 후 주입.
+const ensuredIds = new Set(); // ensure 완료된 세션 id
+ipcMain.handle("terminal:launchAgent", async (_e, { id, agent }) => {
+  if (!id || typeof agent !== "string") return { ok: false, reason: "bad args" };
+  const cmd = agentCommand(agent);
+  if (!cmd) return { ok: false, reason: "unknown agent" };
+  launchRegistry.set(id, { agent, confirmed: false, at: Date.now() }); // 즉시 신원(아이콘). 부팅 중 셸이어도 유지.
+  let ready = false;
+  for (let i = 0; i < 60; i++) { if (ensuredIds.has(id)) { ready = true; break; } await new Promise((r) => setTimeout(r, 50)); } // 최대 3s pty 대기
+  if (!ready) { launchRegistry.delete(id); return { ok: false, reason: "pty not ready" }; } // 준비 실패 → 신원 취소(오아이콘 방지)
+  try { termClient.input({ id, data: cmd + "\r" }); }
+  catch (e) { launchRegistry.delete(id); return { ok: false, reason: String((e && e.message) || e) }; }
+  return { ok: true };
+});
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
-ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태 정리
+ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태·실행기록 정리
 // 세션의 실행 중 에이전트 id | null(#803) — 터미널 탭 자동 이름·아이콘용.
 // 프로세스명만으론 node 래퍼 CLI(codex 등: 네이티브 자식을 spawn해 foreground pgrp 리더가 "node")를 못 잡아,
 // 버퍼 스크레이핑(parseAgentScreen)을 1순위로. 셸이면 종료로 간주(null). 버퍼 미판정이면 프로세스명 폴백.
@@ -615,6 +698,8 @@ const agentSticky = new Map(); // id → agent id
 // 예전엔 sticky를 파싱보다 먼저 return해서, 이전 세션(예: claude) 신원이 고정되면 새 에이전트(codex)를 켜도
 // 탭이 claude로 남았다(카드는 파싱 우선이라 codex로 바뀌어 표면 불일치). 현재 파싱을 우선해 신선한 배너가 stale sticky를 덮게.
 function agentForId(id, proc, screen) {
+  const ra = registryAgent(id, proc);                          // #864 실행 기록 신원(부팅 중 셸도 유지, 확정 후 종료 시 해제)
+  if (ra) { agentSticky.set(id, ra); return ra; }
   if (proc !== undefined && isShellProc(proc)) { agentSticky.delete(id); return null; }
   const parsed = parseAgentScreen(liveBuffers.get(id) ?? screen);
   if (parsed && parsed.agent) { agentSticky.set(id, parsed.agent); return parsed.agent; } // 현재 화면이 잡은 에이전트 우선

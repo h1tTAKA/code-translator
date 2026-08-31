@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import Terminal from "@/components/workspace/Terminal";
 import { AgentLogo, AGENT_META, type AgentId } from "@/components/workspace/AgentLogo";
 
-interface Tab { id: string; title: string }
+interface Tab { id: string; title: string; customTitle?: string } // customTitle=유저 더블클릭 리네임(최우선, 영속)
 const genId = () => globalThis.crypto?.randomUUID?.() ?? String(Math.random()).slice(2);
 // 새 탭 번호 = 현재 안 쓰는 가장 낮은 양수(#756). 닫은 자리를 다시 채워 "터미널 4처럼 계속 증가" 방지.
 // 제목 끝 숫자로 판별(모든 로케일 포맷이 "… {n}"이라 안전).
@@ -98,6 +98,57 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
     return () => { alive = false; clearInterval(iv); };
   }, []);
 
+  // 탭 드래그 재정렬(#864) — 레포 탭처럼 순서 변경. 배열 순서=화면 순서, setTabs가 localStorage 영속.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const reorderTabs = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setTabs((prev) => {
+      const from = prev.findIndex((x) => x.id === fromId);
+      if (from < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      const insertAt = next.findIndex((x) => x.id === toId); // 제거 후 재계산
+      next.splice(insertAt < 0 ? next.length : insertAt, 0, moved); // 대상 앞에 삽입
+      return next;
+    });
+  };
+
+  // 더블클릭 리네임(#864) — 편집 중 탭 id + 입력값. 빈 값 확정 시 customTitle 해제(자동 이름 복귀).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const commitRename = (id: string) => {
+    const v = editValue.trim();
+    setTabs((prev) => prev.map((tb) => (tb.id === id ? { ...tb, customTitle: v || undefined } : tb)));
+    setEditingId(null);
+  };
+
+  // ＋ 메뉴(#864) — orca식. 새 터미널 또는 에이전트 선택. 에이전트는 새 탭 생성 후 그 탭에 직접 실행(신원 확정).
+  // ＋는 탭 옆(스크롤 안)에 두되, 드롭다운은 position:fixed로 띄워 overflow-x-auto 클리핑을 피한다(버튼 rect 기준 좌표).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const plusRef = useRef<HTMLButtonElement>(null);
+  const MENU_W = 190, MENU_H = 340; // 드롭다운 대략 크기(양축 화면밖 방지용 추정)
+  const toggleMenu = () => {
+    if (menuOpen) { setMenuOpen(false); return; }
+    const r = plusRef.current?.getBoundingClientRect();
+    if (r) {
+      const x = Math.max(4, Math.min(r.left, window.innerWidth - MENU_W - 4));
+      const y = r.bottom + 4 + MENU_H > window.innerHeight ? Math.max(4, r.top - MENU_H - 4) : r.bottom + 4; // 아래 넘치면 위로
+      setMenuPos({ x, y });
+    }
+    setMenuOpen(true);
+  };
+  const LAUNCHABLE: AgentId[] = ["claude", "codex", "grok", "opencode", "omp", "antigravity", "cursor", "hermes"]; // gemini 제외(구글=antigravity)
+  const newTerminal = () => { setMenuOpen(false); addTab(); };
+  const launchInNewTab = (agent: AgentId) => {
+    setMenuOpen(false);
+    const id = genId();
+    setTabs((prev) => [...prev, { id, title: t("workspace.terminalTab", { n: nextNum(prev) }) }]);
+    setActiveId(id);
+    void window.nunopiDesktop?.terminal?.launchAgent?.({ id, agent }); // main이 pty ensure 대기 후 커맨드 주입
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 터미널 탭 바 — 에디터 탭 느낌(활성 상단 강조선·구분선·닫기). pr-6 외곽: 우상단 이동 그립 자리 예약(#716). */}
@@ -105,18 +156,36 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
       <div className="nunopi-scroll flex min-w-0 flex-1 items-stretch overflow-x-auto">
         {tabs.map((tab) => {
           const on = tab.id === activeId;
-          // 실행 중 에이전트면 그 라벨·로고, 아니면(셸/유휴) 기존 "터미널 N"·터미널 아이콘. title은 안 바꿔 종료 시 자동 원복(#803).
+          // 아이콘=에이전트 로고(실행 중)/터미널. 제목 우선순위(#864): 유저 리네임 > 에이전트 라벨 > "터미널 N".
           const agent = agentById[tab.id] ?? null;
-          const label = agent ? AGENT_META[agent].label : tab.title;
+          const label = tab.customTitle || (agent ? AGENT_META[agent].label : tab.title);
+          const editing = editingId === tab.id;
           return (
             <div key={tab.id} ref={on ? scrollTabIntoView : undefined}
-              className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"}`}
+              draggable={!editing}
+              onDragStart={(e) => { setDragId(tab.id); e.dataTransfer.effectAllowed = "move"; }}
+              onDragOver={(e) => { if (dragId && dragId !== tab.id) { e.preventDefault(); setOverId(tab.id); } }}
+              onDragLeave={() => setOverId((o) => (o === tab.id ? null : o))}
+              onDrop={(e) => { e.preventDefault(); if (dragId) reorderTabs(dragId, tab.id); setDragId(null); setOverId(null); }}
+              onDragEnd={() => { setDragId(null); setOverId(null); }}
+              className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-200 px-3 py-1.5 text-[12px] transition dark:border-zinc-800 ${on ? "bg-white text-zinc-800 dark:bg-[#0b0c12] dark:text-zinc-100" : "text-zinc-500 hover:bg-white/50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"} ${dragId === tab.id ? "opacity-40" : ""}`}
               onClick={() => setActiveId(tab.id)}>
               {on && <span className="absolute inset-x-0 top-0 h-0.5 bg-mustard-500" aria-hidden />}
+              {overId === tab.id && <span className="absolute inset-y-0 left-0 w-0.5 bg-mustard-500" aria-hidden />}
               {agent
                 ? <span className="shrink-0"><AgentLogo agent={agent} size={13} /></span>
                 : <IconTerminal2 size={13} stroke={2} className={`shrink-0 ${on ? "text-mustard-600 dark:text-mustard-400" : "text-zinc-400"}`} aria-hidden />}
-              <span className="whitespace-nowrap">{label}</span>
+              {editing ? (
+                <input autoFocus value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => { if (e.key === "Enter") commitRename(tab.id); else if (e.key === "Escape") setEditingId(null); }}
+                  onBlur={() => commitRename(tab.id)}
+                  className="w-[130px] rounded border border-mustard-400 bg-white px-1 py-0 text-[12px] text-zinc-800 outline-none dark:bg-zinc-900 dark:text-zinc-100" />
+              ) : (
+                <span className="max-w-[200px] truncate whitespace-nowrap" title={label}
+                  onDoubleClick={(e) => { e.stopPropagation(); setEditValue(tab.customTitle || (agent ? AGENT_META[agent].label : "")); setEditingId(tab.id); }}>{label}</span>
+              )}
               {tabs.length > 1 && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
                   className={`ml-1 shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 ${on ? "" : "opacity-0 group-hover:opacity-100"}`} aria-label={t("workspace.terminalClose")}>
@@ -126,12 +195,34 @@ export default function TerminalPane({ cwd }: { cwd: string }) {
             </div>
           );
         })}
-        <button type="button" onClick={addTab} title={t("workspace.terminalNew")} aria-label={t("workspace.terminalNew")}
+        {/* ＋ 버튼 — 탭 옆(스크롤 안). 드롭다운은 아래 fixed로(클리핑 회피). */}
+        <button ref={plusRef} type="button" onClick={toggleMenu} aria-label={t("workspace.terminalNew")}
           className="flex shrink-0 items-center px-2.5 text-zinc-400 transition hover:bg-white hover:text-mustard-600 dark:hover:bg-zinc-800 dark:hover:text-mustard-400">
           <IconPlus size={15} stroke={2.5} aria-hidden />
         </button>
       </div>
       </div>
+      {/* ＋ 드롭다운(#864) — position:fixed라 overflow-x-auto에 안 잘림. 버튼 rect 기준 좌표. */}
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
+          <div style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}
+            className="z-50 min-w-[180px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-[#0b0c12]">
+            <button type="button" onClick={newTerminal}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
+              <IconTerminal2 size={14} stroke={2} aria-hidden /><span className="whitespace-nowrap">{t("workspace.terminalNew")}</span>
+            </button>
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+            {LAUNCHABLE.map((a) => (
+              <button key={a} type="button" onClick={() => launchInNewTab(a)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                <AgentLogo agent={a} size={14} />
+                <span className="whitespace-nowrap">{AGENT_META[a].label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {/* 활성 터미널(id로 remount → 그 pty 재생) */}
       <div className="min-h-0 flex-1">
         {active && <Terminal key={active.id} id={active.id} cwd={cwd} />}
