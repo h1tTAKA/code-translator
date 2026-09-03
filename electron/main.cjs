@@ -576,6 +576,7 @@ async function postStatus(body) {
 // SNA가 "지금 뭘 하는지 + 개념/용어"를 학습 스트림에 뿜는다. 레포별(cwd 귀속) + 스로틀 + 유의미 델타만.
 const narrOffset = new Map(); // id → 마지막 관찰한 버퍼 길이
 const lastNarr = new Map();   // id → 마지막 내레이션 시각
+const narrInFlight = new Set(); // 관찰 요청 진행 중인 id(느린 analyze 중복 호출 방지)
 const NARR_INTERVAL = 18000;  // 세션당 최소 간격(비용·스팸 방지)
 const NARR_MIN_DELTA = 120;   // 이만큼 새 내용 쌓여야 내레이션(잡음 스킵)
 async function observeActivity(id) {
@@ -586,16 +587,19 @@ async function observeActivity(id) {
   const buf = liveBuffers.get(id) || "";
   if (narrOffset.get(id) === undefined) { narrOffset.set(id, buf.length); return; } // 최초엔 기준만(과거 백로그 폭탄 방지)
   const now = Date.now();
+  if (narrInFlight.has(id)) return;                                                 // 이전 관찰 진행 중 — 중복 호출 방지
   if (now - (lastNarr.get(id) || 0) < NARR_INTERVAL) return;                        // 스로틀
   const off = narrOffset.get(id);
   if (buf.length <= off) return;                                                    // 새 내용 없음
   const delta = stripAnsi(buf.slice(off)).replace(/\r/g, "").split("\n").map((l) => l.trimEnd()).filter(Boolean).join("\n").trim();
   narrOffset.set(id, buf.length);
-  if (delta.length < NARR_MIN_DELTA) return;                                        // 유의미 델타만
+  if (delta.length < NARR_MIN_DELTA || !/[a-zA-Z가-힣]/.test(delta)) return;         // 유의미 델타만(글자 없는 순수 기호·스피너 프레임 스킵)
   lastNarr.set(id, now);
+  narrInFlight.add(id);
   try {
     await fetch(`${appBase}/api/repo/learn/observe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd, agent, delta: delta.slice(-5000) }) });
   } catch { /* 서버 미준비 등 — 다음 델타서 재시도 */ }
+  finally { narrInFlight.delete(id); }
 }
 async function pushScreenState(id, screen) {
   const cwd = cwdById.get(id);
