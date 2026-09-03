@@ -61,7 +61,10 @@ const isClaudeIdleGlyph = (c) => c === 0x2733; // ✳
 
 // claude 본문 마커(compact = 공백제거+소문자). 출처: herdr claude.toml.
 const CLAUDE_WAITING = /doyouwantto|wouldyouliketo|esctocancel|tabtoamend|ctrl\+etoexplain|waitingforpermission|❯\d+\.(yes|no)|\b\d+\.(yes|no)\b|whatshouldclaudedoinstead|interrupted·|reviewyouranswers/i;
-const CLAUDE_WORKING = /esctointerrupt|[\d.]+[km]?tokens|\(\d+m?\d*s[·)]/i; // (18s·thinking / (55s·↓1.4ktokens)
+// 라이브 "작업 중" 신호만: "esc to interrupt" + 라이브 타이머 "(18s·… / (55s·↓1.4k tokens)".
+// standalone tokens는 제거 — idle 푸터 "…/clear to save 126.2k tokens"(컨텍스트 사용량)에 오매칭돼 멈춘 걸
+// 작업중으로 오판했다(#866). 라이브 토큰 카운터는 항상 타이머 괄호와 동반이라 타이머가 이미 잡는다.
+const CLAUDE_WORKING = /esctointerrupt|\(\d+m?\d*s[·)]/i;
 const CLAUDE_CHROME = /esctointerrupt|\?forshortcuts|claudecode|bypasspermissions|manualmodeon|foragents|tokens\)/i;
 
 // codex(보조 — 유저 주력은 claude). 출처: herdr codex.toml.
