@@ -596,10 +596,12 @@ async function observeActivity(id) {
   if (delta.length < NARR_MIN_DELTA || !/[a-zA-Z가-힣]/.test(delta)) return;         // 유의미 델타만(글자 없는 순수 기호·스피너 프레임 스킵)
   lastNarr.set(id, now);
   narrInFlight.add(id);
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 30000); // analyze 행 방지 — 초과 시 중단(다음 델타서 재시도)
   try {
-    await fetch(`${appBase}/api/repo/learn/observe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd, agent, delta: delta.slice(-5000) }) });
-  } catch { /* 서버 미준비 등 — 다음 델타서 재시도 */ }
-  finally { narrInFlight.delete(id); }
+    await fetch(`${appBase}/api/repo/learn/observe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd, agent, delta: delta.slice(-5000) }), signal: ctrl.signal });
+  } catch { /* 서버 미준비·타임아웃 등 — 다음 델타서 재시도 */ }
+  finally { clearTimeout(to); narrInFlight.delete(id); }
 }
 async function pushScreenState(id, screen) {
   const cwd = cwdById.get(id);
@@ -670,7 +672,7 @@ const termClient = createDaemonClient({
   },
   onExit: (id) => {
     liveBuffers.delete(id); delete savedBuffers[id];
-    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrOffset.delete(id); lastNarr.delete(id); // #765·#803·#864·#870 정리
+    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrOffset.delete(id); lastNarr.delete(id); narrInFlight.delete(id); // #765·#803·#864·#870 정리
     const tm = screenTimers.get(id); if (tm) { clearTimeout(tm); screenTimers.delete(id); }
     broadcast("terminal:exit", { id });
   },
@@ -714,7 +716,7 @@ ipcMain.handle("terminal:launchAgent", async (_e, { id, agent }) => {
   return { ok: true };
 });
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
-ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrOffset.delete(id); lastNarr.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태·실행기록 정리
+ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrOffset.delete(id); lastNarr.delete(id); narrInFlight.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태·실행기록 정리
 // 세션의 실행 중 에이전트 id | null(#803) — 터미널 탭 자동 이름·아이콘용.
 // 프로세스명만으론 node 래퍼 CLI(codex 등: 네이티브 자식을 spawn해 foreground pgrp 리더가 "node")를 못 잡아,
 // 버퍼 스크레이핑(parseAgentScreen)을 1순위로. 셸이면 종료로 간주(null). 버퍼 미판정이면 프로세스명 폴백.
