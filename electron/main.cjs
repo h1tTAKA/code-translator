@@ -576,9 +576,22 @@ async function postStatus(body) {
 // SNA가 "지금 뭘 하는지 + 개념/용어"를 학습 스트림에 뿜는다. 레포별(cwd 귀속) + 스로틀 + 유의미 델타만.
 const narrPending = new Map(); // id → 마지막 내레이션 이후 누적된 새 출력(onData가 append, 관찰기가 소비)
 const lastNarr = new Map();   // id → 마지막 내레이션 시각
+// 스피너/상태줄 노이즈 제거 — 라이브 타이머·상태줄·글리프만인 줄 버림. 알맹이(툴콜·코드·diff·추론)만 남겨
+// 내레이션이 "이건 스피너일 뿐" 같은 무의미 카드(토큰 낭비)를 안 만들게(#870).
+function stripNoise(text) {
+  return String(text || "").replace(/\r/g, "").split("\n").map((l) => l.trimEnd()).filter((line) => {
+    const l = line.trim();
+    if (!l) return false;
+    if (/\(\d+m?\d*s\b[^)]*tokens?\)/i.test(l)) return false;                 // "(9s · ↓ 9.4k tokens)" 라이브 타이머
+    if (/…\s*\(\d/.test(l)) return false;                                     // "Actualizing… (9s"
+    if (/esc to interrupt|\? *for shortcuts|auto mode on|shift\+tab|for agents/i.test(l)) return false; // 상태줄
+    if (/^[\s✳✱✻✽●○◍◌⏺·•*+\-—│└├▪▸►⠀-⣿]+$/.test(l)) return false;    // 글리프·기호만
+    return true;
+  }).join("\n").trim();
+}
 const narrInFlight = new Set(); // 관찰 요청 진행 중인 id(느린 analyze 중복 호출 방지)
 const NARR_INTERVAL = 18000;  // 세션당 최소 간격(비용·스팸 방지)
-const NARR_MIN_DELTA = 120;   // 이만큼 새 내용 쌓여야 내레이션(잡음 스킵)
+const NARR_MIN_DELTA = 150;   // 노이즈 제거 후 이만큼 알맹이 있어야 내레이션(스피너-only 스킵)
 async function observeActivity(id) {
   const cwd = cwdById.get(id);
   if (!cwd || !appBase) return;
@@ -592,9 +605,9 @@ async function observeActivity(id) {
   if (now - (lastNarr.get(id) || 0) < NARR_INTERVAL) return;                        // 스로틀
   const raw = narrPending.get(id) || "";
   if (!raw) return;                                                                 // 지난 내레이션 이후 새 출력 없음
-  const delta = stripAnsi(raw).replace(/\r/g, "").split("\n").map((l) => l.trimEnd()).filter(Boolean).join("\n").trim();
+  const delta = stripNoise(stripAnsi(raw));                                         // 스피너·상태줄 노이즈 제거 → 알맹이만
   narrPending.set(id, "");                                                          // 소비(비움)
-  if (delta.length < NARR_MIN_DELTA || !/[a-zA-Z가-힣]/.test(delta)) return;         // 유의미 델타만(글자 없는 순수 기호·스피너 프레임 스킵)
+  if (delta.length < NARR_MIN_DELTA || !/[a-zA-Z가-힣]/.test(delta)) return;         // 알맹이 없으면 스킵(토큰 낭비 방지)
   lastNarr.set(id, now);
   narrInFlight.add(id);
   const ctrl = new AbortController();
