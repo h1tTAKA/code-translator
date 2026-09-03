@@ -20,7 +20,7 @@ function narrationPrompt(agent: string, delta: string): string {
 - **왜 그렇게**: 그 방식을 택한 이유(로그에서 읽히면).
 - **용어**: 초보가 모를 개념·함수·문법 1~2개를 "- **이름** — 쉬운 뜻" 마크다운으로.
 
-맨 앞 줄은 "제목: (에이전트가 방금 한 일 한 줄, 에이전트 주어)".
+맨 앞 줄에는 한 줄 요약을 써(에이전트 주어). 단 "제목:" 같은 라벨이나 #·** 같은 마크다운 제목 표시는 붙이지 말고, 그냥 요약 문장만. 그다음 줄부터 위 항목들.
 
 ⚠️ 로그가 스피너·진행표시·상태줄뿐이고 실제 코드/명령/탐색 활동이 없으면, 다른 말 없이 딱 "SKIP"만 출력. JSON·코드블록으로 용어 출력 금지.
 
@@ -48,17 +48,18 @@ function cleanNote(s: string): string {
   return t.replace(/```(?:json)?[\s\S]*?```\s*$/, "").trim();
 }
 
-// summary → { title, note }. "제목:" 첫 줄을 행동 요약으로, 나머지를 설명으로.
+// summary → { title, note }. 첫 줄 = 제목(마크다운 heading·볼드·"제목:" 라벨 벗겨서), 나머지 = 본문.
 function splitNarration(summary: string): { title: string; note: string } {
-  const s = summary.trim();
-  const m = s.match(/^제목\s*[:：]\s*(.+)$/m);
-  if (m) {
-    const title = m[1].trim().slice(0, 60);
-    const note = s.replace(m[0], "").trim();
-    return { title, note: note || title };
-  }
-  const firstLine = s.split("\n")[0]?.trim() ?? "";
-  return { title: (firstLine.slice(0, 60) || "실시간 작업"), note: s };
+  const lines = summary.trim().split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  let title = (lines[i] || "").trim()
+    .replace(/^#{1,6}\s*/, "")            // # heading
+    .replace(/^\*\*(.*)\*\*$/, "$1")      // **볼드**
+    .replace(/^(제목|타이틀|title)\s*[:：]\s*/i, "") // "제목:" 라벨
+    .trim().slice(0, 80);
+  const note = lines.slice(i + 1).join("\n").trim();
+  return { title: title || "실시간 작업", note: note || title };
 }
 
 export async function POST(req: Request): Promise<Response> {
