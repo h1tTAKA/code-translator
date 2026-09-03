@@ -1,13 +1,14 @@
 // MCP 툴콜 활동 버스(#855) — 에이전트가 부른 코드그래프 툴을 앱으로 push(실시간 학습 브릿지).
 // agentStatus.ts 패턴 미러: globalThis 싱글턴(dev 라우트 리로드 생존) + emit/subscribe fan-out + 최근 링버퍼.
-export type ConceptKind = "symbol" | "file" | "query" | "repo" | "edit";
+export type ConceptKind = "symbol" | "file" | "query" | "repo" | "edit" | "narration";
 export interface ActivityEvent {
   root: string;
-  tool: string;      // katchup_find_code / Edit / Bash 등
+  tool: string;      // katchup_find_code / Edit / Bash 등, narration은 "narration"
   kind: ConceptKind;
-  target: string;    // 심볼명/파일/쿼리/편집대상 — 에이전트가 지금 다루는 것
+  target: string;    // 심볼명/파일/쿼리/편집대상 — 에이전트가 지금 다루는 것(narration은 짧은 제목/행동)
   isError: boolean;
   ts: number;
+  note?: string;     // #870 narration 전용 — 서버서 생성한 실시간 설명 텍스트(클라가 그대로 렌더)
 }
 
 const RING_MAX = 200; // 최근 이벤트 상한(메모리 누수 방지)
@@ -60,6 +61,14 @@ export function emitEdit(root: string, tool: string, target: string, isError: bo
   if (lastEdit.get(r) === sig) return; // dedup(연속 동일만)
   lastEdit.set(r, sig);
   pushEvent({ root: r, tool, kind: "edit", target: t, isError, ts: now });
+}
+
+// 실시간 내레이션 방출(#870) — main이 관찰한 터미널 델타를 서버가 analyze해 만든 설명을 학습스트림으로.
+// note(설명 텍스트)를 실어 클라가 재분석 없이 바로 렌더. title=짧은 행동 요약("코드 편집"/"명령 실행" 등).
+export function emitNarration(root: string, title: string, note: string, now: number): void {
+  const n = (note ?? "").trim();
+  if (!n) return;
+  pushEvent({ root: normPath(root), tool: "narration", kind: "narration", target: (title || "실시간").trim(), isError: false, ts: now, note: n });
 }
 
 // SSE 구독(해제 함수 반환).

@@ -1,6 +1,6 @@
 // mcpActivity 점검 — node --experimental-strip-types src/lib/mcpActivity.check.ts
 import assert from "node:assert";
-import { extractConcept, emitToolCall, emitEdit, subscribe, recent, matchesRoot } from "./mcpActivity.ts";
+import { extractConcept, emitToolCall, emitEdit, emitNarration, subscribe, recent, matchesRoot } from "./mcpActivity.ts";
 
 // 개념 추출
 assert.deepEqual(extractConcept("katchup_find_code", { name: "postMessage" }), { kind: "symbol", target: "postMessage" });
@@ -39,5 +39,14 @@ assert.ok(matchesRoot("/repo/A/sub", "/repo/A"), "cwd 하위 매칭");
 assert.ok(matchesRoot("/repo/A", "/repo/A/sub"), "역방향 매칭");
 assert.ok(!matchesRoot("/repo/AB", "/repo/A"), "형제 접두 아님");
 assert.ok(recent("/repo/A/sub", 20).some((e) => e.target === "app/page.tsx"), "하위 root로도 편집 조회");
+
+// narration(#870) — note 실려 방출, 빈 note 스킵
+const nar: string[] = [];
+const un3 = subscribe((e) => { if (e.kind === "narration") nar.push(`${e.target}|${e.note ?? ""}`); });
+emitNarration("/repo/N", "코드 편집", "App.tsx의 상태 관리를 useReducer로 바꾸는 중", 20);
+emitNarration("/repo/N", "빈", "   ", 21); // 빈 note → 스킵
+un3();
+assert.deepEqual(nar, ["코드 편집|App.tsx의 상태 관리를 useReducer로 바꾸는 중"], "narration note 방출 + 빈 note 스킵");
+assert.ok(recent("/repo/N", 5).some((e) => e.kind === "narration" && e.note), "narration 링버퍼 조회");
 
 console.log("mcpActivity.check OK");
