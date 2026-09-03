@@ -585,7 +585,7 @@ function stripNoise(text) {
     if (/\(\d+m?\d*s\b[^)]*tokens?\)/i.test(l)) return false;                 // "(9s · ↓ 9.4k tokens)" 라이브 타이머
     if (/…\s*\(\d/.test(l)) return false;                                     // "Actualizing… (9s"
     if (/esc to interrupt|\? *for shortcuts|auto mode on|shift\+tab|for agents/i.test(l)) return false; // 상태줄
-    if (/^[\s✳✱✻✽●○◍◌⏺·•*+\-—│└├▪▸►⠀-⣿]+$/.test(l)) return false;    // 글리프·기호만
+    if (/^[\s✳✱✻✽●○◍◌⏺⠀-⣿]+$/.test(l)) return false;                // 스피너 글리프만(브라유+claude). +/-/*/--- 등 diff·기호는 내용이라 안 버림
     return true;
   }).join("\n").trim();
 }

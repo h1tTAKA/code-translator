@@ -28,18 +28,24 @@ function narrationPrompt(agent: string, delta: string): string {
 ${delta}`;
 }
 
-// 모델이 그래도 끝에 JSON terms 배열을 붙이면 파싱해 읽기 좋은 목록으로 교체(백스톱). 실패 시 그 블록 제거.
+// 모델이 그래도 끝에 JSON terms 배열을 붙이면 파싱해 읽기 좋은 목록으로 교체(백스톱).
+// 정규식 백트래킹 회피 — 마지막 '['부터 끝까지를 JSON.parse로 직접 시도(문자열 파싱이라 안전).
 function cleanNote(s: string): string {
-  const m = s.match(/\[\s*\{[\s\S]*?"term"[\s\S]*\}\s*\]\s*$/);
-  if (m && m.index !== undefined) {
-    let list = "";
-    try {
-      const arr = JSON.parse(m[0]) as Array<{ term?: string; definition?: string }>;
-      list = arr.filter((x) => x && x.term).map((x) => `- **${x.term}** — ${x.definition ?? ""}`).join("\n");
-    } catch { /* 파싱 실패 → 블록만 제거 */ }
-    return (s.slice(0, m.index).trim() + (list ? "\n\n" + list : "")).trim();
+  const t = s.trim();
+  const idx = t.lastIndexOf("[");
+  if (idx >= 0) {
+    const tail = t.slice(idx);
+    if (/^\[\s*\{/.test(tail) && tail.includes('"term"')) {
+      try {
+        const arr = JSON.parse(tail) as Array<{ term?: string; definition?: string }>;
+        if (Array.isArray(arr)) {
+          const list = arr.filter((x) => x && x.term).map((x) => `- **${x.term}** — ${x.definition ?? ""}`).join("\n");
+          return (t.slice(0, idx).trim() + (list ? "\n\n" + list : "")).trim();
+        }
+      } catch { /* 파싱 실패 → 코드펜스 제거로 폴백 */ }
+    }
   }
-  return s.replace(/```(?:json)?[\s\S]*?```\s*$/, "").trim();
+  return t.replace(/```(?:json)?[\s\S]*?```\s*$/, "").trim();
 }
 
 // summary → { title, note }. "제목:" 첫 줄을 행동 요약으로, 나머지를 설명으로.
