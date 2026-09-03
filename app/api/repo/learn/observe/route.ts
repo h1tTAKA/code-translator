@@ -14,10 +14,26 @@ function narrationPrompt(agent: string, delta: string): string {
 형식(반드시 지켜):
 제목: (방금 한 행동 한 줄. 예: "App.tsx에 BookUser import 추가")
 - 무엇을 왜: 방금 어떤 파일의 어느 부분을, 어떻게 바꿨는지(추가/수정/삭제 무엇인지 구체적으로). 코드를 고쳤으면 무슨 코드가 어떻게 달라졌는지. 명령을 돌렸으면 왜 돌렸고 결과가 어땠는지.
-- 용어: (활동에 나온 개념·함수·라이브러리·문법 중 초보가 모를 만한 1~2개를 "이름 — 쉬운 뜻" 형식으로. 없으면 이 줄 생략.)
+- 용어: (활동에 나온 개념·함수·라이브러리·문법 중 초보가 모를 만한 1~2개를 반드시 "- **이름** — 쉬운 뜻" 마크다운 목록으로. 없으면 이 줄 생략.)
+
+⚠️ JSON·코드블록(\`\`\`)으로 용어를 출력하지 마. 오직 위 마크다운 형식만.
 
 활동 로그:
 ${delta}`;
+}
+
+// 모델이 그래도 끝에 JSON terms 배열을 붙이면 파싱해 읽기 좋은 목록으로 교체(백스톱). 실패 시 그 블록 제거.
+function cleanNote(s: string): string {
+  const m = s.match(/\[\s*\{[\s\S]*?"term"[\s\S]*\}\s*\]\s*$/);
+  if (m && m.index !== undefined) {
+    let list = "";
+    try {
+      const arr = JSON.parse(m[0]) as Array<{ term?: string; definition?: string }>;
+      list = arr.filter((x) => x && x.term).map((x) => `- **${x.term}** — ${x.definition ?? ""}`).join("\n");
+    } catch { /* 파싱 실패 → 블록만 제거 */ }
+    return (s.slice(0, m.index).trim() + (list ? "\n\n" + list : "")).trim();
+  }
+  return s.replace(/```(?:json)?[\s\S]*?```\s*$/, "").trim();
 }
 
 // summary → { title, note }. "제목:" 첫 줄을 행동 요약으로, 나머지를 설명으로.
@@ -53,7 +69,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const res = await provider.analyze(request, { signal: req.signal });
     const summary = (res?.summary ?? "").trim();
-    if (summary) { const { title, note } = splitNarration(summary); emitNarration(cwd, title, note, Date.now()); }
+    if (summary) { const { title, note } = splitNarration(summary); emitNarration(cwd, title, cleanNote(note), Date.now()); }
     return Response.json({ ok: true });
   } catch (e) {
     // 구독 미가용·레이트리밋 등 — 조용히 실패(다음 델타서 재시도). 사용자 흐름 안 막음.
