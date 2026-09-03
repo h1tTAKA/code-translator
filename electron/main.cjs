@@ -582,9 +582,12 @@ const NARR_MIN_DELTA = 120;   // 이만큼 새 내용 쌓여야 내레이션(잡
 async function observeActivity(id) {
   const cwd = cwdById.get(id);
   if (!cwd || !appBase) return;
-  const agent = registryAgent(id, procById.get(id)); // 신원 있는(에이전트 실행 중) 세션만 — 셸/미실행 제외
-  if (!agent) { narrOffset.delete(id); return; }
+  const proc = procById.get(id);
+  if (proc !== undefined && isShellProc(proc)) { narrOffset.delete(id); return; } // 셸 = 에이전트 없음
   const buf = liveBuffers.get(id) || "";
+  // 신원: 실행기록(#864) 우선, 없으면 스크레이프(재시작 전부터 돌던·수동 실행 세션 커버). 둘 다 없으면(랜덤 프로세스 로그) 스킵.
+  const agent = registryAgent(id, proc) || (parseAgentScreen(buf) || {}).agent;
+  if (!agent) { narrOffset.delete(id); return; }
   if (narrOffset.get(id) === undefined) { narrOffset.set(id, buf.length); return; } // 최초엔 기준만(과거 백로그 폭탄 방지)
   const now = Date.now();
   if (narrInFlight.has(id)) return;                                                 // 이전 관찰 진행 중 — 중복 호출 방지
