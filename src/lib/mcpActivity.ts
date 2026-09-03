@@ -12,10 +12,11 @@ export interface ActivityEvent {
 }
 
 const RING_MAX = 200; // 최근 이벤트 상한(메모리 누수 방지)
-const g = globalThis as unknown as { __nunopiMcpActivity?: ActivityEvent[]; __nunopiMcpActListeners?: Set<(e: ActivityEvent) => void>; __nunopiLastEdit?: Map<string, string> };
+const g = globalThis as unknown as { __nunopiMcpActivity?: ActivityEvent[]; __nunopiMcpActListeners?: Set<(e: ActivityEvent) => void>; __nunopiLastEdit?: Map<string, string>; __nunopiLastNarr?: Map<string, string> };
 const ring: ActivityEvent[] = g.__nunopiMcpActivity ?? (g.__nunopiMcpActivity = []);
 const listeners: Set<(e: ActivityEvent) => void> = g.__nunopiMcpActListeners ?? (g.__nunopiMcpActListeners = new Set());
 const lastEdit: Map<string, string> = g.__nunopiLastEdit ?? (g.__nunopiLastEdit = new Map()); // root → 직전 편집 "tool|target"(dedup)
+const lastNarr: Map<string, string> = g.__nunopiLastNarr ?? (g.__nunopiLastNarr = new Map()); // root → 직전 내레이션 제목(연속 중복 dedup)
 
 const normPath = (p: string) => p.replace(/\/+$/, "");
 // root 매칭 — 워크스페이스 root와 에이전트 cwd가 상하위여도 커버(양방향 접두).
@@ -68,7 +69,11 @@ export function emitEdit(root: string, tool: string, target: string, isError: bo
 export function emitNarration(root: string, title: string, note: string, now: number): void {
   const n = (note ?? "").trim();
   if (!n) return;
-  pushEvent({ root: normPath(root), tool: "narration", kind: "narration", target: (title || "실시간").trim(), isError: false, ts: now, note: n });
+  const r = normPath(root);
+  const t = (title || "실시간").trim();
+  if (lastNarr.get(r) === t) return; // 연속 동일 제목 = 중복(같은 활동 재내레이션) → 스킵
+  lastNarr.set(r, t);
+  pushEvent({ root: r, tool: "narration", kind: "narration", target: t, isError: false, ts: now, note: n });
 }
 
 // SSE 구독(해제 함수 반환).

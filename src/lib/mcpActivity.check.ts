@@ -45,8 +45,10 @@ const nar: string[] = [];
 const un3 = subscribe((e) => { if (e.kind === "narration") nar.push(`${e.target}|${e.note ?? ""}`); });
 emitNarration("/repo/N", "코드 편집", "App.tsx의 상태 관리를 useReducer로 바꾸는 중", 20);
 emitNarration("/repo/N", "빈", "   ", 21); // 빈 note → 스킵
+emitNarration("/repo/N", "코드 편집", "다른 본문이지만 제목 같음", 22); // 연속 동일 제목 → dedup 스킵
+emitNarration("/repo/N", "테스트 실행", "vitest 돌림", 23); // 제목 다름 → 방출
 un3();
-assert.deepEqual(nar, ["코드 편집|App.tsx의 상태 관리를 useReducer로 바꾸는 중"], "narration note 방출 + 빈 note 스킵");
+assert.deepEqual(nar, ["코드 편집|App.tsx의 상태 관리를 useReducer로 바꾸는 중", "테스트 실행|vitest 돌림"], "narration 방출 + 빈 note·연속 동일 제목 스킵");
 assert.ok(recent("/repo/N", 5).some((e) => e.kind === "narration" && e.note), "narration 링버퍼 조회");
 
 console.log("mcpActivity.check OK");
