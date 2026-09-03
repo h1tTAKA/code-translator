@@ -590,7 +590,7 @@ function stripNoise(text) {
   }).join("\n").trim();
 }
 const narrInFlight = new Set(); // 관찰 요청 진행 중인 id(느린 analyze 중복 호출 방지)
-const NARR_INTERVAL = 18000;  // 세션당 최소 간격(비용·스팸 방지)
+const NARR_INTERVAL = 12000;  // 세션당 최소 간격(더 촘촘히 — 노이즈 필터가 스피너-only는 이미 걸러 낭비 안 늘어남)
 const NARR_MIN_DELTA = 150;   // 노이즈 제거 후 이만큼 알맹이 있어야 내레이션(스피너-only 스킵)
 async function observeActivity(id) {
   const cwd = cwdById.get(id);
