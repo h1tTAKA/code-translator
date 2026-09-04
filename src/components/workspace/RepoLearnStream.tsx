@@ -107,8 +107,9 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
       // #870 실시간 내레이션 — 서버가 이미 설명(note)을 생성해 실었으므로 클라 재분석 없이 done 카드로 바로.
       if (ev.kind === "narration") {
         if (!ev.note) return;
-        const nkey = `narration|${ev.ts}`;
-        setConcepts((prev) => [{ key: nkey, kind: "narration" as const, target: ev.target, tool: "narration", status: "done" as const, ts: ev.ts, expl: ev.note }, ...prev].slice(0, 80));
+        const nkey = `narration|${ev.ts}|${ev.target}`;                 // ts+제목 = 고유 키(같은 ms 충돌 방지)
+        setConcepts((prev) => (prev.some((c) => c.key === nkey) ? prev  // 이미 있으면 스킵(SSE 재연결 replay 중복 방지)
+          : [{ key: nkey, kind: "narration" as const, target: ev.target, tool: "narration", status: "done" as const, ts: ev.ts, expl: ev.note }, ...prev].slice(0, 80)));
         return;
       }
       const key = `${ev.kind}|${ev.target}`;
@@ -120,7 +121,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
   }, [root, enqueue]);
 
   // 영구보존 — done 개념 + 용어집.
-  useEffect(() => { try { if (typeof localStorage !== "undefined") localStorage.setItem(cKey(root), JSON.stringify(concepts.filter((c) => c.status === "done").slice(0, 60))); } catch { /* 무시 */ } }, [concepts, root]);
+  useEffect(() => { try { if (typeof localStorage !== "undefined") localStorage.setItem(cKey(root), JSON.stringify(concepts.filter((c) => c.status === "done" && c.kind !== "narration").slice(0, 60))); } catch { /* 무시 */ } }, [concepts, root]); // narration은 라이브 스트림이라 영속 제외(재로드 시 SSE replay와 중복 방지)
   useEffect(() => { try { if (typeof localStorage !== "undefined") localStorage.setItem(gKey(root), JSON.stringify(terms.slice(0, 80))); } catch { /* 무시 */ } }, [terms, root]);
 
   useEffect(() => {
