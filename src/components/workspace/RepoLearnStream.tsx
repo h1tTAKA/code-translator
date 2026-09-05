@@ -165,7 +165,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
             )}
             {/* 개념 — 등장한 개념 1회씩(중복 없음), 최근 먼저 */}
             <ul className="flex flex-col gap-2 p-2.5">
-              {concepts.map((c) => { const Icon = KIND_ICON[c.kind]; return (
+              {concepts.map((c) => { const Icon = KIND_ICON[c.kind] ?? IconActivity; return ( // 미지 kind(구버전/영속 데이터)여도 크래시 안 나게 fallback
                 <li key={c.key} className="rounded-lg border border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-800/40">
                   <button type="button" onClick={() => toggleExpand(c.key)} className="flex w-full items-start gap-2 px-3 py-2 text-left">
                     <Icon size={14} stroke={2} className="mt-0.5 shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
