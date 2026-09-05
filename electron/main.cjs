@@ -580,7 +580,8 @@ const lastDiffHash = new Map(); // id → 직전 내레이션에 쓴 git diff �
 // 실제 코드 변경(git diff HEAD) 확보 — 터미널 산문 대신 진짜 코드로 학습(#870). 캡 6KB, 실패 시 "".
 function getGitDiff(cwd) {
   try {
-    const out = require("node:child_process").execFileSync("git", ["-C", cwd, "diff", "HEAD", "--unified=1"], { encoding: "utf8", timeout: 3000, maxBuffer: 4_000_000 });
+    // *.md 제외 — 문서화(학습정리·작업일지·개념정리 등)는 학습 대상 아님(#870). 코드 변경만.
+    const out = require("node:child_process").execFileSync("git", ["-C", cwd, "diff", "HEAD", "--unified=1", "--", ".", ":(exclude)*.md"], { encoding: "utf8", timeout: 3000, maxBuffer: 4_000_000 });
     return out.length > 6000 ? out.slice(0, 6000) + "\n…(diff 생략)" : out;
   } catch { return ""; } // 깃 아님·HEAD 없음·타임아웃 등
 }
