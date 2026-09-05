@@ -576,6 +576,15 @@ async function postStatus(body) {
 // SNA가 "지금 뭘 하는지 + 개념/용어"를 학습 스트림에 뿜는다. 레포별(cwd 귀속) + 스로틀 + 유의미 델타만.
 const narrPending = new Map(); // id → 마지막 내레이션 이후 누적된 새 출력(onData가 append, 관찰기가 소비)
 const lastNarr = new Map();   // id → 마지막 내레이션 시각
+const lastDiffHash = new Map(); // id → 직전 내레이션에 쓴 git diff 해시(같은 코드 재설명 방지)
+// 실제 코드 변경(git diff HEAD) 확보 — 터미널 산문 대신 진짜 코드로 학습(#870). 캡 6KB, 실패 시 "".
+function getGitDiff(cwd) {
+  try {
+    const out = require("node:child_process").execFileSync("git", ["-C", cwd, "diff", "HEAD", "--unified=1"], { encoding: "utf8", timeout: 3000, maxBuffer: 4_000_000 });
+    return out.length > 6000 ? out.slice(0, 6000) + "\n…(diff 생략)" : out;
+  } catch { return ""; } // 깃 아님·HEAD 없음·타임아웃 등
+}
+function djb2(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return h; }
 // 스피너/상태줄 노이즈 제거 — 라이브 타이머·상태줄·글리프만인 줄 버림. 알맹이(툴콜·코드·diff·추론)만 남겨
 // 내레이션이 "이건 스피너일 뿐" 같은 무의미 카드(토큰 낭비)를 안 만들게(#870).
 function stripNoise(text) {
@@ -608,12 +617,18 @@ async function observeActivity(id) {
   const delta = stripNoise(stripAnsi(raw));                                         // 스피너·상태줄 노이즈 제거 → 알맹이만
   narrPending.set(id, "");                                                          // 소비(비움)
   if (delta.length < NARR_MIN_DELTA || !/[a-zA-Z가-힣]/.test(delta)) return;         // 알맹이 없으면 스킵(토큰 낭비 방지)
+  // 실제 코드 변경(diff)을 재료로 — 코드가 바뀌었으면 그 diff로 코드 학습. 안 바뀌었으면 diff 없이 탐색/개념 학습.
+  const diffFull = getGitDiff(cwd);
+  const dh = diffFull ? djb2(diffFull) : 0;
+  const diffChanged = !!diffFull && dh !== lastDiffHash.get(id);
+  if (diffChanged) lastDiffHash.set(id, dh);
+  const diff = diffChanged ? diffFull : "";                                         // 코드 그대로면 재전송 안 함(같은 코드 재설명 방지)
   lastNarr.set(id, now);
   narrInFlight.add(id);
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 30000); // analyze 행 방지 — 초과 시 중단(다음 델타서 재시도)
   try {
-    await fetch(`${appBase}/api/repo/learn/observe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd, agent, delta: delta.slice(-5000) }), signal: ctrl.signal });
+    await fetch(`${appBase}/api/repo/learn/observe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd, agent, delta: delta.slice(-5000), diff }), signal: ctrl.signal });
   } catch { /* 서버 미준비·타임아웃 등 — 다음 델타서 재시도 */ }
   finally { clearTimeout(to); narrInFlight.delete(id); }
 }
@@ -689,7 +704,7 @@ const termClient = createDaemonClient({
   },
   onExit: (id) => {
     liveBuffers.delete(id); delete savedBuffers[id];
-    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrPending.delete(id); lastNarr.delete(id); narrInFlight.delete(id); // #765·#803·#864·#870 정리
+    cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrPending.delete(id); lastNarr.delete(id); narrInFlight.delete(id); lastDiffHash.delete(id); // #765·#803·#864·#870 정리
     const tm = screenTimers.get(id); if (tm) { clearTimeout(tm); screenTimers.delete(id); }
     broadcast("terminal:exit", { id });
   },
@@ -733,7 +748,7 @@ ipcMain.handle("terminal:launchAgent", async (_e, { id, agent }) => {
   return { ok: true };
 });
 ipcMain.on("terminal:resize", (_e, { id, cols, rows }) => termClient.resize({ id, cols, rows }));
-ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrPending.delete(id); lastNarr.delete(id); narrInFlight.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태·실행기록 정리
+ipcMain.on("terminal:kill", (_e, { id }) => { termClient.kill({ id }); liveBuffers.delete(id); delete savedBuffers[id]; cwdById.delete(id); lastScreen.delete(id); agentSticky.delete(id); launchRegistry.delete(id); inputBuf.delete(id); ensuredIds.delete(id); narrPending.delete(id); lastNarr.delete(id); narrInFlight.delete(id); lastDiffHash.delete(id); }); // 탭 닫기 시 데몬 pty·저장분·상태·실행기록 정리
 // 세션의 실행 중 에이전트 id | null(#803) — 터미널 탭 자동 이름·아이콘용.
 // 프로세스명만으론 node 래퍼 CLI(codex 등: 네이티브 자식을 spawn해 foreground pgrp 리더가 "node")를 못 잡아,
 // 버퍼 스크레이핑(parseAgentScreen)을 1순위로. 셸이면 종료로 간주(null). 버퍼 미판정이면 프로세스명 폴백.

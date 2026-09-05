@@ -7,28 +7,36 @@ import { emitNarration } from "@/lib/mcpActivity";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function narrationPrompt(agent: string, delta: string): string {
-  return `너는 유저의 코드베이스를 가르치는 **선생님**이야. 지금 터미널에서 AI 에이전트가 실제로 건드리는 파일·코드·명령을 재료 삼아, 유저가 에이전틱 코딩하며 놓치는 **"이 코드가 뭐고 어떻게 동작하는지, 얽힌 프로그래밍·아키텍처 개념"**을 가르쳐줘.
+function narrationPrompt(agent: string, delta: string, diff: string): string {
+  const hasDiff = diff.trim().length > 0;
+  const task = hasDiff
+    ? `위 **git diff가 방금까지 바뀐 진짜 코드**야. 이 diff를 중심으로 가르쳐:
+- **무슨 코드가 어떻게 바뀌었나**: +/- 줄을 짚어 before→after로. 어떤 함수·변수·로직이 추가/수정/삭제됐고 그게 무슨 일을 하는지 코드 자체로.
+- **왜/개념**: 그 코드가 왜 그렇게 동작하는지, 얽힌 프로그래밍·아키텍처 개념·패턴·원리.
+- **용어**: 나온 함수·문법·라이브러리·개념을 "- **이름** — 쉬운 뜻" 목록으로.`
+    : `아직 코드 변경(diff)은 없어. 에이전트가 무슨 파일/영역을 왜 보는지, 그 파일·함수가 코드베이스에서 무슨 역할인지, 얽힌 개념을 가르쳐. **제품 기능·UX 동작 서술(버튼 누르면 어디 가고 등) 금지 — 코드·구조·개념만.** 코드/구조 얘깃거리 없고 제품·상황 얘기뿐이면 딱 "SKIP"만.`;
+  const material = hasDiff
+    ? `## 실제 코드 변경 (git diff HEAD — 핵심 재료)
+\`\`\`diff
+${diff}
+\`\`\`
 
-📏 길이: 소제목 2~3개, 각 아래 2~4문장. 전체 대략 400~700자로 **완결**해. 너무 길게 늘이지 말고 핵심을 밀도 있게 — 길이 초과로 중간에 잘리면 안 되니, 시작한 소제목·문장은 반드시 끝맺어.
-
-⚠️ 세션 중계 금지 (제일 중요):
-- 터미널 CLI가 이미 에이전트의 행동을 보여주니, 그걸 똑같이 옮기는 건 무의미해. 유저 지시("~라고 하자"), 에이전트의 감정·의도·판단("혼났다", "인지하고", "스스로 복기했다", "완료라고 보고했다"), 사람 이름 언급 전부 금지.
-- 상황을 중계하지 말고, **그 코드/개념이 뭔지**를 가르쳐. (상황 서술 ✗, 지식 전달 ✓)
-- 추측·일반론(릴리스 절차 등 교과서 나열) 금지. 로그에 실제로 나온 파일·코드·명령만.
-
-로그에 실제로 등장한 것을 바탕으로 아래를 자연스러운 마크다운 소제목으로 풍부하게 설명(내용에 맞는 섹션만, 억지로 빈 섹션 금지):
-- **파일/영역**: 에이전트가 연·검색한 파일이나 영역이 이 코드베이스에서 무슨 역할을 하는지, 그 안 함수·로직이 실제로 무슨 일을 하는지.
-- **코드 변경**(코드를 실제로 고쳤을 때만): 무슨 코드를 어떻게 바꿨는지 before→after로, 그게 왜 그렇게 동작하는지 코드 수준으로. ← 코드를 안 고치고 탐색·검증·빌드·실행만 했으면 이 섹션 넣지 말고, 무엇을 왜 확인하는지와 그 원리를 설명.
-- **개념**: 얽힌 프로그래밍·아키텍처 개념·패턴·원리(예: overflow가 뭔지, IPC가 뭔지, 왜 이런 구조인지).
-- **용어**: 나온 개념·함수·문법·라이브러리를 "- **이름** — 쉬운 뜻" 마크다운 목록으로.
-
-맨 앞 줄: 아주 짧은 제목(파일/코드/개념 중심 명사구, 25자 안팎. 예: "모달 헤더 overflow와 렌더링 크기 측정"). 완결 문장·"제목:" 라벨·#·** 금지.
-
-실제 파일·코드·명령 활동이 없고 계획·잡담·지시뿐이면 다른 말 없이 딱 "SKIP"만. JSON·코드블록으로 용어 출력 금지.
-
-활동 로그:
+## 터미널 로그 (보조 맥락)
+${delta}`
+    : `## 터미널 로그
 ${delta}`;
+
+  return `너는 유저의 코드베이스를 가르치는 **선생님**이야. 유저가 에이전틱 코딩(${agent})하며 놓치는 **"이 코드가 뭐고 어떻게 동작하는지, 얽힌 프로그래밍·아키텍처 개념"**을 가르쳐줘.
+
+📏 길이: 소제목 2~3개, 각 2~4문장, 전체 400~700자로 **완결**(시작한 소제목·문장 반드시 끝맺기).
+
+⚠️ 절대 금지: 세션 중계(유저 지시 "~라고 하자", 에이전트 감정·의도 "혼났다/판단했다/보고했다", 사람 이름). 제품 기능·UX 동작 서술. 추측·일반론(릴리스 절차 등). → 오직 코드·구조·개념 지식 전달.
+
+${task}
+
+맨 앞 줄: 아주 짧은 제목(코드/개념 중심 명사구 25자 안팎). "제목:" 라벨·#·** 금지. JSON·코드블록으로 용어 출력 금지.
+
+${material}`;
 }
 
 // 모델이 그래도 끝에 JSON terms 배열을 붙이면 파싱해 읽기 좋은 목록으로 교체(백스톱).
@@ -68,11 +76,12 @@ function splitNarration(summary: string): { title: string; note: string } {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  let body: { cwd?: unknown; agent?: unknown; delta?: unknown; providerId?: unknown };
+  let body: { cwd?: unknown; agent?: unknown; delta?: unknown; diff?: unknown; providerId?: unknown };
   try { body = await req.json(); } catch { return Response.json({ error: "bad json" }, { status: 400 }); }
   const cwd = typeof body.cwd === "string" ? body.cwd : "";
   const agent = typeof body.agent === "string" && body.agent ? body.agent : "agent";
   const delta = typeof body.delta === "string" ? body.delta.slice(0, 6000) : "";
+  const diff = typeof body.diff === "string" ? body.diff.slice(0, 6500) : "";
   if (!cwd || delta.trim().length < 40) return Response.json({ ok: false, reason: "no cwd/delta" });
 
   const useCodex = body.providerId === "codex";
@@ -82,7 +91,7 @@ export async function POST(req: Request): Promise<Response> {
     locale: "ko",
     providerId: useCodex ? "codex-agent" : "claude-agent",
     mode: "chat",
-    messages: [{ role: "user", content: narrationPrompt(agent, delta) }],
+    messages: [{ role: "user", content: narrationPrompt(agent, delta, diff) }],
   };
   try {
     const res = await provider.analyze(request, { signal: req.signal });
