@@ -2,22 +2,24 @@
 // 실시간 학습 스트림(#855·#857) — MCP 연결 에이전트가 뭘 하든(그래프 탐색+파일 편집) 실시간 관찰(SSE) +
 // 등장한 "개념"을 중복 없이 1회씩 설명하고, 이해에 필요한 "용어"를 별도 용어집으로 누적. 반복 없이 정리.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconCode, IconFile, IconSearch, IconSitemap, IconActivity, IconPointFilled, IconLoader2, IconPencil, IconChevronDown, IconBook2 } from "@tabler/icons-react";
+import { IconCode, IconFile, IconSearch, IconSitemap, IconActivity, IconPointFilled, IconLoader2, IconPencil, IconChevronDown, IconBook2, IconBroadcast } from "@tabler/icons-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { AgentProviderKind, ProviderSettings } from "@/lib/agent";
 import Markdown from "@/components/learning/Markdown";
 import { stripCardBlock } from "@/lib/cardSuggestion";
 
-type ConceptKind = "symbol" | "file" | "query" | "repo" | "edit";
-interface ActivityEvent { root: string; tool: string; kind: ConceptKind; target: string; isError: boolean; ts: number }
+type ConceptKind = "symbol" | "file" | "query" | "repo" | "edit" | "narration";
+interface ActivityEvent { root: string; tool: string; kind: ConceptKind; target: string; isError: boolean; ts: number; note?: string }
 interface Concept { key: string; kind: ConceptKind; target: string; tool: string; status: "idle" | "loading" | "done" | "error"; expl?: string; ts: number }
 interface Term { term: string; def: string }
 type StreamEvent = { type: string; message?: string; response?: { summary?: string } };
 
-const KIND_ICON: Record<ConceptKind, typeof IconCode> = { symbol: IconCode, file: IconFile, query: IconSearch, repo: IconSitemap, edit: IconPencil };
-const KIND_VERB: Record<ConceptKind, string> = { symbol: "심볼", file: "파일", query: "주제", repo: "레포 구조", edit: "편집 중인 파일" };
+const KIND_ICON: Record<ConceptKind, typeof IconCode> = { symbol: IconCode, file: IconFile, query: IconSearch, repo: IconSitemap, edit: IconPencil, narration: IconBroadcast };
+const KIND_VERB: Record<ConceptKind, string> = { symbol: "심볼", file: "파일", query: "주제", repo: "레포 구조", edit: "편집 중인 파일", narration: "실시간" };
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 const ago = (ts: number, now: number) => { const s = Math.max(0, Math.round((now - ts) / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`; };
+// 생성 시점 절대 날짜·시간(narration 서브라벨용) — "MM-DD HH:MM".
+const fmtDateTime = (ts: number) => { const d = new Date(ts); const p = (n: number) => String(n).padStart(2, "0"); return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const cKey = (root: string) => `nunopi:ws:${root}:learn-concepts`;
 const gKey = (root: string) => `nunopi:ws:${root}:learn-terms`;
 function load<T>(key: string): T[] { try { const r = typeof localStorage !== "undefined" && localStorage.getItem(key); return r ? (JSON.parse(r) as T[]) : []; } catch { return []; } }
@@ -104,6 +106,14 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
     es.onmessage = (m) => {
       let ev: ActivityEvent; try { ev = JSON.parse(m.data) as ActivityEvent; } catch { return; }
       if (!ev?.target) return;
+      // #870 실시간 내레이션 — 서버가 이미 설명(note)을 생성해 실었으므로 클라 재분석 없이 done 카드로 바로.
+      if (ev.kind === "narration") {
+        if (!ev.note) return;
+        const nkey = `narration|${ev.ts}|${ev.target}`;                 // ts+제목 = 고유 키(같은 ms 충돌 방지)
+        setConcepts((prev) => (prev.some((c) => c.key === nkey) ? prev  // 이미 있으면 스킵(SSE 재연결 replay 중복 방지)
+          : [{ key: nkey, kind: "narration" as const, target: ev.target, tool: "narration", status: "done" as const, ts: ev.ts, expl: ev.note }, ...prev].slice(0, 80)));
+        return;
+      }
       const key = `${ev.kind}|${ev.target}`;
       metaRef.current.set(key, { kind: ev.kind, target: ev.target });
       setConcepts((prev) => { const found = prev.find((c) => c.key === key); if (found) return [{ ...found, tool: ev.tool, ts: ev.ts }, ...prev.filter((c) => c.key !== key)]; return [{ key, kind: ev.kind, target: ev.target, tool: ev.tool, status: "idle" as const, ts: ev.ts }, ...prev].slice(0, 80); });
@@ -113,7 +123,7 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
   }, [root, enqueue]);
 
   // 영구보존 — done 개념 + 용어집.
-  useEffect(() => { try { if (typeof localStorage !== "undefined") localStorage.setItem(cKey(root), JSON.stringify(concepts.filter((c) => c.status === "done").slice(0, 60))); } catch { /* 무시 */ } }, [concepts, root]);
+  useEffect(() => { try { if (typeof localStorage !== "undefined") localStorage.setItem(cKey(root), JSON.stringify(concepts.filter((c) => c.status === "done").slice(0, 60))); } catch { /* 무시 */ } }, [concepts, root]); // narration 포함 영속(재열람 보존). SSE replay 중복은 key(ts+제목) some-check로 방지
   useEffect(() => { try { if (typeof localStorage !== "undefined") localStorage.setItem(gKey(root), JSON.stringify(terms.slice(0, 80))); } catch { /* 무시 */ } }, [terms, root]);
 
   useEffect(() => {
@@ -155,13 +165,13 @@ export default function RepoLearnStream({ root, providerId, providerSettings }: 
             )}
             {/* 개념 — 등장한 개념 1회씩(중복 없음), 최근 먼저 */}
             <ul className="flex flex-col gap-2 p-2.5">
-              {concepts.map((c) => { const Icon = KIND_ICON[c.kind]; return (
+              {concepts.map((c) => { const Icon = KIND_ICON[c.kind] ?? IconActivity; return ( // 미지 kind(구버전/영속 데이터)여도 크래시 안 나게 fallback
                 <li key={c.key} className="rounded-lg border border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-800/40">
                   <button type="button" onClick={() => toggleExpand(c.key)} className="flex w-full items-start gap-2 px-3 py-2 text-left">
                     <Icon size={14} stroke={2} className="mt-0.5 shrink-0 text-mustard-600 dark:text-mustard-400" aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className="block break-all text-[12px] font-medium text-zinc-700 dark:text-zinc-100">{c.target}</span>
-                      <span className="block text-[10px] text-zinc-400 dark:text-zinc-500">{c.tool.replace(/^katchup_/, "")} · {ago(c.ts, now || c.ts)}</span>
+                      <span className="block text-[10px] text-zinc-400 dark:text-zinc-500">{c.kind === "narration" ? fmtDateTime(c.ts) : `${c.tool.replace(/^katchup_/, "")} · ${ago(c.ts, now || c.ts)}`}</span>
                     </span>
                     {c.status === "loading" && <IconLoader2 size={12} stroke={2} className="mt-0.5 shrink-0 animate-spin text-zinc-400" aria-hidden />}
                   </button>
