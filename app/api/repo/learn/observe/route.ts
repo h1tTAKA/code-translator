@@ -42,22 +42,18 @@ ${material}`;
 // 모델이 그래도 끝에 JSON terms 배열을 붙이면 파싱해 읽기 좋은 목록으로 교체(백스톱).
 // 정규식 백트래킹 회피 — 마지막 '['부터 끝까지를 JSON.parse로 직접 시도(문자열 파싱이라 안전).
 function cleanNote(s: string): string {
-  // 잘림 백스톱: 끝에 본문 없이 소제목(## …)만 남으면(출력 truncate) 그 dangling 소제목 제거.
-  let t = s.trim().replace(/\n#{1,6}\s+[^\n]*$/, "").trim();
-  const idx = t.lastIndexOf("[");
-  if (idx >= 0) {
-    const tail = t.slice(idx);
-    if (/^\[\s*\{/.test(tail) && tail.includes('"term"')) {
-      try {
-        const arr = JSON.parse(tail) as Array<{ term?: string; definition?: string }>;
-        if (Array.isArray(arr)) {
-          const list = arr.filter((x) => x && x.term).map((x) => `- **${x.term}** — ${x.definition ?? ""}`).join("\n");
-          return (t.slice(0, idx).trim() + (list ? "\n\n" + list : "")).trim();
-        }
-      } catch { /* 파싱 실패 → 코드펜스 제거로 폴백 */ }
-    }
+  let t = s.trim();
+  // 모델이 붙이는 용어 JSON 블록만 제거(본문 ## 용어 섹션에 이미 있음). ```diff 등 다른 코드블록은 보존!
+  t = t.replace(/```nunopi-cards[\s\S]*?```/g, "").trim();               // ```nunopi-cards [...] ```
+  t = t.replace(/```json\s*\[[\s\S]*?"term"[\s\S]*?\]\s*```/g, "").trim(); // ```json [ {term..} ] ```
+  // 끝에 붙은 bare JSON terms 배열(코드펜스 없이)
+  const nl = t.lastIndexOf("\n[");
+  if (nl >= 0) {
+    const tail = t.slice(nl + 1);
+    if (/^\[\s*\{/.test(tail) && tail.includes('"term"')) { try { JSON.parse(tail); t = t.slice(0, nl).trim(); } catch { /* 진짜 배열 아님 → 유지 */ } }
   }
-  return t.replace(/```(?:json)?[\s\S]*?```\s*$/, "").trim();
+  // 끝에 본문 없이 소제목(## …)만 남으면(출력 truncate) 그 dangling 소제목 제거.
+  return t.replace(/\n#{1,6}\s+[^\n]*$/, "").trim();
 }
 
 // summary → { title, note }. 첫 줄 = 제목(마크다운 heading·볼드·"제목:" 라벨 벗겨서), 나머지 = 본문.
