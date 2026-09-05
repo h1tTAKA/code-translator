@@ -187,6 +187,10 @@ function createWindow(url) {
   });
   win.loadURL(url);
   wireWindowCommon(win);
+  // 메인 창 렌더러가 리로드/재네비게이트되면(새로고침·크래시 복구) 그 렌더러가 들고 있던 "탭" 모드 점유는
+  // release 없이 사라져 stale로 남는다("이미 열려 있어요" 오탐). 실제 페이지 이동 시 탭 점유를 전부 해제(#872).
+  // did-navigate는 SPA 내부 라우팅(did-navigate-in-page)엔 안 걸려 정상 탭 점유는 안 건드린다.
+  win.webContents.on("did-navigate", () => clearModeTabClaims());
   win.on("closed", () => { win = null; });
 }
 
@@ -228,6 +232,13 @@ function claimMode(kind, where) {
 }
 function releaseMode(kind) {
   if (openModes.delete(kind)) broadcastModes();
+}
+// 메인 창 리로드 시 "탭" 점유 전부 해제(#872) — 리로드된 렌더러가 실제로 가진 모드 탭은 마운트 시 재점유(mode:claim)한다.
+// "window" 점유는 별도 창이라 안 건드림(창 닫힘 시 자체 해제).
+function clearModeTabClaims() {
+  let changed = false;
+  for (const [k, where] of openModes) if (where === "tab") { openModes.delete(k); changed = true; }
+  if (changed) broadcastModes();
 }
 
 async function boot() {
